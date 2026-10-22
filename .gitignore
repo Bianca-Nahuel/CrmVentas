@@ -1,0 +1,2 @@
+# Variables de entorno locales (nunca se commitean)
+.env

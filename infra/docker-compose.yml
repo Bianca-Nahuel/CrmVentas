@@ -1,0 +1,12 @@
+# Entorno de desarrollo local: Postgres 18 (con pgvector) + WAHA.
+# Uso desde la raíz del repo:  docker compose -f infra/docker-compose.yml up -d
+#
+# Los servicios están en servicios.yml. Se incluyen desde acá para que la
+# interpolación de ${...} lea el .env de la RAÍZ del repo: por defecto Compose
+# solo busca el .env junto al compose file (infra/).
+
+name: ventas
+
+include:
+  - path: servicios.yml
+    env_file: ../.env

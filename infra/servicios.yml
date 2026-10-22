@@ -1,0 +1,49 @@
+# Servicios del entorno de desarrollo. No se usa directo: lo incluye docker-compose.yml,
+# que le pasa el .env de la raíz para la interpolación de variables.
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg18
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_OWNER_USER:?Falta DB_OWNER_USER en .env}
+      POSTGRES_PASSWORD: ${DB_OWNER_PASSWORD:?Falta DB_OWNER_PASSWORD en .env}
+      POSTGRES_DB: ${POSTGRES_DB:?Falta POSTGRES_DB en .env}
+      # Los usa infra/postgres/init/01-init.sh
+      DB_APP_USER: ${DB_APP_USER:?Falta DB_APP_USER en .env}
+      DB_APP_PASSWORD: ${DB_APP_PASSWORD:?Falta DB_APP_PASSWORD en .env}
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      # Postgres 18 guarda los datos en /var/lib/postgresql/18/docker
+      - postgres-data:/var/lib/postgresql
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  waha:
+    image: devlikeapro/waha
+    restart: unless-stopped
+    environment:
+      WHATSAPP_DEFAULT_ENGINE: NOWEB
+      WHATSAPP_HOOK_URL: ${WAHA_WEBHOOK_URL:?Falta WAHA_WEBHOOK_URL en .env}
+      # message: mensajes entrantes. message.any: todos, incluidos los propios
+      # (los que manda el vendedor desde el celular, con fromMe=true).
+      WHATSAPP_HOOK_EVENTS: message,message.any
+      WAHA_API_KEY: ${WAHA_API_KEY:?Falta WAHA_API_KEY en .env}
+      WAHA_DASHBOARD_USERNAME: ${WAHA_DASHBOARD_USERNAME:?Falta WAHA_DASHBOARD_USERNAME en .env}
+      WAHA_DASHBOARD_PASSWORD: ${WAHA_DASHBOARD_PASSWORD:?Falta WAHA_DASHBOARD_PASSWORD en .env}
+    ports:
+      - "127.0.0.1:${WAHA_PORT:-3001}:3000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - waha-sessions:/app/.sessions
+
+volumes:
+  postgres-data:
+  waha-sessions:
