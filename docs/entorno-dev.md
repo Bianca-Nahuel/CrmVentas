@@ -3,9 +3,9 @@
 Postgres 18 (con pgvector) y WAHA corren en Docker. El backend (NestJS) y el frontend
 (Angular) corren en el host, fuera de Docker.
 
-| Servicio | Dirección en el host |
-|---|---|
-| Postgres | `localhost:5432` |
+| Servicio                        | Dirección en el host    |
+| ------------------------------- | ----------------------- |
+| Postgres                        | `localhost:5432`        |
 | WAHA (API, dashboard y Swagger) | `http://localhost:3001` |
 
 Los dos puertos se publican solo en `127.0.0.1`: no se ven desde otras máquinas de la red.
@@ -50,11 +50,11 @@ docker compose -f infra/docker-compose.yml down      # bajar (los datos se conse
 
 Host `localhost`, puerto `5432`, base `ventas` (`POSTGRES_DB`).
 
-| Usuario | Para qué | Variable |
-|---|---|---|
+| Usuario        | Para qué                                                                                  | Variable                  |
+| -------------- | ----------------------------------------------------------------------------------------- | ------------------------- |
 | `ventas_owner` | Solo migraciones (crear/alterar tablas) y limpieza de los tests e2e. La API no la recibe. | `DATABASE_URL_MIGRATIONS` |
-| `ventas_app` | El backend en ejecución, y para probar consultas como las vería la app. | `DATABASE_URL` |
-| `ventas_auth` | Solo Better Auth (pool propio). Únicamente las tablas de autenticación. | `DATABASE_URL_AUTH` |
+| `ventas_app`   | El backend en ejecución, y para probar consultas como las vería la app.                   | `DATABASE_URL`            |
+| `ventas_auth`  | Solo Better Auth (pool propio). Únicamente las tablas de autenticación.                   | `DATABASE_URL_AUTH`       |
 
 Con psql, sin instalar nada en el host:
 
