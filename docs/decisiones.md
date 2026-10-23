@@ -36,7 +36,7 @@ Detectados por `revisor-seguridad`; no bloquean, quedan para una tarea de endure
 
 Hallazgos de `revisor-seguridad` y `revisor-codigo` que no bloquean; quedan para la tarea de endurecimiento o de despliegue:
 
-- `DATABASE_URL_MIGRATIONS` (credenciales del dueño, superusuario en dev) es obligatoria en el env de la API aunque solo la usan drizzle-kit y los tests. La tarea 002 la pide explícitamente; decidir si se saca del proceso de la API en producción.
+- ~~`DATABASE_URL_MIGRATIONS` obligatoria en el env de la API~~ — resuelto (2026-10-23): la API ya no la valida; solo la leen `drizzle.config.ts` y los tests e2e (limpieza como `ventas_owner`). Con `NODE_ENV=production`, `parseEnv` no deja arrancar la API si la variable llega definida.
 - `NODE_ENV` tiene default `development`. La cookie `Secure` ya se activa también con `BETTER_AUTH_URL` https y el seed solo corre contra localhost, pero el rate limit de Better Auth sigue dependiendo de `NODE_ENV=production`.
 - Rate limit detrás de Caddy: configurar `advanced.ipAddress.ipAddressHeaders` y que la API escuche solo en `127.0.0.1`.
 - Políticas de UPDATE de `tenants` y `memberships` no miran el rol (owner/admin) ni impiden asignar `owner`: hoy lo validan los servicios (no hay endpoints que actualicen).

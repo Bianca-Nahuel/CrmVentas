@@ -18,7 +18,6 @@ const envSchema = z.object({
   PORT: z.coerce.number().int().positive().default(3000),
   DATABASE_URL: postgresUrl,
   DATABASE_URL_AUTH: postgresUrl,
-  DATABASE_URL_MIGRATIONS: postgresUrl,
   BETTER_AUTH_SECRET: z.string().min(32, 'tiene que tener al menos 32 caracteres'),
   BETTER_AUTH_URL: origin,
   TRUSTED_ORIGINS: z
@@ -34,11 +33,22 @@ const envSchema = z.object({
 
 export type Env = z.infer<typeof envSchema>;
 
+// Variables que el proceso de la API nunca debe recibir en producción: las credenciales de ventas_owner
+// (dueño de las tablas) solo las usan drizzle-kit y los tests.
+const FORBIDDEN_IN_PRODUCTION = ['DATABASE_URL_MIGRATIONS'] as const;
+
 // Si falta una variable o es inválida, la app no levanta. El mensaje nombra la variable, nunca su valor.
 export function parseEnv(source: NodeJS.ProcessEnv = process.env): Env {
   const result = envSchema.safeParse(source);
-  if (!result.success) {
-    const problems = result.error.issues.map((issue) => `- ${issue.path.join('.')}: ${issue.message}`);
+  const problems = result.success
+    ? []
+    : result.error.issues.map((issue) => `- ${issue.path.join('.')}: ${issue.message}`);
+  if (source.NODE_ENV === 'production') {
+    for (const name of FORBIDDEN_IN_PRODUCTION) {
+      if (source[name] !== undefined) problems.push(`- ${name}: no debe estar definida en producción`);
+    }
+  }
+  if (!result.success || problems.length > 0) {
     throw new Error(`Configuración inválida:\n${problems.join('\n')}`);
   }
   return result.data;

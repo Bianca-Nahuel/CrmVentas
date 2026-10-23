@@ -52,7 +52,7 @@ Host `localhost`, puerto `5432`, base `ventas` (`POSTGRES_DB`).
 
 | Usuario | Para qué | Variable |
 |---|---|---|
-| `ventas_owner` | Solo migraciones (crear/alterar tablas). | `DATABASE_URL_MIGRATIONS` |
+| `ventas_owner` | Solo migraciones (crear/alterar tablas) y limpieza de los tests e2e. La API no la recibe. | `DATABASE_URL_MIGRATIONS` |
 | `ventas_app` | El backend en ejecución, y para probar consultas como las vería la app. | `DATABASE_URL` |
 | `ventas_auth` | Solo Better Auth (pool propio). Únicamente las tablas de autenticación. | `DATABASE_URL_AUTH` |
 

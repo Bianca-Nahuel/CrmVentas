@@ -29,6 +29,9 @@ export interface TestContext {
 }
 
 export async function startTestContext(): Promise<TestContext> {
+  // La API no conoce las credenciales del dueño; solo los tests las usan para limpiar.
+  const ownerUrl = process.env.DATABASE_URL_MIGRATIONS;
+  if (!ownerUrl) throw new Error('Los tests necesitan DATABASE_URL_MIGRATIONS (limpieza como ventas_owner)');
   const env = parseEnv();
   const app = await createApp();
   await app.listen(0, '127.0.0.1');
@@ -42,7 +45,7 @@ export async function startTestContext(): Promise<TestContext> {
       await Promise.all([appDatabase.close(), authDatabase.close()]);
     },
   };
-  const ownerPool = new pg.Pool({ connectionString: env.DATABASE_URL_MIGRATIONS, max: 2 });
+  const ownerPool = new pg.Pool({ connectionString: ownerUrl, max: 2 });
   const prefix = `t${randomBytes(4).toString('hex')}`;
 
   return {
