@@ -174,3 +174,26 @@ Al terminar, resumime en pocas líneas:
 - El resultado de cada punto de la verificación.
 - Cualquier decisión que tomaste y que no estaba en estas instrucciones (por ejemplo,
   nombres de variables de WAHA distintos a los esperados).
+
+## Resultado
+
+Tarea completada. Los 9 puntos de la verificación pasaron:
+
+1. `docker compose -f infra/docker-compose.yml up -d` sin errores.
+2. `ps`: Postgres `healthy` y WAHA corriendo.
+3. Extensiones `citext`, `pg_trgm`, `unaccent` y `vector` presentes.
+4. `uuidv7()` devuelve un UUID.
+5. Rol `ventas_app` con `rolsuper`, `rolbypassrls`, `rolcreatedb` y `rolcreaterole` en `false`.
+6. `ventas_app` se conecta con la `DATABASE_URL` del `.env`.
+7. Privilegios por defecto: `INSERT` y `SELECT` sí, `DROP TABLE` no.
+8. WAHA responde en `http://localhost:3001`.
+9. `git status` no muestra el `.env`.
+
+Decisiones tomadas que no estaban en las instrucciones:
+
+- **Dos archivos de Compose:** `infra/docker-compose.yml` incluye `infra/servicios.yml` y le pasa el `.env` de la raíz con `env_file: ../.env`, porque por defecto Compose solo lee el `.env` junto al compose file.
+- **Variables de WAHA:** nombres según la documentación vigente (motor NOWEB, `WAHA_WEBHOOK_URL`, API key `WAHA_API_KEY`), con los eventos `message` y `message.any`.
+- **Usuario del dashboard:** `WAHA_DASHBOARD_USERNAME` / `WAHA_DASHBOARD_PASSWORD` desde el `.env`.
+- **Volumen de Postgres 18:** se ajustó el punto de montaje del volumen al layout de datos de Postgres 18.
+- **`NOINHERIT`:** el rol de la aplicación se creó con `NOINHERIT`.
+- **`.gitattributes`:** se agregó para fijar los finales de línea (LF) de los scripts de shell.

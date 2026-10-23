@@ -1,2 +1,4 @@
 # Variables de entorno locales (nunca se commitean)
 .env
+.env.*
+!.env.example
