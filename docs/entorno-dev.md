@@ -24,8 +24,9 @@ cp .env.example .env
 ```
 
 Reemplazá cada `cambiar` por un valor aleatorio, por ejemplo con `openssl rand -hex 16`.
-Las contraseñas de `DB_OWNER_PASSWORD` y `DB_APP_PASSWORD` tienen que coincidir con las
-que aparecen dentro de `DATABASE_URL_MIGRATIONS` y `DATABASE_URL`.
+Las contraseñas de `DB_OWNER_PASSWORD`, `DB_APP_PASSWORD` y `DB_AUTH_PASSWORD` tienen que coincidir con las
+que aparecen dentro de `DATABASE_URL_MIGRATIONS`, `DATABASE_URL` y `DATABASE_URL_AUTH`.
+`BETTER_AUTH_SECRET` tiene que tener al menos 32 caracteres (`openssl rand -hex 32`).
 
 El `.env` está en `.gitignore` y **nunca se commitea**.
 
@@ -53,6 +54,7 @@ Host `localhost`, puerto `5432`, base `ventas` (`POSTGRES_DB`).
 |---|---|---|
 | `ventas_owner` | Solo migraciones (crear/alterar tablas). | `DATABASE_URL_MIGRATIONS` |
 | `ventas_app` | El backend en ejecución, y para probar consultas como las vería la app. | `DATABASE_URL` |
+| `ventas_auth` | Solo Better Auth (pool propio). Únicamente las tablas de autenticación. | `DATABASE_URL_AUTH` |
 
 Con psql, sin instalar nada en el host:
 
@@ -94,7 +96,7 @@ docker compose -f infra/docker-compose.yml up -d
 (hay que volver a escanear el QR). Al levantar, `infra/postgres/init/01-init.sh` vuelve a
 crear las extensiones y el usuario de la aplicación.
 
-## 7. Por qué dos usuarios de base
+## 7. Por qué tres usuarios de base
 
 La RLS (Row Level Security) **no se aplica** a los superusuarios ni al dueño de las tablas.
 Si la aplicación se conectara con el usuario dueño, las políticas se ignorarían en silencio
@@ -103,10 +105,30 @@ y un cliente podría ver datos de otro. Por eso:
 - `ventas_owner`: solo para correr migraciones.
 - `ventas_app`: el que usa el backend. Nunca es dueño de tablas y no tiene `BYPASSRLS`
   (tampoco `SUPERUSER`, `CREATEDB` ni `CREATEROLE`).
+- `ventas_auth`: solo lo usa Better Auth, con su propio pool. Mismas restricciones que
+  `ventas_app`. Better Auth tiene que leer usuarios y sesiones antes de conocer la empresa
+  (buscar por email, validar el token), así que esas tablas no pueden filtrarse por tenant.
+  Separarlo garantiza que un bug del código de negocio nunca pueda leer contraseñas ni
+  sesiones: `ventas_app` no tiene ningún permiso sobre `accounts`, `sessions` ni
+  `verifications`, y `ventas_auth` no tiene ninguno sobre las tablas de negocio.
 
 Gracias a los privilegios por defecto, cada tabla que cree `ventas_owner` en `public` le da
 automáticamente a `ventas_app` solo `SELECT, INSERT, UPDATE, DELETE` (y `USAGE, SELECT`
-sobre las secuencias). `ventas_app` no puede crear, alterar ni borrar tablas.
+sobre las secuencias). `ventas_app` no puede crear, alterar ni borrar tablas. `ventas_auth`
+no tiene privilegios por defecto: sus permisos están en la migración
+`apps/api/drizzle/0001_auth_permissions_rls.sql` (que además le revoca a `ventas_app` lo que
+no le corresponde en las tablas de autenticación).
+
+**Si tu volumen de Postgres es anterior a la tarea 002**, el script de inicio no se vuelve a
+ejecutar: agregá `DB_AUTH_USER`, `DB_AUTH_PASSWORD`, `DATABASE_URL_AUTH`, `BETTER_AUTH_SECRET`,
+`BETTER_AUTH_URL` y `TRUSTED_ORIGINS` al `.env` (ver `.env.example`) y creá el rol a mano,
+reemplazando `<PASS_AUTH>` por el mismo valor de `DB_AUTH_PASSWORD`:
+
+```bash
+docker compose -f infra/docker-compose.yml exec postgres psql -U ventas_owner -d ventas -v ON_ERROR_STOP=1 -c "CREATE ROLE ventas_auth LOGIN PASSWORD '<PASS_AUTH>' NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS NOINHERIT; GRANT CONNECT ON DATABASE ventas TO ventas_auth; GRANT USAGE ON SCHEMA public TO ventas_auth;"
+```
+
+O reiniciá la base (punto 6).
 
 **Para las migraciones:** cada tabla de negocio tiene que llevar
 

@@ -3,17 +3,20 @@
 _Última actualización: 2026-10-23_
 
 ## Hecho
-- Tarea 001: entorno de desarrollo (Postgres 18 + WAHA en Docker Compose, dos usuarios de base, verificación completa).
-- Tarea 000: proyecto ordenado y configuración del agente instalada (`CLAUDE.md`, `.claude/` con reglas, skills, subagentes revisores y hooks, `docs/`, `evals/`). Aprobada por `revisor-codigo` y `revisor-seguridad`; hook `guardia-bash` y `permissions.deny` endurecidos.
+- Tarea 002: backend NestJS 12 (ESM) en `apps/api` con Better Auth 1.7.12 (email + contraseña, organizaciones, admin sin suplantación), tablas `users`/`sessions`/`accounts`/`verifications`/`tenants`/`memberships`/`invitations` con RLS, tres usuarios de base (`ventas_owner`, `ventas_auth`, `ventas_app`), `TenantGuard` + transacción por request con `SET LOCAL`, seed y 27 tests e2e. Aprobada por los dos revisores (ronda 2). **Sin commitear.**
+- Tarea 001: entorno de desarrollo (Postgres 18 + WAHA en Docker Compose, verificación completa).
+- Tarea 000: proyecto ordenado y configuración del agente instalada. Aprobada por `revisor-codigo` y `revisor-seguridad`.
 
 ## En curso
 - (nada)
 
 ## Siguiente
-- Borrar `kit-agente/` (lo ejecuta el usuario: el hook bloquea `rm -r`). Después, commit de la tarea 000.
-- Tarea 002: migración inicial con las 7 tablas (`tenants`, `users`, `memberships`, `channels`, `contacts`, `conversations`, `messages`) con RLS.
-- Después: proyecto NestJS + webhook de WAHA → cola → guardado del mensaje.
-- Tarea de endurecimiento de seguridad (ver "Deuda de seguridad pendiente" en `docs/decisiones.md`).
+- Commit de la tarea 002 (lo confirma el usuario). `autenticacion-kit.zip` queda fuera del commit.
+- Decidir si la API deja de exigir `DATABASE_URL_MIGRATIONS` al arrancar (lo marcaron los dos revisores; la tarea 002 lo pedía).
+- Tarea 003: tablas de negocio (`channels`, `contacts`, `conversations`, `messages`) con FK a `tenants`/`users`, grants explícitos a `ventas_app` y RLS por `app.tenant_id`; función `SECURITY DEFINER` para resolver el tenant del webhook.
+- Después: webhook de WAHA → cola (pg-boss) → guardado del mensaje.
+- Tarea de endurecimiento de seguridad: ver las dos secciones de "Deuda de seguridad pendiente" en `docs/decisiones.md` (rate limit detrás de Caddy, políticas de UPDATE por rol, `REVOKE TEMPORARY`, logger sin PII, `AuthService` global, etc.).
 
 ## Bloqueos / pendientes externos
 - Trámite de Tech Provider en Meta (para la API oficial): no iniciado.
+- En otra máquina con un volumen de Postgres viejo hay que crear `ventas_auth` a mano (comando en `docs/entorno-dev.md`).

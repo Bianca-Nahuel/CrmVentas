@@ -2,3 +2,9 @@
 .env
 .env.*
 !.env.example
+
+# Dependencias y artefactos de build
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo

@@ -12,6 +12,8 @@ services:
       # Los usa infra/postgres/init/01-init.sh
       DB_APP_USER: ${DB_APP_USER:?Falta DB_APP_USER en .env}
       DB_APP_PASSWORD: ${DB_APP_PASSWORD:?Falta DB_APP_PASSWORD en .env}
+      DB_AUTH_USER: ${DB_AUTH_USER:?Falta DB_AUTH_USER en .env}
+      DB_AUTH_PASSWORD: ${DB_AUTH_PASSWORD:?Falta DB_AUTH_PASSWORD en .env}
     ports:
       - "127.0.0.1:5432:5432"
     volumes:

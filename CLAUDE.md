@@ -16,11 +16,16 @@ cerámicos (Lecer), pero **nada de un negocio puntual va en el código**: todo s
 - Levantar servicios: `docker compose -f infra/docker-compose.yml up -d`
 - Estado / logs: `docker compose -f infra/docker-compose.yml ps` · `... logs -f waha`
 - psql: `docker compose -f infra/docker-compose.yml exec postgres psql -U ventas_owner -d ventas`
-- (Se completan cuando existan apps/api y apps/web: test, lint, typecheck, migraciones, evals)
+- Instalar: `npm install` (raíz; workspaces `apps/*`, `libs/*`)
+- API en desarrollo: `npm run dev:api` (http://localhost:3000/api) · build: `npm run build`
+- Calidad: `npm run test` (e2e contra el Postgres local) · `npm run lint` · `npm run typecheck` · `npm run format`
+- Base: `npm run db:generate` (nueva migración desde el schema de Drizzle; `-- --custom` para SQL a mano) · `npm run db:migrate` (corre como `ventas_owner`) · `npm run db:seed` (datos de prueba, nunca en producción)
+- El `.env` de la raíz lo cargan solos la app, los tests, el seed y drizzle-kit (`apps/api/src/config/load-env.ts`), salvo con `NODE_ENV=production`
 
 ## Reglas no obvias (romperlas es un bug)
 - **Multi-tenant:** toda tabla de negocio tiene `tenant_id`, RLS con `ENABLE` + `FORCE ROW LEVEL SECURITY`, y toda consulta pasa por `SET LOCAL app.tenant_id` / `app.user_id`.
-- **Dos usuarios de base:** `ventas_owner` solo para migraciones; la app usa `ventas_app` (sin superusuario, sin BYPASSRLS, nunca dueño de tablas). Si la app se conectara como dueño, la RLS se ignora en silencio.
+- **Tres usuarios de base:** `ventas_owner` solo para migraciones; Better Auth usa `ventas_auth` con su propio pool (`DATABASE_URL_AUTH`), solo sobre las tablas de autenticación; el resto del backend usa `ventas_app`, que no puede leer `accounts`/`sessions`/`verifications`. Ninguno de los dos es superusuario, tiene BYPASSRLS ni es dueño de tablas: si la app se conectara como dueño, la RLS se ignora en silencio. Una tabla nueva tiene que dar sus grants explícitos (los default privileges solo cubren a `ventas_app`).
+- **Rutas `/api/auth/*`:** no pasan por los guards de Nest. Cualquier regla extra sobre Better Auth (membresía desactivada, rutas deshabilitadas) va en los hooks de `apps/api/src/auth/auth.ts`.
 - **IDs** `uuidv7()`, fechas `timestamptz`, plata `numeric` (nunca float).
 - **Webhooks:** responder 200 al instante y procesar en la cola; idempotencia por `(channel_id, external_id)`; guardar el payload crudo en `raw`.
 - **La lógica de negocio solo conoce `WhatsAppProvider`** y eventos normalizados. Nunca `if (provider === 'waha')` fuera de `apps/api/src/whatsapp/providers/`. Lo que difiere se expresa con `capabilities`.

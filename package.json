@@ -1,0 +1,34 @@
+{
+  "name": "ventas",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "libs/*",
+    "apps/*"
+  ],
+  "engines": {
+    "node": ">=22.12"
+  },
+  "scripts": {
+    "build:shared": "npm run build -w @ventas/shared",
+    "build": "npm run build:shared && npm run build -w @ventas/api",
+    "dev:api": "npm run build:shared && npm run dev -w @ventas/api",
+    "typecheck": "npm run build:shared && npm run typecheck --workspaces --if-present",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "npm run build:shared && npm run test --workspaces --if-present",
+    "db:generate": "npm run db:generate -w @ventas/api",
+    "db:migrate": "npm run db:migrate -w @ventas/api",
+    "db:seed": "npm run build:shared && npm run db:seed -w @ventas/api"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "eslint": "10.13.0",
+    "eslint-config-prettier": "10.1.8",
+    "globals": "17.13.0",
+    "prettier": "3.9.10",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.72.0"
+  }
+}
