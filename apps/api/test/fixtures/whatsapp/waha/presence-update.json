@@ -1,0 +1,27 @@
+{
+  "id": "evt_01jabcdefghjkmnpqrstvwxyz0",
+  "timestamp": 1792800000000,
+  "event": "presence.update",
+  "session": "ch_session_de_prueba",
+  "metadata": {},
+  "me": {
+    "id": "5491100000099@c.us",
+    "pushName": "Negocio de prueba"
+  },
+  "payload": {
+    "id": "5491100000001@c.us",
+    "presences": [
+      {
+        "participant": "5491100000001@c.us",
+        "lastKnownPresence": "typing",
+        "lastSeen": null
+      }
+    ]
+  },
+  "engine": "NOWEB",
+  "environment": {
+    "version": "2026.8.1",
+    "engine": "NOWEB",
+    "tier": "CORE"
+  }
+}

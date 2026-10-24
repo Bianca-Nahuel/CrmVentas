@@ -29,6 +29,20 @@
       "when": 1792798360659,
       "tag": "0003_messaging_permissions_rls",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1792813116585,
+      "tag": "0004_pgboss",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1792814799307,
+      "tag": "0005_pgboss_retries",
+      "breakpoints": true
     }
   ]
 }

@@ -68,22 +68,44 @@ En DBeaver: nueva conexión PostgreSQL con esos datos y la contraseña del `.env
 
 1. Abrí `http://localhost:3001/dashboard` y entrá con `WAHA_DASHBOARD_USERNAME` /
    `WAHA_DASHBOARD_PASSWORD`. Si el dashboard pide la API key, es `WAHA_API_KEY`.
-2. Creá una sesión (motor NOWEB) y escaneá el QR desde WhatsApp → Dispositivos vinculados.
+2. Creá el canal y su sesión con el script (no desde el dashboard: así la sesión queda con el webhook
+   firmado y el nombre que genera el backend):
+
+   ```bash
+   npm run dev:create-channel -- --tenant ceramicos-demo --name "Ventas prueba" --phone +549XXXXXXXXXX
+   ```
+
+3. En el dashboard, abrí la sesión que imprimió el script y escaneá el QR desde WhatsApp →
+   Dispositivos vinculados.
 
 **Solo se usa el número de prueba del equipo. Nunca un número personal ni el de un cliente.**
 
 Las llamadas a la API de WAHA llevan el header `X-Api-Key: <WAHA_API_KEY>`.
 
-WAHA envía los webhooks a `WAHA_WEBHOOK_URL` (por defecto
-`http://host.docker.internal:3000/webhooks/waha`, o sea, la API NestJS en el host) con
-los eventos:
+No hay webhook global. Cada sesión tiene el suyo, configurado por el script: `WAHA_WEBHOOK_URL`
+(`http://host.docker.internal:3000/api/webhooks/waha`, la API NestJS en el host), firmado con
+`WAHA_WEBHOOK_HMAC_KEY` (HMAC-SHA512), con los eventos:
 
 - `message`: mensajes entrantes.
-- `message.any`: todos los mensajes, incluidos los propios (`fromMe: true`), por ejemplo
-  los que manda el vendedor desde el celular. Los usamos para pausar la IA cuando responde
-  un humano.
+- `session.status`: cambios de estado de la sesión (actualiza `channels.status`).
+
+Los mensajes propios (`message.any`, `fromMe: true`) se suman en la tarea 005, para pausar la IA
+cuando responde un humano.
+
+Si cambiás `WAHA_WEBHOOK_URL` o `WAHA_WEBHOOK_HMAC_KEY`, las sesiones ya creadas siguen con la configuración
+vieja. Para reaplicarla sin volver a escanear el QR:
+
+```bash
+npm run dev:sync-channel-webhook -- --session ch_<id>
+```
+
+La imagen de WAHA está fijada a `devlikeapro/waha:latest-2026.8.1`.
 
 La sesión queda guardada en un volumen, así que no hay que reescanear el QR en cada reinicio.
+
+**Antes de `npm run test`, bajá `npm run dev:api`.** La cola de pg-boss vive en la misma base que los
+tests: el worker de la API de desarrollo tomaría sus trabajos. El test de WAHA lo detecta y corta con un
+mensaje.
 
 ## 6. Reiniciar la base desde cero
 

@@ -28,14 +28,14 @@ services:
       start_period: 10s
 
   waha:
-    image: devlikeapro/waha
+    # Versión fija (2026.8.1, variante latest = engines NOWEB/GOWS/WEBJS). Antes de subirla, revisar el
+    # formato de los webhooks contra apps/api/src/whatsapp/providers/waha/ y sus fixtures.
+    image: devlikeapro/waha:latest-2026.8.1
     restart: unless-stopped
     environment:
       WHATSAPP_DEFAULT_ENGINE: NOWEB
-      WHATSAPP_HOOK_URL: ${WAHA_WEBHOOK_URL:?Falta WAHA_WEBHOOK_URL en .env}
-      # message: mensajes entrantes. message.any: todos, incluidos los propios
-      # (los que manda el vendedor desde el celular, con fromMe=true).
-      WHATSAPP_HOOK_EVENTS: message,message.any
+      # Sin webhook global: cada sesión configura el suyo, firmado con HMAC, al crearla
+      # (npm run dev:create-channel). Uno global no lleva firma y la API lo rechazaría con 401.
       WAHA_API_KEY: ${WAHA_API_KEY:?Falta WAHA_API_KEY en .env}
       WAHA_DASHBOARD_USERNAME: ${WAHA_DASHBOARD_USERNAME:?Falta WAHA_DASHBOARD_USERNAME en .env}
       WAHA_DASHBOARD_PASSWORD: ${WAHA_DASHBOARD_PASSWORD:?Falta WAHA_DASHBOARD_PASSWORD en .env}

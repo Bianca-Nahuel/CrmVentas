@@ -1,6 +1,6 @@
 // Utilidades de los tests e2e. Corren contra el Postgres local con datos propios (prefijo único por
 // corrida) que se borran al final con el usuario dueño.
-import { randomBytes } from 'node:crypto';
+import { createHmac, randomBytes } from 'node:crypto';
 import type { AddressInfo } from 'node:net';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import pg from 'pg';
@@ -211,5 +211,38 @@ export async function pgErrorCode(promise: Promise<unknown>): Promise<string | u
     return undefined;
   } catch (error) {
     return (error as { code?: string }).code;
+  }
+}
+
+/** POST al webhook de WAHA. Por defecto firma el mismo cuerpo que envía, con la clave de los tests. */
+export async function postWahaWebhook(
+  ctx: TestContext,
+  body: string,
+  options: { hmac?: string | null; algorithm?: string; signedBody?: string } = {},
+): Promise<number> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'X-Webhook-Hmac-Algorithm': options.algorithm ?? 'sha512',
+  };
+  const hmac =
+    options.hmac === undefined
+      ? createHmac('sha512', ctx.env.WAHA_WEBHOOK_HMAC_KEY)
+          .update(options.signedBody ?? body)
+          .digest('hex')
+      : options.hmac;
+  if (hmac !== null) headers['X-Webhook-Hmac'] = hmac;
+  const response = await fetch(`${ctx.baseUrl}/api/webhooks/waha`, { method: 'POST', headers, body });
+  await response.arrayBuffer();
+  return response.status;
+}
+
+/** Reintenta fn hasta que devuelva algo distinto de undefined/false; falla al vencer el plazo. */
+export async function waitFor<T>(fn: () => Promise<T | undefined | false>, timeoutMs = 15_000): Promise<T> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const value = await fn();
+    if (value !== undefined && value !== false) return value;
+    if (Date.now() > deadline) throw new Error('waitFor: se venció el plazo');
+    await new Promise((resolve) => setTimeout(resolve, 200));
   }
 }

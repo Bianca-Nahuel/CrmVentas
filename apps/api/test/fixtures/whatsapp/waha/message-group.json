@@ -1,0 +1,32 @@
+{
+  "id": "evt_01jabcdefghjkmnpqrstvwxyz0",
+  "timestamp": 1792800000000,
+  "event": "message",
+  "session": "ch_session_de_prueba",
+  "metadata": {},
+  "me": {
+    "id": "5491100000099@c.us",
+    "pushName": "Negocio de prueba"
+  },
+  "payload": {
+    "id": "false_120363000000000001@g.us_AAA0000000000000000000000000006",
+    "timestamp": 1792800000,
+    "from": "120363000000000001@g.us",
+    "fromMe": false,
+    "source": "app",
+    "to": "5491100000099@c.us",
+    "body": "Mensaje en un grupo",
+    "hasMedia": false,
+    "media": null,
+    "ack": 2,
+    "ackName": "DEVICE",
+    "vCards": [],
+    "participant": "5491100000002@c.us"
+  },
+  "engine": "NOWEB",
+  "environment": {
+    "version": "2026.8.1",
+    "engine": "NOWEB",
+    "tier": "CORE"
+  }
+}

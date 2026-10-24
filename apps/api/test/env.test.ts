@@ -8,6 +8,10 @@ const BASE = {
   BETTER_AUTH_SECRET: 'a'.repeat(32),
   BETTER_AUTH_URL: 'http://localhost:3000',
   TRUSTED_ORIGINS: 'http://localhost:4200',
+  WAHA_BASE_URL: 'http://localhost:3001',
+  WAHA_API_KEY: 'clave-de-prueba',
+  WAHA_WEBHOOK_URL: 'http://host.docker.internal:3000/api/webhooks/waha',
+  WAHA_WEBHOOK_HMAC_KEY: 'k'.repeat(32),
 };
 const OWNER_URL = 'postgres://ventas_owner:secreto-de-prueba@localhost:5432/ventas';
 
@@ -21,6 +25,42 @@ describe('parseEnv', () => {
     const env = parseEnv({ ...BASE, NODE_ENV: 'development', DATABASE_URL_MIGRATIONS: OWNER_URL });
     expect(env).not.toHaveProperty('DATABASE_URL_MIGRATIONS');
     expect(() => parseEnv({ ...BASE, NODE_ENV: 'test', DATABASE_URL_MIGRATIONS: OWNER_URL })).not.toThrow();
+  });
+
+  it('rechaza una clave HMAC de WAHA de menos de 32 bytes, sin mostrarla', () => {
+    let message = '';
+    try {
+      parseEnv({ ...BASE, WAHA_WEBHOOK_HMAC_KEY: 'clave-corta-secreta' });
+    } catch (error) {
+      message = (error as Error).message;
+    }
+    expect(message).toContain('WAHA_WEBHOOK_HMAC_KEY');
+    expect(message).not.toContain('clave-corta-secreta');
+    expect(() => parseEnv({ ...BASE, WAHA_WEBHOOK_HMAC_KEY: undefined })).toThrow(/WAHA_WEBHOOK_HMAC_KEY/);
+  });
+
+  it('rechaza un WAHA_WEBHOOK_URL que no apunta a /api/webhooks/waha', () => {
+    for (const url of [
+      'http://host.docker.internal:3000/webhooks/waha',
+      'http://host.docker.internal:3000/api/webhooks/waha/',
+      'http://host.docker.internal:3000/',
+    ]) {
+      expect(() => parseEnv({ ...BASE, WAHA_WEBHOOK_URL: url })).toThrow(/WAHA_WEBHOOK_URL/);
+    }
+  });
+
+  it('una URL mal formada da error de validación con el nombre, nunca el valor', () => {
+    for (const name of ['WAHA_WEBHOOK_URL', 'WAHA_BASE_URL', 'BETTER_AUTH_URL', 'TRUSTED_ORIGINS']) {
+      let message = '';
+      try {
+        parseEnv({ ...BASE, [name]: 'valor-mal-formado-xyz' });
+      } catch (error) {
+        message = (error as Error).message;
+      }
+      expect(message).toMatch(/^Configuración inválida/);
+      expect(message).toContain(name);
+      expect(message).not.toContain('valor-mal-formado-xyz');
+    }
   });
 
   it('no arranca en producción si la recibe, sin mostrar el valor', () => {

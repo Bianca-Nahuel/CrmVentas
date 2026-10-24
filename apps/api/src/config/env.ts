@@ -5,13 +5,26 @@ const postgresUrl = z
   .url()
   .refine((value) => /^postgres(ql)?:\/\//.test(value), 'tiene que ser una URL postgres://');
 
+// En zod 4 los refine corren aunque .url() haya fallado: un `new URL` sin protección lanzaría un
+// TypeError con el valor adentro, en vez del error de validación que nombra solo la variable.
+function parseUrl(value: string): URL | null {
+  try {
+    return new URL(value);
+  } catch {
+    return null;
+  }
+}
+
 const origin = z
   .string()
   .url()
   .refine(
-    (value) => new URL(value).origin === value,
+    (value) => parseUrl(value)?.origin === value,
     'tiene que ser un origen (protocolo + host + puerto), sin path',
   );
+
+// Ruta del webhook de WAHA (prefijo global 'api' + WahaWebhookController).
+const WAHA_WEBHOOK_PATH = '/api/webhooks/waha';
 
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
@@ -29,6 +42,23 @@ const envSchema = z.object({
         .filter(Boolean),
     )
     .pipe(z.array(origin).min(1)),
+  // API de WAHA vista desde el backend (sesiones, LIDs).
+  WAHA_BASE_URL: origin,
+  // Header X-Api-Key de WAHA (la misma variable que usa el contenedor).
+  WAHA_API_KEY: z.string().min(1),
+  // URL del webhook vista desde el contenedor de WAHA (host.docker.internal en desarrollo). Tiene que
+  // apuntar a la ruta real: con otra, WAHA recibe 404 y agota los reintentos sin que nada lo avise.
+  WAHA_WEBHOOK_URL: z
+    .string()
+    .url()
+    .refine(
+      (value) => parseUrl(value)?.pathname === WAHA_WEBHOOK_PATH,
+      `tiene que terminar en ${WAHA_WEBHOOK_PATH}`,
+    ),
+  // Clave HMAC con la que WAHA firma cada webhook (SHA-512 sobre el cuerpo crudo).
+  WAHA_WEBHOOK_HMAC_KEY: z
+    .string()
+    .refine((value) => Buffer.byteLength(value, 'utf8') >= 32, 'tiene que tener al menos 32 bytes'),
 });
 
 export type Env = z.infer<typeof envSchema>;

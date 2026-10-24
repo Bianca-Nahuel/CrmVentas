@@ -1,0 +1,50 @@
+{
+  "id": "evt_01jabcdefghjkmnpqrstvwxyz0",
+  "timestamp": 1792800000000,
+  "event": "message",
+  "session": "ch_session_de_prueba",
+  "metadata": {},
+  "me": {
+    "id": "5491100000099@c.us",
+    "pushName": "Negocio de prueba"
+  },
+  "payload": {
+    "id": "false_5491100000001@c.us_AAA0000000000000000000000000003",
+    "timestamp": 1792800000,
+    "from": "5491100000001@c.us",
+    "fromMe": false,
+    "source": "app",
+    "to": "5491100000099@c.us",
+    "body": "",
+    "hasMedia": true,
+    "media": {
+      "url": null,
+      "mimetype": "audio/ogg; codecs=opus",
+      "filename": null,
+      "error": null
+    },
+    "ack": 2,
+    "ackName": "DEVICE",
+    "vCards": [],
+    "_data": {
+      "key": {
+        "remoteJid": "5491100000001@c.us",
+        "fromMe": false,
+        "id": "AAA0000000000000000000000000003"
+      },
+      "pushName": "Cliente Prueba",
+      "message": {
+        "audioMessage": {
+          "mimetype": "audio/ogg; codecs=opus",
+          "ptt": true
+        }
+      }
+    }
+  },
+  "engine": "NOWEB",
+  "environment": {
+    "version": "2026.8.1",
+    "engine": "NOWEB",
+    "tier": "CORE"
+  }
+}

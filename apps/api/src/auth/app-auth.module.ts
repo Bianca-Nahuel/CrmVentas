@@ -3,6 +3,7 @@ import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { AuthModule } from '@thallesp/nestjs-better-auth';
 import { ENV } from '../config/config.module.js';
 import type { Env } from '../config/env.js';
+import { parseJsonUnlessWebhook, parseUrlencodedUnlessWebhook } from '../http/webhook-body.js';
 import { AUTH_DB, AuthDatabaseModule, type AuthDatabase } from './auth-database.module.js';
 import { createAuth } from './auth.js';
 import { TenantGuard } from './tenant.guard.js';
@@ -20,7 +21,11 @@ import { TenantTransactionInterceptor } from './tenant-transaction.interceptor.j
       inject: [ENV, AUTH_DB],
       useFactory: (env: Env, authDatabase: AuthDatabase) => ({
         auth: createAuth(env, authDatabase.db),
-        bodyParser: { json: { limit: '1mb' }, urlencoded: { limit: '1mb', extended: false } },
+        // Los webhooks quedan afuera: necesitan el cuerpo crudo para verificar la firma.
+        bodyParser: {
+          json: { limit: '1mb', type: parseJsonUnlessWebhook },
+          urlencoded: { limit: '1mb', extended: false, type: parseUrlencodedUnlessWebhook },
+        },
       }),
     }),
   ],

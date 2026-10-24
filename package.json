@@ -20,7 +20,9 @@
     "test": "npm run build:shared && npm run test --workspaces --if-present",
     "db:generate": "npm run db:generate -w @ventas/api",
     "db:migrate": "npm run db:migrate -w @ventas/api",
-    "db:seed": "npm run build:shared && npm run db:seed -w @ventas/api"
+    "db:seed": "npm run build:shared && npm run db:seed -w @ventas/api",
+    "dev:create-channel": "npm run build:shared && npm run dev:create-channel -w @ventas/api --",
+    "dev:sync-channel-webhook": "npm run build:shared && npm run dev:sync-channel-webhook -w @ventas/api --"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

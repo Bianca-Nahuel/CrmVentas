@@ -19,9 +19,25 @@ const storage = new AsyncLocalStorage<RequestScope>();
 
 // Setea el contexto que leen las políticas RLS. SET LOCAL (is_local = true) solo vale dentro de
 // la transacción: al terminar, la conexión vuelve al pool sin contexto.
-export async function setDbContext(tx: AppTx, ids: { userId: string; tenantId?: string | null }) {
-  await tx.execute(sql`SELECT set_config('app.user_id', ${ids.userId}, true)`);
+// Sin userId (trabajos de la cola, que no los dispara un usuario), app.user_id queda vacío.
+export async function setDbContext(tx: AppTx, ids: { userId?: string | null; tenantId?: string | null }) {
+  if (ids.userId) await tx.execute(sql`SELECT set_config('app.user_id', ${ids.userId}, true)`);
   if (ids.tenantId) await tx.execute(sql`SELECT set_config('app.tenant_id', ${ids.tenantId}, true)`);
+}
+
+/**
+ * UNA transacción de ventas_app con la empresa (y opcionalmente el usuario) seteados, para código que
+ * corre fuera de un request HTTP: workers de la cola y scripts. Mismo SET LOCAL que el interceptor.
+ */
+export function withTenantTransaction<T>(
+  db: AppDb,
+  ids: { tenantId: string; userId?: string | null },
+  fn: (tx: AppTx) => Promise<T>,
+): Promise<T> {
+  return db.transaction(async (tx) => {
+    await setDbContext(tx, ids);
+    return fn(tx);
+  });
 }
 
 export function runInRequestScope<T>(scope: RequestScope, fn: () => Promise<T>): Promise<T> {
