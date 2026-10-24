@@ -1,8 +1,11 @@
 import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres';
 import pg from 'pg';
 import { authSchema } from './schema/auth.js';
+import { messagingSchema } from './schema/messaging.js';
 
-export type AppDb = NodePgDatabase<typeof authSchema>;
+const appSchema = { ...authSchema, ...messagingSchema };
+
+export type AppDb = NodePgDatabase<typeof appSchema>;
 export type AuthDb = NodePgDatabase<typeof authSchema>;
 
 export interface Database<TDb> {
@@ -18,7 +21,7 @@ export interface Database<TDb> {
 // código no puede inyectarlo.
 export function createAppDatabase(url: string): Database<AppDb> {
   const pool = new pg.Pool({ connectionString: url, application_name: 'ventas-api' });
-  return { pool, db: drizzle(pool, { schema: authSchema }), close: () => pool.end() };
+  return { pool, db: drizzle(pool, { schema: appSchema }), close: () => pool.end() };
 }
 
 export function createAuthDatabase(url: string): Database<AuthDb> {

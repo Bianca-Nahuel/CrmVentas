@@ -15,6 +15,20 @@
       "when": 1792788173528,
       "tag": "0001_auth_permissions_rls",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1792798307353,
+      "tag": "0002_messaging_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1792798360659,
+      "tag": "0003_messaging_permissions_rls",
+      "breakpoints": true
     }
   ]
 }

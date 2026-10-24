@@ -163,6 +163,47 @@ export async function asApp<T>(
   }
 }
 
+/** Como asApp con una empresa activa, pero hace COMMIT: para preparar datos pasando por la RLS. */
+export async function withTenant<T>(
+  ctx: TestContext,
+  tenantId: string,
+  fn: (client: pg.PoolClient) => Promise<T>,
+): Promise<T> {
+  const client = await ctx.pools.appPool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query("SELECT set_config('app.tenant_id', $1, true)", [tenantId]);
+    const result = await fn(client);
+    await client.query('COMMIT');
+    return result;
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * Código de error de una consulta dentro de una transacción abierta. Usa un SAVEPOINT para que el error
+ * no aborte la transacción y se puedan seguir probando cosas con el mismo contexto.
+ */
+export async function errorCodeIn(
+  client: pg.PoolClient,
+  text: string,
+  params: unknown[] = [],
+): Promise<string | undefined> {
+  await client.query('SAVEPOINT probe');
+  try {
+    await client.query(text, params);
+    await client.query('RELEASE SAVEPOINT probe');
+    return undefined;
+  } catch (error) {
+    await client.query('ROLLBACK TO SAVEPOINT probe');
+    return (error as { code?: string }).code;
+  }
+}
+
 /** Devuelve el código de error de Postgres (42501 = permission denied). */
 export async function pgErrorCode(promise: Promise<unknown>): Promise<string | undefined> {
   try {
