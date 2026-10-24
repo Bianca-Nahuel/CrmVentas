@@ -7,14 +7,14 @@ description: Convenciones para recibir y enviar mensajes de WhatsApp (WAHA y Clo
 
 ## Arquitectura
 - `apps/api/src/whatsapp/providers/`: una implementación por proveedor (`WahaProvider`, `CloudApiProvider`) de la interfaz `WhatsAppProvider`. **Solo acá** se conoce el formato de cada proveedor.
-- Cada proveedor traduce su payload a eventos normalizados: `message.received`, `message.sent_by_agent` (el vendedor respondió desde el celular), `message.status`, `session.status`.
+- Cada proveedor traduce su payload a eventos normalizados: `message.received`, `message.echo` (salió del número del canal: lo mandó el sistema o el vendedor desde el celular), `message.status` (acuses), `session.status`.
 - Lo que cambia entre proveedores se expresa en `capabilities` (`templates`, `within24hWindowOnly`, `adAttribution`, `outboundCampaigns`), nunca con `if (provider === ...)` fuera de `providers/`.
 
 ## Recepción (webhook)
 1. Verificar autenticidad: WAHA con API key/HMAC; Meta con `X-Hub-Signature-256` sobre el body crudo.
 2. Responder **200 inmediatamente** y encolar el procesamiento (pg-boss). Nunca llamar a la IA dentro del request.
 3. En el job: normalizar → buscar el canal por `external_id` → setear el tenant → upsert de contacto y conversación → insertar el mensaje con `ON CONFLICT (channel_id, external_id) DO NOTHING` → guardar el payload crudo en `raw`.
-4. Mensajes propios (WAHA `fromMe` / evento `message.any`; Meta `smb_message_echoes`) = `sender_type = 'app'`. Setean `conversations.ai_paused_until` para que la IA no responda encima del vendedor.
+4. Mensajes propios (WAHA `fromMe` / evento `message.any`; Meta `smb_message_echoes`): si el id ya está en `messages` u `outbound_messages`, es del sistema y no se toca. Si no, lo escribió una persona desde el teléfono: `sender_type = 'user'` con `sent_by_user_id = NULL`, y se setea `conversations.ai_paused_until` para que la IA no responda encima del vendedor (tarea 005).
 5. Nunca loguear teléfonos ni texto de mensajes.
 
 ## Envío

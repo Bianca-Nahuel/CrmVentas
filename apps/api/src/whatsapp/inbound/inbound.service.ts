@@ -1,11 +1,37 @@
 import { Inject, Injectable } from '@nestjs/common';
-import type { MessageReceivedEvent, SessionStatusEvent, WhatsAppEvent } from '@ventas/shared';
-import { and, eq, ne, sql } from 'drizzle-orm';
+import type {
+  MessageDeliveryStatus,
+  MessageEchoEvent,
+  MessageReceivedEvent,
+  MessageStatusEvent,
+  SessionStatusEvent,
+  WhatsAppEvent,
+} from '@ventas/shared';
+import { and, desc, eq, gt, inArray, isNull, ne, sql } from 'drizzle-orm';
 import { APP_DB, type AppDatabase } from '../../db/database.module.js';
-import { channels, contacts, conversations, messages } from '../../db/schema/messaging.js';
+import { channels, contacts, conversations, messages, outboundMessages } from '../../db/schema/messaging.js';
 import { withTenantTransaction, type AppTx } from '../../db/tenant-context.js';
+import {
+  AI_PAUSE_AFTER_HUMAN_HOURS,
+  ECHO_RECHECK_MAX,
+  ECHO_RECONCILE_WINDOW_MS,
+} from '../../messaging/outbound/outbound.constants.js';
 
-export type InboundResult = 'guardado' | 'duplicado' | 'actualizado' | 'sin_cambios';
+/**
+ * guardado/duplicado: mensaje entrante. propio: eco de algo que mandó el sistema. reconciliado: eco que
+ * confirmó un envío de resultado desconocido. pausado: eco escrito por una persona (la IA se pausa).
+ * reprogramar: eco con un envío en curso en el chat, hay que volver a mirarlo. actualizado/sin_cambios:
+ * estado del canal o acuse.
+ */
+export type InboundResult =
+  | 'guardado'
+  | 'duplicado'
+  | 'propio'
+  | 'reconciliado'
+  | 'pausado'
+  | 'reprogramar'
+  | 'actualizado'
+  | 'sin_cambios';
 
 export interface ResolvedChannel {
   channelId: string;
@@ -34,12 +60,20 @@ export class InboundService {
     return row ? { channelId: row.channel_id, tenantId: row.tenant_id } : null;
   }
 
-  async process(event: WhatsAppEvent, channel: ResolvedChannel): Promise<InboundResult> {
-    return withTenantTransaction(this.database.db, { tenantId: channel.tenantId }, (tx) =>
-      event.type === 'message.received'
-        ? this.saveMessage(tx, channel, event)
-        : this.updateChannelStatus(tx, channel, event),
-    );
+  /** echoAttempt: cuántas veces ya se reprogramó este eco (lo lleva el trabajo de la cola). */
+  async process(event: WhatsAppEvent, channel: ResolvedChannel, echoAttempt = 0): Promise<InboundResult> {
+    return withTenantTransaction(this.database.db, { tenantId: channel.tenantId }, (tx) => {
+      switch (event.type) {
+        case 'message.received':
+          return this.saveMessage(tx, channel, event);
+        case 'message.echo':
+          return this.saveEcho(tx, channel, event, echoAttempt);
+        case 'message.status':
+          return this.updateMessageStatus(tx, channel, event);
+        case 'session.status':
+          return this.updateChannelStatus(tx, channel, event);
+      }
+    });
   }
 
   private async saveMessage(
@@ -95,8 +129,10 @@ export class InboundService {
   private async upsertContact(
     tx: AppTx,
     channel: ResolvedChannel,
-    event: MessageReceivedEvent,
+    event: MessageReceivedEvent | MessageEchoEvent,
     sentAt: Date,
+    // Un eco no es actividad del contacto: no mueve last_seen_at de un contacto que ya existe.
+    options: { touchLastSeen: boolean } = { touchLastSeen: true },
   ): Promise<string> {
     const [contact] = await tx
       .insert(contacts)
@@ -111,7 +147,9 @@ export class InboundService {
         target: [contacts.tenantId, contacts.waId],
         set: {
           profileName: sql`COALESCE(excluded.profile_name, ${contacts.profileName})`,
-          lastSeenAt: sql`GREATEST(${contacts.lastSeenAt}, excluded.last_seen_at)`,
+          lastSeenAt: options.touchLastSeen
+            ? sql`GREATEST(${contacts.lastSeenAt}, excluded.last_seen_at)`
+            : sql`${contacts.lastSeenAt}`,
         },
       })
       .returning({ id: contacts.id });
@@ -157,6 +195,175 @@ export class InboundService {
       if (open) return open.id;
     }
     throw new Error('No se pudo obtener la conversación abierta');
+  }
+
+  /**
+   * Eco (mensaje que salió del número del canal). En orden:
+   * 1. su id ya está en messages u outbound_messages → es nuestro (o un reenvío): no se toca nada;
+   * 2. hay un envío en 'sending' en el canal → todavía no se sabe si es ese: se reprograma (hasta
+   *    ECHO_RECHECK_MAX veces; después se trata como de una persona, que solo pausa la IA);
+   * 3. coincide (texto exacto, últimos minutos) con un envío unknown_outcome → se confirma ese envío y,
+   *    por las dudas, se pausa la IA igual;
+   * 4. si no, lo escribió una persona desde el teléfono o WhatsApp Web: se guarda como 'user' sin
+   *    usuario y se pausa la IA en la conversación (si no había conversación, se crea ya pausada).
+   */
+  private async saveEcho(
+    tx: AppTx,
+    channel: ResolvedChannel,
+    event: MessageEchoEvent,
+    echoAttempt: number,
+  ): Promise<InboundResult> {
+    const externalId = event.externalMessageId;
+    const [known] = await tx
+      .select({ id: messages.id })
+      .from(messages)
+      .where(and(eq(messages.channelId, channel.channelId), eq(messages.externalId, externalId)))
+      .limit(1);
+    if (known) return 'duplicado';
+    const [ours] = await tx
+      .select({ id: outboundMessages.id })
+      .from(outboundMessages)
+      .where(
+        and(eq(outboundMessages.channelId, channel.channelId), eq(outboundMessages.externalId, externalId)),
+      )
+      .limit(1);
+    if (ours) return 'propio';
+
+    const sentAt = new Date(event.sentAt);
+    const contactId = await this.upsertContact(tx, channel, event, sentAt, { touchLastSeen: false });
+    const conversationId = await this.openConversation(tx, channel, contactId, sentAt);
+
+    // Visibilidad: el claim (queued → sending) se confirma antes de llamar al proveedor, así que un envío
+    // en curso siempre se ve acá en 'sending'. Si terminó entre la consulta de arriba y esta, su mensaje
+    // ya está en messages (misma transacción que el 'sent') y el INSERT de abajo choca: 'duplicado'.
+    const [inFlight] = await tx
+      .select({ id: outboundMessages.id })
+      .from(outboundMessages)
+      // A nivel de canal: si el chat del eco no se resolvió igual que el del envío (@lid sin número), el
+      // envío en curso está en otra conversación. Como mucho demora unos segundos un eco de una persona.
+      .where(and(eq(outboundMessages.channelId, channel.channelId), eq(outboundMessages.status, 'sending')))
+      .limit(1);
+    if (inFlight && echoAttempt < ECHO_RECHECK_MAX) return 'reprogramar';
+
+    if (event.body !== null) {
+      const [unknown] = await tx
+        .select({
+          id: outboundMessages.id,
+          senderType: outboundMessages.senderType,
+          sentByUserId: outboundMessages.sentByUserId,
+        })
+        .from(outboundMessages)
+        .where(
+          and(
+            eq(outboundMessages.conversationId, conversationId),
+            eq(outboundMessages.status, 'failed'),
+            eq(outboundMessages.lastError, 'unknown_outcome'),
+            isNull(outboundMessages.externalId),
+            eq(outboundMessages.body, event.body),
+            gt(
+              outboundMessages.claimedAt,
+              sql`now() - make_interval(secs => ${ECHO_RECONCILE_WINDOW_MS / 1000})`,
+            ),
+          ),
+        )
+        .orderBy(desc(outboundMessages.claimedAt))
+        .limit(1);
+      if (unknown) {
+        const messageId = await this.insertOutbound(tx, channel, conversationId, event, sentAt, unknown);
+        await tx
+          .update(outboundMessages)
+          .set({ status: 'sent', externalId, messageId, lastError: null })
+          .where(eq(outboundMessages.id, unknown.id));
+        if (!messageId) return 'duplicado';
+        // Igual se pausa: si en realidad lo escribió una persona con el mismo texto (un "Gracias"), la IA
+        // no tiene que responderle encima. Equivocarse acá solo pausa la IA.
+        await this.pauseAi(tx, conversationId);
+        return 'reconciliado';
+      }
+    }
+
+    const messageId = await this.insertOutbound(tx, channel, conversationId, event, sentAt, {
+      senderType: 'user',
+      sentByUserId: null,
+    });
+    if (!messageId) return 'duplicado';
+    await this.pauseAi(tx, conversationId);
+    return 'pausado';
+  }
+
+  private async pauseAi(tx: AppTx, conversationId: string): Promise<void> {
+    await tx
+      .update(conversations)
+      .set({
+        aiPausedUntil: sql`GREATEST(COALESCE(${conversations.aiPausedUntil}, now()), now() + make_interval(hours => ${AI_PAUSE_AFTER_HUMAN_HOURS}))`,
+      })
+      .where(eq(conversations.id, conversationId));
+  }
+
+  /** Mensaje saliente de un eco. Devuelve su id, o null si otro trabajo ya lo guardó. */
+  private async insertOutbound(
+    tx: AppTx,
+    channel: ResolvedChannel,
+    conversationId: string,
+    event: MessageEchoEvent,
+    sentAt: Date,
+    sender: { senderType: string; sentByUserId: string | null },
+  ): Promise<string | null> {
+    const [inserted] = await tx
+      .insert(messages)
+      .values({
+        tenantId: channel.tenantId,
+        conversationId,
+        channelId: channel.channelId,
+        externalId: event.externalMessageId,
+        direction: 'outbound',
+        senderType: sender.senderType,
+        sentByUserId: sender.sentByUserId,
+        type: event.messageType,
+        body: event.body,
+        status: 'sent',
+        raw: event.raw,
+        sentAt,
+      })
+      .onConflictDoNothing({ target: [messages.channelId, messages.externalId] })
+      .returning({ id: messages.id });
+    if (!inserted) return null;
+    await tx
+      .update(conversations)
+      .set({ lastMessageAt: sql`GREATEST(${conversations.lastMessageAt}, ${sentAt})` })
+      .where(eq(conversations.id, conversationId));
+    return inserted.id;
+  }
+
+  /**
+   * Acuse de un mensaje propio. Nunca retrocede (sent < delivered < read); failed solo pisa a sent, y un
+   * acuse posterior a un failed (entregado, leído) lo corrige: el mensaje llegó.
+   * Si el mensaje no existe (todavía o nunca), no hace nada: no se reintenta.
+   */
+  private async updateMessageStatus(
+    tx: AppTx,
+    channel: ResolvedChannel,
+    event: MessageStatusEvent,
+  ): Promise<InboundResult> {
+    const allowedFrom: Record<MessageDeliveryStatus, string[]> = {
+      sent: ['failed'],
+      delivered: ['sent', 'failed'],
+      read: ['sent', 'delivered', 'failed'],
+      failed: ['sent'],
+    };
+    const updated = await tx
+      .update(messages)
+      .set({ status: event.status })
+      .where(
+        and(
+          eq(messages.channelId, channel.channelId),
+          eq(messages.externalId, event.externalMessageId),
+          eq(messages.direction, 'outbound'),
+          inArray(messages.status, allowedFrom[event.status]),
+        ),
+      )
+      .returning({ id: messages.id });
+    return updated.length > 0 ? 'actualizado' : 'sin_cambios';
   }
 
   // Nunca pone ni saca banned: eso no lo decide un evento del proveedor.

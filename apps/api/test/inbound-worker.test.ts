@@ -24,6 +24,10 @@ function setup(service: Partial<InboundService>) {
     },
     normalize: normalizeWahaEvent,
     enrich,
+    sendText: vi.fn(),
+    markSeen: vi.fn(),
+    startTyping: vi.fn(),
+    stopTyping: vi.fn(),
   };
   const registry: WhatsAppProviderRegistry = new Map([['waha', provider]]);
   const worker = new InboundWorker({} as PgBoss, registry, service as InboundService);

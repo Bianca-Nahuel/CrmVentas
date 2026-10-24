@@ -8,4 +8,6 @@ import type { WhatsAppProviderId } from '@ventas/shared';
 export interface InboundJob {
   provider: WhatsAppProviderId;
   payload: unknown;
+  /** Veces que ya se reprogramó un eco porque había un envío en curso en el chat. */
+  echoAttempt?: number;
 }

@@ -2,6 +2,7 @@ import { Inject, Injectable, Logger, type OnApplicationBootstrap } from '@nestjs
 import type { PgBoss } from 'pg-boss';
 import { BOSS, QUEUES } from '../../jobs/jobs.module.js';
 import { WHATSAPP_PROVIDER_REGISTRY, type WhatsAppProviderRegistry } from '../provider.js';
+import { ECHO_RECHECK_DELAY_SECONDS } from '../../messaging/outbound/outbound.constants.js';
 import type { InboundJob } from './inbound-job.js';
 import { InboundService } from './inbound.service.js';
 
@@ -88,12 +89,26 @@ export class InboundWorker implements OnApplicationBootstrap {
     }
 
     const event = await provider.enrich(normalized.event);
-    const result = await this.inbound.process(event, channel);
+    const echoAttempt = job.echoAttempt ?? 0;
+    const result = await this.inbound.process(event, channel, echoAttempt);
+    if (result === 'reprogramar') {
+      // Eco con un envío en curso en el chat: se vuelve a mirar en unos segundos (trabajo nuevo, no un
+      // reintento: no consume los reintentos por errores).
+      await this.boss.send(
+        QUEUES.whatsappInbound,
+        { ...job, echoAttempt: echoAttempt + 1 } satisfies InboundJob,
+        { startAfter: ECHO_RECHECK_DELAY_SECONDS },
+      );
+    }
     this.logger.log({
       ...base,
       channelId: channel.channelId,
       type: event.type,
-      ...(event.type === 'message.received' ? { messageType: event.messageType } : {}),
+      ...(event.type === 'message.received' || event.type === 'message.echo'
+        ? { messageType: event.messageType }
+        : {}),
+      ...(event.type === 'message.status' ? { status: event.status } : {}),
+      ...(result === 'reprogramar' ? { echoAttempt: echoAttempt + 1 } : {}),
       result,
     });
   }

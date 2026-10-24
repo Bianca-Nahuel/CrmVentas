@@ -1,0 +1,25 @@
+{
+  "id": "evt_01jabcdefghjkmnpqrstvwxyz0",
+  "timestamp": 1792800000000,
+  "event": "message.ack",
+  "session": "ch_session_de_prueba",
+  "metadata": {},
+  "me": {
+    "id": "5491100000099@c.us",
+    "pushName": "Negocio de prueba"
+  },
+  "payload": {
+    "id": "true_5491100000001@c.us_AAA0000000000000000000000000005",
+    "from": "5491100000001@c.us",
+    "participant": null,
+    "fromMe": true,
+    "ack": 3,
+    "ackName": "READ"
+  },
+  "engine": "NOWEB",
+  "environment": {
+    "version": "2026.8.1",
+    "engine": "NOWEB",
+    "tier": "CORE"
+  }
+}

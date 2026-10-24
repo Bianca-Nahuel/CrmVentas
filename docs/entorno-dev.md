@@ -86,20 +86,42 @@ No hay webhook global. Cada sesión tiene el suyo, configurado por el script: `W
 (`http://host.docker.internal:3000/api/webhooks/waha`, la API NestJS en el host), firmado con
 `WAHA_WEBHOOK_HMAC_KEY` (HMAC-SHA512), con los eventos:
 
-- `message`: mensajes entrantes.
+- `message.any`: mensajes entrantes y propios (`fromMe: true`). Un propio que no mandó el sistema lo
+  escribió una persona desde el teléfono: se guarda como `user` y pausa la IA en esa conversación.
+- `message.ack`: acuses de lo enviado (actualiza `messages.status`: `sent` → `delivered` → `read`).
 - `session.status`: cambios de estado de la sesión (actualiza `channels.status`).
 
-Los mensajes propios (`message.any`, `fromMe: true`) se suman en la tarea 005, para pausar la IA
-cuando responde un humano.
+No se suscribe `message`: `message.any` ya trae los entrantes y con los dos cada uno llegaría dos veces.
 
-Si cambiás `WAHA_WEBHOOK_URL` o `WAHA_WEBHOOK_HMAC_KEY`, las sesiones ya creadas siguen con la configuración
-vieja. Para reaplicarla sin volver a escanear el QR:
+Si cambiás `WAHA_WEBHOOK_URL` o `WAHA_WEBHOOK_HMAC_KEY`, o si la sesión se creó antes de la tarea 005 (solo
+con `message` y `session.status`), la sesión sigue con la configuración vieja. Para reaplicarla sin volver
+a escanear el QR:
 
 ```bash
 npm run dev:sync-channel-webhook -- --session ch_<id>
 ```
 
 La imagen de WAHA está fijada a `devlikeapro/waha:latest-2026.8.1`.
+
+### Enviar un mensaje de prueba
+
+Con `npm run dev:api` corriendo (el worker de la API es el que manda), en una conversación donde el
+contacto escribió en las últimas 24 h:
+
+```bash
+npm run dev:send -- --tenant <id de la empresa> --conversation <id> --text "Hola, ¿en qué te ayudo?"
+```
+
+Pasa por las mismas reglas que la IA: sin un entrante del contacto, con la ventana vencida, con el contacto
+bloqueado o con el canal desconectado o pausado, queda `rejected`. Antes de enviar, el worker marca visto y
+muestra "escribiendo…" unos segundos.
+
+Si WAHA avisa riesgo de bloqueo (errores 463/475), el canal queda con los envíos pausados sin vencimiento y
+no se reinicia la sesión. Para levantar la pausa (después de bajar el ritmo):
+
+```bash
+npm run dev:resume-channel -- --tenant <id de la empresa> --channel <id del canal>
+```
 
 La sesión queda guardada en un volumen, así que no hay que reescanear el QR en cada reinicio.
 

@@ -346,9 +346,9 @@ describe('worker: guardado', () => {
     expect(channelStatus).toBe('connected');
   });
 
-  it('eventos ignorados (propios, grupos, estados, newsletters) no guardan nada', async () => {
+  it('eventos ignorados (grupos, estados, newsletters) no guardan nada', async () => {
     const worker = ctx.app.get(InboundWorker);
-    for (const name of ['message-from-me', 'message-group', 'message-status', 'message-newsletter']) {
+    for (const name of ['message-group', 'message-status', 'message-newsletter']) {
       await worker.handle(
         { provider: 'waha', payload: { ...fixture(name), session: a.session } },
         { id: name, retryCount: 0, retryLimit: 10 },
@@ -356,7 +356,7 @@ describe('worker: guardado', () => {
     }
     const { rows } = await ctx.ownerPool.query(
       `SELECT 1 FROM messages WHERE channel_id = $1 AND body IN
-         ('Respuesta del vendedor', 'Mensaje en un grupo', 'Un estado', 'Publicación de un canal')`,
+         ('Mensaje en un grupo', 'Un estado', 'Publicación de un canal')`,
       [a.channelId],
     );
     expect(rows).toHaveLength(0);

@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import type { MessageReceivedEvent } from '@ventas/shared';
 import { describe, expect, it } from 'vitest';
 import {
+  canonicalMessageId,
   normalizeWahaEvent,
   toE164,
   type NormalizeResult,
@@ -27,7 +28,8 @@ describe('normalizeWahaEvent: mensajes', () => {
       provider: 'waha',
       channelExternalId: 'ch_session_de_prueba',
       eventId: 'evt_01jabcdefghjkmnpqrstvwxyz0',
-      externalMessageId: 'false_5491100000001@c.us_AAA0000000000000000000000000001',
+      // Id canónico: sin el chat (el mismo mensaje puede llegar con @c.us o con @lid).
+      externalMessageId: 'false_AAA0000000000000000000000000001',
       contact: { waId: '+5491100000001', profileName: 'Cliente Prueba' },
       messageType: 'text',
       body: 'Hola, ¿tienen porcelanato 60x60?',
@@ -80,7 +82,6 @@ describe('normalizeWahaEvent: mensajes', () => {
   });
 
   it.each([
-    ['message-from-me', 'from_me'],
     ['message-group', 'group'],
     ['message-status', 'status'],
     ['message-newsletter', 'newsletter'],
@@ -168,4 +169,103 @@ describe('toE164', () => {
       expect(toE164(input)).toBeNull();
     },
   );
+});
+
+describe('normalizeWahaEvent: ecos (fromMe) y acuses (tarea 005)', () => {
+  it('eco: el chat sale de _data.key.remoteJid; un mensaje a nuestro propio número se ignora', () => {
+    const base = fixture('message-from-me') as { payload: Record<string, unknown> };
+    const withKey = (remoteJid: string) => ({
+      ...base,
+      payload: {
+        ...base.payload,
+        _data: { key: { remoteJid, fromMe: true, id: 'AAA0000000000000000000000000005' } },
+      },
+    });
+    expect(normalizeWahaEvent(withKey('5491100000007@s.whatsapp.net'))).toMatchObject({
+      event: { type: 'message.echo', contact: { waId: '+5491100000007' } },
+    });
+    expect(normalizeWahaEvent(withKey('5491100000099@s.whatsapp.net'))).toMatchObject({
+      kind: 'ignored',
+      reason: 'self_chat',
+    });
+  });
+
+  it('message con fromMe → message.echo, contacto = el chat y sin nombre (el pushName es el nuestro)', () => {
+    const result = normalizeWahaEvent(fixture('message-from-me'));
+    expect(result).toMatchObject({
+      kind: 'event',
+      event: {
+        type: 'message.echo',
+        externalMessageId: 'true_AAA0000000000000000000000000005',
+        contact: { waId: '+5491100000001', profileName: null },
+        messageType: 'text',
+        body: 'Respuesta del vendedor',
+      },
+    });
+  });
+
+  it('message.any con fromMe en un chat @lid → el número de remoteJidAlt, nunca senderPn (el nuestro)', () => {
+    const result = normalizeWahaEvent(fixture('message-any-from-me-lid'));
+    expect(result).toMatchObject({
+      kind: 'event',
+      event: {
+        type: 'message.echo',
+        externalMessageId: 'true_AAA0000000000000000000000000006',
+        contact: { waId: '+5491100000004', profileName: null },
+      },
+    });
+  });
+
+  it('message.any entrante → message.received (mismo resultado que message)', () => {
+    const base = fixture('message-text') as Record<string, unknown>;
+    expect(message(normalizeWahaEvent({ ...base, event: 'message.any' })).externalMessageId).toBe(
+      'false_AAA0000000000000000000000000001',
+    );
+  });
+
+  it.each([
+    [-1, 'failed'],
+    [1, 'sent'],
+    [2, 'delivered'],
+    [3, 'read'],
+    [4, 'read'],
+  ])('message.ack %i → %s', (ack, status) => {
+    const base = fixture('message-ack-read') as { payload: Record<string, unknown> };
+    expect(normalizeWahaEvent({ ...base, payload: { ...base.payload, ack } })).toEqual({
+      kind: 'event',
+      event: {
+        type: 'message.status',
+        provider: 'waha',
+        channelExternalId: 'ch_session_de_prueba',
+        eventId: 'evt_01jabcdefghjkmnpqrstvwxyz0',
+        externalMessageId: 'true_AAA0000000000000000000000000005',
+        status,
+      },
+    });
+  });
+
+  it('acuses ignorados: PENDING, de entrantes (los genera nuestro sendSeen) y de grupos', () => {
+    const base = fixture('message-ack-read') as { payload: Record<string, unknown> };
+    const withPayload = (payload: Record<string, unknown>) =>
+      normalizeWahaEvent({ ...base, payload: { ...base.payload, ...payload } });
+    expect(withPayload({ ack: 0 })).toMatchObject({ kind: 'ignored', reason: 'ack_pending' });
+    expect(withPayload({ fromMe: false })).toMatchObject({ kind: 'ignored', reason: 'ack_not_from_me' });
+    expect(withPayload({ from: '120363000000000000@g.us' })).toMatchObject({
+      kind: 'ignored',
+      reason: 'group',
+    });
+    expect(withPayload({ ack: 'x' })).toMatchObject({ kind: 'ignored', reason: 'invalid_payload' });
+  });
+});
+
+describe('canonicalMessageId', () => {
+  it.each([
+    ['true_5491100000001@c.us_ABC123', 'true_ABC123'],
+    ['true_100000000000002@lid_ABC123', 'true_ABC123'],
+    ['false_5491100000001@c.us_ABC123', 'false_ABC123'],
+    ['false_120363000000000000@g.us_ABC123_5491100000001@c.us', 'false_ABC123'],
+    ['otro-formato', 'otro-formato'],
+  ])('%s → %s', (input, expected) => {
+    expect(canonicalMessageId(input)).toBe(expected);
+  });
 });

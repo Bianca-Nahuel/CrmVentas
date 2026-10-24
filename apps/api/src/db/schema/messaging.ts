@@ -15,6 +15,7 @@ import {
   check,
   foreignKey,
   index,
+  integer,
   jsonb,
   numeric,
   pgTable,
@@ -55,6 +56,10 @@ export const channels = pgTable(
     riskAcceptedBy: uuid('risk_accepted_by').references(() => users.id, { onDelete: 'restrict' }),
     // Sin secretos: los tokens de cada canal no van en esta tabla.
     providerConfig: jsonb('provider_config').notNull().default({}),
+    // Envíos frenados (riesgo de bloqueo): 'infinity' hasta que alguien lo levante a mano. El motivo es
+    // un código (blocked_risk:463), sin datos personales.
+    sendingPausedUntil: timestamp('sending_paused_until', { withTimezone: true }),
+    sendingPausedReason: text('sending_paused_reason'),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
@@ -171,6 +176,8 @@ export const messages = pgTable(
   (t) => [
     // Idempotencia del webhook: INSERT ... ON CONFLICT (channel_id, external_id) DO NOTHING.
     unique('messages_channel_external_id_unique').on(t.channelId, t.externalId),
+    // Destino de la FK de outbound_messages.message_id (el mensaje es de la misma conversación).
+    unique('messages_tenant_id_conversation_unique').on(t.tenantId, t.id, t.conversationId),
     foreignKey({
       name: 'messages_conversation_fk',
       columns: [t.tenantId, t.conversationId, t.channelId],
@@ -197,7 +204,89 @@ export const messages = pgTable(
   ],
 );
 
-export const messagingSchema = { channels, contacts, conversations, messages };
+// Outbox de envíos (tarea 005): la intención de mandar un mensaje, con sus intentos. messages guarda lo
+// que de verdad pasó por WhatsApp; la fila de acá se enlaza con message_id cuando el envío sale.
+// Sin DELETE y con UPDATE solo de las columnas de estado (grants en la 0007).
+export const outboundMessages = pgTable(
+  'outbound_messages',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    conversationId: uuid('conversation_id').notNull(),
+    channelId: uuid('channel_id').notNull(),
+    // Clave del que pide el envío: repetirla no crea otro (UNIQUE por empresa).
+    idempotencyKey: text('idempotency_key').notNull(),
+    senderType: text('sender_type').notNull(),
+    sentByUserId: uuid('sent_by_user_id'),
+    body: text('body').notNull(),
+    status: text('status').notNull().default('queued'),
+    rejectReason: text('reject_reason'),
+    attempts: integer('attempts').notNull().default(0),
+    // Código de error (SendErrorKind), nunca el mensaje del proveedor.
+    lastError: text('last_error'),
+    // Momento del último claim (queued → sending): límite por minuto, separación por chat y envíos trabados.
+    claimedAt: timestamp('claimed_at', { withTimezone: true }),
+    externalId: text('external_id'),
+    messageId: uuid('message_id'),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    unique('outbound_messages_tenant_idempotency_unique').on(t.tenantId, t.idempotencyKey),
+    // El canal tiene que ser el de la conversación (misma FK compuesta que messages).
+    foreignKey({
+      name: 'outbound_messages_conversation_fk',
+      columns: [t.tenantId, t.conversationId, t.channelId],
+      foreignColumns: [conversations.tenantId, conversations.id, conversations.channelId],
+    }).onDelete('cascade'),
+    foreignKey({
+      name: 'outbound_messages_channel_fk',
+      columns: [t.tenantId, t.channelId],
+      foreignColumns: [channels.tenantId, channels.id],
+    }).onDelete('cascade'),
+    foreignKey({
+      name: 'outbound_messages_message_fk',
+      columns: [t.tenantId, t.messageId, t.conversationId],
+      foreignColumns: [messages.tenantId, messages.id, messages.conversationId],
+    }).onDelete('cascade'),
+    // Ecos: ¿este id ya es nuestro?
+    uniqueIndex('outbound_messages_channel_external_id_unique')
+      .on(t.channelId, t.externalId)
+      .where(sql`${t.externalId} IS NOT NULL`),
+    index('outbound_messages_channel_claimed_idx').on(t.channelId, t.claimedAt),
+    index('outbound_messages_conversation_claimed_idx').on(t.conversationId, t.claimedAt),
+    index('outbound_messages_conversation_sending_idx')
+      .on(t.conversationId)
+      .where(sql`${t.status} = 'sending'`),
+    check('outbound_messages_sender_type_check', sql`${t.senderType} IN ('ai', 'user', 'app')`),
+    check(
+      'outbound_messages_status_check',
+      sql`${t.status} IN ('queued', 'sending', 'sent', 'failed', 'rejected')`,
+    ),
+    check(
+      'outbound_messages_reject_reason_check',
+      sql`${t.rejectReason} IN ('no_inbound', 'window_expired', 'contact_blocked', 'channel_unavailable', 'channel_paused')`,
+    ),
+    check(
+      'outbound_messages_rejected_reason_check',
+      sql`(${t.status} = 'rejected') = (${t.rejectReason} IS NOT NULL)`,
+    ),
+    check(
+      'outbound_messages_last_error_check',
+      sql`${t.lastError} IN ('transient', 'rate_limited', 'session_down', 'blocked_risk', 'invalid_recipient', 'unknown_outcome')`,
+    ),
+    check(
+      'outbound_messages_sent_external_id_check',
+      sql`${t.status} <> 'sent' OR ${t.externalId} IS NOT NULL`,
+    ),
+    // 4096: tope de un mensaje de texto de WhatsApp.
+    check('outbound_messages_body_length_check', sql`char_length(${t.body}) BETWEEN 1 AND 4096`),
+    check('outbound_messages_idempotency_key_check', sql`char_length(${t.idempotencyKey}) BETWEEN 1 AND 200`),
+    check('outbound_messages_attempts_check', sql`${t.attempts} >= 0`),
+  ],
+);
+
+export const messagingSchema = { channels, contacts, conversations, messages, outboundMessages };
 
 export type Channel = typeof channels.$inferSelect;
 export type NewChannel = typeof channels.$inferInsert;
@@ -207,3 +296,4 @@ export type Conversation = typeof conversations.$inferSelect;
 export type NewConversation = typeof conversations.$inferInsert;
 export type Message = typeof messages.$inferSelect;
 export type NewMessage = typeof messages.$inferInsert;
+export type OutboundMessage = typeof outboundMessages.$inferSelect;

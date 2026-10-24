@@ -21,6 +21,32 @@ export interface CreateWahaSession {
   };
 }
 
+export type WahaCallOutcome =
+  | { kind: 'response'; status: number; text: string }
+  /** No se pudo conectar: el pedido seguro que no llegó a WAHA. */
+  | { kind: 'not_sent'; code: string }
+  /** Se conectó (o no se sabe) y no hubo respuesta: el pedido pudo haberse procesado. */
+  | { kind: 'no_response'; code: string };
+
+// Errores de fetch/undici que pasan antes de abrir la conexión. Cualquier otro (timeout, ECONNRESET,
+// UND_ERR_SOCKET…) puede pasar con el pedido ya enviado.
+const NOT_SENT_CODES = new Set([
+  'ECONNREFUSED',
+  'ENOTFOUND',
+  'EAI_AGAIN',
+  'EHOSTUNREACH',
+  'ENETUNREACH',
+  'UND_ERR_CONNECT_TIMEOUT',
+]);
+
+function networkErrorCode(error: unknown): string {
+  const failure = error as { name?: unknown; code?: unknown; cause?: { code?: unknown } } | null;
+  for (const candidate of [failure?.cause?.code, failure?.code, failure?.name]) {
+    if (typeof candidate === 'string' && /^[A-Z0-9_]{1,40}$/i.test(candidate)) return candidate;
+  }
+  return 'desconocido';
+}
+
 export class WahaClient {
   constructor(
     private readonly baseUrl: string,
@@ -28,7 +54,7 @@ export class WahaClient {
     private readonly fetchImpl: typeof fetch = fetch,
   ) {}
 
-  private request(method: string, path: string, body?: unknown): Promise<Response> {
+  private request(method: string, path: string, body?: unknown, timeoutMs = TIMEOUT_MS): Promise<Response> {
     return this.fetchImpl(new URL(path, this.baseUrl), {
       method,
       headers: {
@@ -37,8 +63,28 @@ export class WahaClient {
         ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
       },
       body: body === undefined ? undefined : JSON.stringify(body),
-      signal: AbortSignal.timeout(TIMEOUT_MS),
+      signal: AbortSignal.timeout(timeoutMs),
     });
+  }
+
+  /**
+   * POST de una acción de chat (sendText, sendSeen, startTyping, stopTyping). Nunca lanza: devuelve la
+   * respuesta (status y cuerpo como texto) o, si no la hubo, si el pedido llegó a salir o no.
+   */
+  async chatAction(path: string, body: Record<string, unknown>, timeoutMs: number): Promise<WahaCallOutcome> {
+    let response: Response;
+    try {
+      response = await this.request('POST', path, body, timeoutMs);
+    } catch (error) {
+      const code = networkErrorCode(error);
+      return { kind: NOT_SENT_CODES.has(code) ? 'not_sent' : 'no_response', code };
+    }
+    try {
+      return { kind: 'response', status: response.status, text: await response.text() };
+    } catch (error) {
+      // Se cortó leyendo la respuesta: WAHA ya recibió el pedido.
+      return { kind: 'no_response', code: networkErrorCode(error) };
+    }
   }
 
   /**

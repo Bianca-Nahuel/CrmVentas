@@ -1,0 +1,41 @@
+{
+  "id": "evt_01jabcdefghjkmnpqrstvwxyz0",
+  "timestamp": 1792800000000,
+  "event": "message.any",
+  "session": "ch_session_de_prueba",
+  "metadata": {},
+  "me": {
+    "id": "5491100000099@c.us",
+    "pushName": "Negocio de prueba"
+  },
+  "payload": {
+    "id": "true_100000000000002@lid_AAA0000000000000000000000000006",
+    "timestamp": 1792800000,
+    "from": "100000000000002@lid",
+    "fromMe": true,
+    "source": "app",
+    "body": "Te paso el precio por acá",
+    "hasMedia": false,
+    "media": null,
+    "ack": 1,
+    "ackName": "SERVER",
+    "vCards": [],
+    "_data": {
+      "key": {
+        "remoteJid": "100000000000002@lid",
+        "remoteJidAlt": "5491100000004@s.whatsapp.net",
+        "senderPn": "5491100000099@s.whatsapp.net",
+        "fromMe": true,
+        "id": "AAA0000000000000000000000000006"
+      },
+      "pushName": "Negocio de prueba",
+      "message": { "conversation": "Te paso el precio por acá" }
+    }
+  },
+  "engine": "NOWEB",
+  "environment": {
+    "version": "2026.8.1",
+    "engine": "NOWEB",
+    "tier": "CORE"
+  }
+}

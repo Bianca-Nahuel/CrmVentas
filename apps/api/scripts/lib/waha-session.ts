@@ -13,7 +13,9 @@ export function wahaSessionFor(env: Env, name: string): CreateWahaSession {
       webhooks: [
         {
           url: env.WAHA_WEBHOOK_URL,
-          events: ['message', 'session.status'],
+          // message.any trae los entrantes y los propios (ecos); con message además, cada entrante
+          // llegaría dos veces. message.ack: acuses de lo enviado.
+          events: ['message.any', 'message.ack', 'session.status'],
           hmac: { key: env.WAHA_WEBHOOK_HMAC_KEY },
           retries: { policy: 'exponential', delaySeconds: 2, attempts: 6 },
         },

@@ -19,8 +19,8 @@ interface BaseEvent {
   eventId: string;
 }
 
-export interface MessageReceivedEvent extends BaseEvent {
-  type: 'message.received';
+// Campos comunes de un mensaje de un chat individual, entrante o propio.
+interface MessageEventBase extends BaseEvent {
   /** Id del mensaje en el proveedor: clave de idempotencia junto con el canal. */
   externalMessageId: string;
   contact: {
@@ -37,9 +37,33 @@ export interface MessageReceivedEvent extends BaseEvent {
   raw: unknown;
 }
 
+/** Mensaje que escribió el contacto. */
+export interface MessageReceivedEvent extends MessageEventBase {
+  type: 'message.received';
+}
+
+/**
+ * Mensaje que salió del número del canal (eco): lo mandó el sistema o una persona desde el teléfono o
+ * WhatsApp Web. `contact` es el otro extremo del chat (sin nombre: el perfil del eco es el nuestro).
+ */
+export interface MessageEchoEvent extends MessageEventBase {
+  type: 'message.echo';
+}
+
+// Mismos valores que el CHECK de messages.status para los salientes.
+export const MESSAGE_DELIVERY_STATUSES = ['sent', 'delivered', 'read', 'failed'] as const;
+export type MessageDeliveryStatus = (typeof MESSAGE_DELIVERY_STATUSES)[number];
+
+/** Acuse de un mensaje propio (enviado, entregado, leído o error). */
+export interface MessageStatusEvent extends BaseEvent {
+  type: 'message.status';
+  externalMessageId: string;
+  status: MessageDeliveryStatus;
+}
+
 export interface SessionStatusEvent extends BaseEvent {
   type: 'session.status';
   status: ChannelConnectionStatus;
 }
 
-export type WhatsAppEvent = MessageReceivedEvent | SessionStatusEvent;
+export type WhatsAppEvent = MessageReceivedEvent | MessageEchoEvent | MessageStatusEvent | SessionStatusEvent;

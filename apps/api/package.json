@@ -13,7 +13,9 @@
     "db:migrate": "drizzle-kit migrate",
     "db:seed": "tsx scripts/seed.ts",
     "dev:create-channel": "tsx scripts/create-dev-channel.ts",
-    "dev:sync-channel-webhook": "tsx scripts/sync-channel-webhook.ts"
+    "dev:sync-channel-webhook": "tsx scripts/sync-channel-webhook.ts",
+    "dev:send": "tsx scripts/send-dev-message.ts",
+    "dev:resume-channel": "tsx scripts/resume-dev-channel.ts"
   },
   "dependencies": {
     "@nestjs/common": "12.2.0",
