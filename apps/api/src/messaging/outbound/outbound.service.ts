@@ -1,9 +1,10 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { fromDrizzle, type PgBoss } from 'pg-boss';
-import { outboundMessages } from '../../db/schema/messaging.js';
+import { channels, outboundMessages } from '../../db/schema/messaging.js';
 import { currentTx, type AppTx } from '../../db/tenant-context.js';
 import { BOSS, QUEUES } from '../../jobs/jobs.module.js';
+import type { ProviderFailure, SeenMessage } from '../../whatsapp/provider.js';
 import { REPLY_WINDOW_HOURS } from './outbound.constants.js';
 
 export type OutboundSenderType = 'ai' | 'user' | 'app';
@@ -19,6 +20,11 @@ export interface EnqueueTextInput {
   sentByUserId?: string | null;
   /** Clave del que pide el envío (por ejemplo, el id del mensaje entrante al que responde la IA). */
   idempotencyKey: string;
+  /**
+   * Desde cuándo el chat ya muestra "escribiendo…" (PresenceService, mientras la IA pensaba): el worker
+   * descuenta ese tiempo de la demora antes de enviar.
+   */
+  typingSince?: Date | null;
 }
 
 export interface EnqueueTextResult {
@@ -35,6 +41,8 @@ export interface OutboundJob {
   tenantId: string;
   /** Separación con el saliente anterior del chat, sorteada una vez y conservada al reprogramar. */
   gapMs?: number;
+  /** ISO: desde cuándo el chat ya muestra "escribiendo…" (ver EnqueueTextInput.typingSince). */
+  typingSince?: string;
 }
 
 /** Destino y reglas de envío de una conversación, evaluadas en la base con su now(). */
@@ -162,7 +170,11 @@ export class OutboundService {
     }
 
     if (status === 'queued') {
-      const job: OutboundJob = { outboundId: inserted.id, tenantId: inserted.tenantId };
+      const job: OutboundJob = {
+        outboundId: inserted.id,
+        tenantId: inserted.tenantId,
+        ...(input.typingSince ? { typingSince: input.typingSince.toISOString() } : {}),
+      };
       await this.boss.send(QUEUES.whatsappOutbound, job, {
         singletonKey: context.conversationId,
         // Misma transacción: el trabajo existe solo si la fila se confirma.
@@ -235,4 +247,53 @@ function sameRequest(
     rejectReason: row.rejectReason as RejectReason | null,
     created: false,
   };
+}
+
+/** Entrantes posteriores al último saliente (hasta 20), con su raw: los que hay que marcar como vistos. */
+export async function unreadInbound(tx: AppTx, conversationId: string): Promise<SeenMessage[]> {
+  const result = await tx.execute<{ external_id: string; raw: unknown }>(sql`
+    SELECT external_id, raw FROM (
+      SELECT m.external_id, m.raw, m.sent_at FROM messages m
+      WHERE m.conversation_id = ${conversationId}
+        AND m.direction = 'inbound'
+        AND m.sent_at > COALESCE(
+          (SELECT max(o.sent_at) FROM messages o
+           WHERE o.conversation_id = ${conversationId} AND o.direction = 'outbound'),
+          '-infinity'::timestamptz)
+      ORDER BY m.sent_at DESC
+      LIMIT 20
+    ) recent ORDER BY sent_at
+  `);
+  return result.rows.map((row) => ({ externalId: row.external_id, raw: row.raw }));
+}
+
+/**
+ * Lo que un error del proveedor le hace al canal, venga de un envío o de la presencia (visto,
+ * escribiendo): blocked_risk (463/475) pausa los envíos sin vencimiento, hasta que una persona lo levante
+ * (dev:resume-channel; después, el panel), sin reiniciar ni re-vincular la sesión; session_down lo marca
+ * desconectado. Con el canal así, loadSendContext rechaza todo envío nuevo. Devuelve true si cambió algo.
+ */
+export async function applyChannelFailure(
+  tx: AppTx,
+  channelId: string,
+  failure: ProviderFailure,
+): Promise<boolean> {
+  if (failure.error === 'blocked_risk') {
+    await tx
+      .update(channels)
+      .set({
+        sendingPausedUntil: sql`'infinity'::timestamptz`,
+        sendingPausedReason: `blocked_risk:${failure.code}`,
+      })
+      .where(eq(channels.id, channelId));
+    return true;
+  }
+  if (failure.error === 'session_down') {
+    await tx
+      .update(channels)
+      .set({ status: 'disconnected' })
+      .where(and(eq(channels.id, channelId), inArray(channels.status, ['pending', 'connected'])));
+    return true;
+  }
+  return false;
 }

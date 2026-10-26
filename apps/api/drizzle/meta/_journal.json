@@ -57,6 +57,27 @@
       "when": 1792857362217,
       "tag": "0007_outbound_permissions_rls",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1792957656624,
+      "tag": "0008_agent_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1792957684200,
+      "tag": "0009_ai_permissions_rls",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1792958197834,
+      "tag": "0010_tenant_self_select",
+      "breakpoints": true
     }
   ]
 }

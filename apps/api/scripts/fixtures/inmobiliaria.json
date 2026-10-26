@@ -1,0 +1,357 @@
+{
+  "schema_version": 1,
+  "ai": {
+    "enabled": true,
+    "channel_ids": []
+  },
+  "business": {
+    "name": "Propiedades Costa Atlántica",
+    "industry": "inmobiliaria: venta y alquiler de departamentos, casas y locales",
+    "language": "es",
+    "branches": [
+      {
+        "name": "Oficina Güemes",
+        "address": "Calle Güemes 2800, Mar del Plata",
+        "hours": {
+          "mon": [
+            {
+              "open": "09:30",
+              "close": "13:00"
+            },
+            {
+              "open": "15:30",
+              "close": "19:00"
+            }
+          ],
+          "tue": [
+            {
+              "open": "09:30",
+              "close": "13:00"
+            },
+            {
+              "open": "15:30",
+              "close": "19:00"
+            }
+          ],
+          "wed": [
+            {
+              "open": "09:30",
+              "close": "13:00"
+            },
+            {
+              "open": "15:30",
+              "close": "19:00"
+            }
+          ],
+          "thu": [
+            {
+              "open": "09:30",
+              "close": "13:00"
+            },
+            {
+              "open": "15:30",
+              "close": "19:00"
+            }
+          ],
+          "fri": [
+            {
+              "open": "09:30",
+              "close": "13:00"
+            },
+            {
+              "open": "15:30",
+              "close": "19:00"
+            }
+          ],
+          "sat": [
+            {
+              "open": "10:00",
+              "close": "13:00"
+            }
+          ],
+          "sun": []
+        }
+      }
+    ],
+    "service_hours": {
+      "mon": [
+        {
+          "open": "09:30",
+          "close": "13:00"
+        },
+        {
+          "open": "15:30",
+          "close": "19:00"
+        }
+      ],
+      "tue": [
+        {
+          "open": "09:30",
+          "close": "13:00"
+        },
+        {
+          "open": "15:30",
+          "close": "19:00"
+        }
+      ],
+      "wed": [
+        {
+          "open": "09:30",
+          "close": "13:00"
+        },
+        {
+          "open": "15:30",
+          "close": "19:00"
+        }
+      ],
+      "thu": [
+        {
+          "open": "09:30",
+          "close": "13:00"
+        },
+        {
+          "open": "15:30",
+          "close": "19:00"
+        }
+      ],
+      "fri": [
+        {
+          "open": "09:30",
+          "close": "13:00"
+        },
+        {
+          "open": "15:30",
+          "close": "19:00"
+        }
+      ],
+      "sat": [
+        {
+          "open": "10:00",
+          "close": "13:00"
+        }
+      ],
+      "sun": []
+    },
+    "payment_methods": ["Transferencia bancaria", "Efectivo"],
+    "shipping": null,
+    "website": "https://www.propiedadescosta.example",
+    "email": "consultas@propiedadescosta.example"
+  },
+  "knowledge": {
+    "faqs": [
+      {
+        "question": "¿Qué requisitos piden para alquilar?",
+        "answer": "Garantía propietaria o seguro de caución, recibos de sueldo o constancia de ingresos y DNI del inquilino al momento de firmar en la oficina."
+      },
+      {
+        "question": "¿Trabajan con créditos hipotecarios?",
+        "answer": "Sí, muchas de nuestras propiedades en venta son aptas crédito; un asesor confirma cuáles."
+      },
+      {
+        "question": "¿Cobran comisión al inquilino?",
+        "answer": "La comisión del alquiler la explica un asesor según la propiedad y el contrato."
+      },
+      {
+        "question": "¿Hacen tasaciones?",
+        "answer": "Sí, hacemos tasaciones de casas, departamentos y locales; las coordina un asesor."
+      }
+    ],
+    "policies": {
+      "returns": null,
+      "warranty": null,
+      "shipping": null,
+      "financing": null
+    }
+  },
+  "agent": {
+    "persona": {
+      "name": null,
+      "tone": "profesional, amable y claro, tratando de vos"
+    },
+    "custom_instructions": "Si preguntan por una propiedad de una publicación, pedí el barrio o la dirección aproximada para identificarla, sin confirmar disponibilidad.",
+    "sales_guidance": "",
+    "business_rules": [
+      {
+        "id": "sin_valores",
+        "text": "No dar valores de alquiler ni de venta: los informa un asesor."
+      }
+    ],
+    "offers": [
+      {
+        "id": "tasacion",
+        "description": "Tasación de una propiedad",
+        "when": "Cuando el cliente menciona que quiere vender o alquilar su propiedad"
+      }
+    ],
+    "must_not": ["Opinar sobre si un barrio es seguro o inseguro"]
+  },
+  "qualification": {
+    "fields": [
+      {
+        "key": "operacion",
+        "label": "Operación",
+        "type": "enum",
+        "options": ["compra", "alquiler"],
+        "how_to_ask": "¿Estás buscando para comprar o para alquilar?",
+        "required": true,
+        "priority": 1
+      },
+      {
+        "key": "zona",
+        "label": "Zona",
+        "type": "string",
+        "how_to_ask": "¿En qué zona o barrio estás buscando?",
+        "required": true,
+        "priority": 2
+      },
+      {
+        "key": "ambientes",
+        "label": "Ambientes",
+        "type": "number",
+        "how_to_ask": "¿Cuántos ambientes necesitás?",
+        "required": true,
+        "priority": 3
+      },
+      {
+        "key": "presupuesto",
+        "label": "Presupuesto",
+        "type": "string",
+        "how_to_ask": "¿Tenés un presupuesto aproximado?",
+        "required": true,
+        "priority": 4
+      },
+      {
+        "key": "credito",
+        "label": "Crédito hipotecario",
+        "type": "boolean",
+        "how_to_ask": "¿Pensás comprar con crédito hipotecario?",
+        "required": false,
+        "priority": 5,
+        "ask_when_score_gte": 50
+      },
+      {
+        "key": "fecha_mudanza",
+        "label": "Fecha de mudanza",
+        "type": "date",
+        "how_to_ask": "¿Para cuándo te gustaría mudarte?",
+        "required": false,
+        "priority": 6
+      },
+      {
+        "key": "nombre",
+        "label": "Nombre",
+        "type": "string",
+        "how_to_ask": "¿Cómo es tu nombre?",
+        "required": false,
+        "priority": 7,
+        "ask_when_score_gte": 60
+      }
+    ],
+    "discovery_guidance": "Si ves la oportunidad, averiguá si tiene mascotas o si necesita cochera.",
+    "max_questions_per_message": 2,
+    "max_qualification_turns": 6,
+    "max_turns_when_hot": 2
+  },
+  "scoring": {
+    "dimensions": [
+      {
+        "key": "intent",
+        "description": "intención: quiere comprar o alquilar, pide ver una propiedad o tiene el dinero o el crédito",
+        "weight": 3
+      },
+      {
+        "key": "urgency",
+        "description": "urgencia: necesita mudarse pronto o tiene una fecha",
+        "weight": 2
+      },
+      {
+        "key": "volume",
+        "description": "valor de la operación: compra, varias unidades o inversión",
+        "weight": 2
+      },
+      {
+        "key": "fit",
+        "description": "encaja con lo que trabaja la inmobiliaria (Mar del Plata, venta y alquiler)",
+        "weight": 1
+      }
+    ],
+    "completeness_weight": 2,
+    "thresholds": {
+      "hot": 70,
+      "warm": 40
+    }
+  },
+  "handoff": {
+    "triggers": {
+      "asks_human": {
+        "enabled": true,
+        "mode": {
+          "type": "immediate"
+        }
+      },
+      "availability": {
+        "enabled": true,
+        "mode": {
+          "type": "after_fields",
+          "fields": ["nombre"],
+          "intro": {
+            "es": "Para que un asesor te confirme eso y te pase opciones, necesito un dato."
+          }
+        }
+      },
+      "payment_or_reservation": {
+        "enabled": true,
+        "mode": {
+          "type": "immediate"
+        }
+      },
+      "price_negotiation": {
+        "enabled": true,
+        "mode": {
+          "type": "immediate"
+        }
+      },
+      "complaint": {
+        "enabled": true,
+        "mode": {
+          "type": "immediate"
+        }
+      },
+      "frustration": {
+        "enabled": true,
+        "mode": {
+          "type": "immediate"
+        }
+      },
+      "cannot_answer": {
+        "enabled": true,
+        "mode": {
+          "type": "immediate"
+        }
+      }
+    },
+    "custom_triggers": [
+      {
+        "id": "custom_visita",
+        "description": "Pide coordinar una visita para ver una propiedad",
+        "mode": {
+          "type": "immediate"
+        }
+      },
+      {
+        "id": "custom_tasacion",
+        "description": "Quiere tasar, vender o poner en alquiler su propia propiedad",
+        "mode": {
+          "type": "immediate"
+        }
+      }
+    ],
+    "message_in_hours": "Gracias por tu consulta. Ya se la paso a un asesor, que sigue la conversación por acá.",
+    "message_after_hours": "Gracias por tu consulta. Ahora la oficina está cerrada; un asesor sigue la conversación por acá en el próximo horario de atención.",
+    "qualify_after_hours": true,
+    "unsupported_media": {
+      "mode": "ask_text",
+      "message": "Por ahora no puedo escuchar audios ni ver fotos. ¿Me lo escribís?"
+    }
+  }
+}

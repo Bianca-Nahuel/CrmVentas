@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { AiModule } from './ai/ai.module.js';
 import { AppAuthModule } from './auth/app-auth.module.js';
 import { ConfigModule } from './config/config.module.js';
 import { DatabaseModule } from './db/database.module.js';
@@ -18,6 +19,7 @@ import { WhatsappModule } from './whatsapp/whatsapp.module.js';
     WhatsappModule,
     InboundModule,
     OutboundModule,
+    AiModule,
   ],
   controllers: [HealthController, MeController],
 })

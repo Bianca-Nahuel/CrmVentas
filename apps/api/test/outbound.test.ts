@@ -11,6 +11,7 @@ import {
   IdempotencyConflictError,
   OutboundService,
   type EnqueueTextInput,
+  type OutboundJob,
 } from '../src/messaging/outbound/outbound.service.js';
 import { WORST_CASE_SEND_MS } from '../src/messaging/outbound/outbound.constants.js';
 import { OutboundWorker } from '../src/messaging/outbound/outbound.worker.js';
@@ -290,6 +291,64 @@ describe('3. envío correcto', () => {
     expect(logs).toContain(outboundId);
     expect(logs).not.toContain(TEXT);
     expect(logs).not.toContain(chat.phoneDigits);
+  });
+
+  it('con typingSince descuenta de la demora el tiempo que el chat ya estuvo escribiendo', async () => {
+    const sleepsFor = async (typingSince: Date | undefined, retryCount = 0) => {
+      const chat = await freshChat();
+      const { outboundId } = await enqueue(chat, { senderType: 'ai', typingSince });
+      const provider = new FakeProvider();
+      const sleeps: number[] = [];
+      const { boss } = fakeBoss();
+      const worker = new OutboundWorker(boss, registryWith(provider), db, {
+        sleep: async (ms) => {
+          sleeps.push(ms);
+        },
+        random: () => 0.5,
+      });
+      const { rows } = await ctx.ownerPool.query<{ data: OutboundJob }>(
+        `SELECT data FROM pgboss.job WHERE name = $1 AND data->>'outboundId' = $2`,
+        [QUEUES.whatsappOutbound, outboundId],
+      );
+      expect(await worker.handle(rows[0]!.data, attempt(uid(), retryCount))).toBe('enviado');
+      // El visto y el escribiendo se repiten igual (el indicador vence solo).
+      expect(provider.calls.map((call) => call.method)).toEqual([
+        'markSeen',
+        'startTyping',
+        'stopTyping',
+        'sendText',
+      ]);
+      return sleeps;
+    };
+    // La demora de este texto es 3900 ms.
+    expect(await sleepsFor(undefined)).toEqual([3900]);
+    // Hace 2 s: queda menos de 1900 ms (también se descuenta lo que tarda en prepararse el chat del test).
+    const [partial] = await sleepsFor(new Date(Date.now() - 2_000));
+    expect(partial).toBeGreaterThan(0);
+    expect(partial).toBeLessThanOrEqual(1_900);
+    expect(await sleepsFor(new Date(Date.now() - 6_000))).toEqual([0]);
+    // El indicador ya venció (más de 20 s), o es un reintento: la demora completa.
+    expect(await sleepsFor(new Date(Date.now() - 30_000))).toEqual([3900]);
+    expect(await sleepsFor(new Date(Date.now() - 3_000), 1)).toEqual([3900]);
+  });
+
+  it('al reprogramar por la separación del chat, el trabajo nuevo no arrastra typingSince', async () => {
+    const chat = await freshChat();
+    const first = await enqueue(chat, { senderType: 'ai' });
+    const { worker: firstWorker } = workerWith(new FakeProvider());
+    expect(await firstWorker.handle(job(chat, first.outboundId), attempt())).toBe('enviado');
+
+    const second = await enqueue(chat, { senderType: 'ai', typingSince: new Date() });
+    const { worker, sent } = workerWith(new FakeProvider());
+    const { rows } = await ctx.ownerPool.query<{ data: OutboundJob }>(
+      `SELECT data FROM pgboss.job WHERE name = $1 AND data->>'outboundId' = $2`,
+      [QUEUES.whatsappOutbound, second.outboundId],
+    );
+    expect(rows[0]!.data.typingSince).toBeDefined();
+    expect(await worker.handle(rows[0]!.data, attempt())).toBe('reprogramado');
+    expect(sent).toHaveLength(1);
+    expect(sent[0]!.data).toMatchObject({ outboundId: second.outboundId });
+    expect(sent[0]!.data).not.toHaveProperty('typingSince');
   });
 
   it('si fallan visto o escribiendo (salvo sesión caída), igual se envía', async () => {

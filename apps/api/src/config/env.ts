@@ -1,3 +1,4 @@
+import { findAllowedModel } from '@ventas/shared';
 import { z } from 'zod';
 
 const postgresUrl = z
@@ -59,6 +60,35 @@ const envSchema = z.object({
   WAHA_WEBHOOK_HMAC_KEY: z
     .string()
     .refine((value) => Buffer.byteLength(value, 'utf8') >= 32, 'tiene que tener al menos 32 bytes'),
+  // IA (tarea 006). Interruptor general, apagado por defecto.
+  AI_ENABLED: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((value) => value === 'true'),
+  // Clave de OpenRouter de la plataforma (la pagamos nosotros). Obligatoria con AI_ENABLED=true.
+  // Vacía (la línea del .env.example sin completar) cuenta como no definida.
+  OPENROUTER_API_KEY: z.preprocess(
+    (value) => (value === '' ? undefined : value),
+    z
+      .string()
+      .regex(/^sk-or-[A-Za-z0-9_-]{16,}$/, 'tiene que ser una clave de OpenRouter (sk-or-…)')
+      .optional(),
+  ),
+  // Modelo por defecto si la empresa no eligió otro; tiene que estar en ALLOWED_MODELS.
+  AI_DEFAULT_MODEL: z
+    .string()
+    .default('deepseek/deepseek-v4.1-flash')
+    .refine((value) => findAllowedModel(value) !== undefined, 'no está en la lista de modelos permitidos'),
+});
+
+const envSchemaWithRules = envSchema.superRefine((env, ctx) => {
+  if (env.AI_ENABLED && !env.OPENROUTER_API_KEY) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['OPENROUTER_API_KEY'],
+      message: 'obligatoria con AI_ENABLED=true',
+    });
+  }
 });
 
 export type Env = z.infer<typeof envSchema>;
@@ -69,7 +99,7 @@ const FORBIDDEN_IN_PRODUCTION = ['DATABASE_URL_MIGRATIONS'] as const;
 
 // Si falta una variable o es inválida, la app no levanta. El mensaje nombra la variable, nunca su valor.
 export function parseEnv(source: NodeJS.ProcessEnv = process.env): Env {
-  const result = envSchema.safeParse(source);
+  const result = envSchemaWithRules.safeParse(source);
   const problems = result.success
     ? []
     : result.error.issues.map((issue) => `- ${issue.path.join('.')}: ${issue.message}`);

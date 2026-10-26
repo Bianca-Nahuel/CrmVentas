@@ -1,0 +1,385 @@
+{
+  "schema_version": 1,
+  "ai": {
+    "enabled": true,
+    "channel_ids": []
+  },
+  "business": {
+    "name": "Revestimientos del Puerto",
+    "industry": "cerámicos, porcelanatos, sanitarios y grifería",
+    "language": "es",
+    "branches": [
+      {
+        "name": "Sucursal Centro",
+        "address": "Av. Independencia 1500, Mar del Plata",
+        "hours": {
+          "mon": [
+            {
+              "open": "09:00",
+              "close": "17:30"
+            }
+          ],
+          "tue": [
+            {
+              "open": "09:00",
+              "close": "17:30"
+            }
+          ],
+          "wed": [
+            {
+              "open": "09:00",
+              "close": "17:30"
+            }
+          ],
+          "thu": [
+            {
+              "open": "09:00",
+              "close": "17:30"
+            }
+          ],
+          "fri": [
+            {
+              "open": "09:00",
+              "close": "17:30"
+            }
+          ],
+          "sat": [
+            {
+              "open": "08:30",
+              "close": "13:00"
+            }
+          ],
+          "sun": []
+        },
+        "notes": "Showroom con más de 300 modelos exhibidos."
+      },
+      {
+        "name": "Sucursal Constitución",
+        "address": "Av. Constitución 6200, Mar del Plata",
+        "hours": {
+          "mon": [
+            {
+              "open": "09:00",
+              "close": "17:30"
+            }
+          ],
+          "tue": [
+            {
+              "open": "09:00",
+              "close": "17:30"
+            }
+          ],
+          "wed": [
+            {
+              "open": "09:00",
+              "close": "17:30"
+            }
+          ],
+          "thu": [
+            {
+              "open": "09:00",
+              "close": "17:30"
+            }
+          ],
+          "fri": [
+            {
+              "open": "09:00",
+              "close": "17:30"
+            }
+          ],
+          "sat": [
+            {
+              "open": "08:30",
+              "close": "13:00"
+            }
+          ],
+          "sun": []
+        },
+        "notes": "Depósito con estacionamiento para cargar."
+      }
+    ],
+    "service_hours": {
+      "mon": [
+        {
+          "open": "09:00",
+          "close": "17:30"
+        }
+      ],
+      "tue": [
+        {
+          "open": "09:00",
+          "close": "17:30"
+        }
+      ],
+      "wed": [
+        {
+          "open": "09:00",
+          "close": "17:30"
+        }
+      ],
+      "thu": [
+        {
+          "open": "09:00",
+          "close": "17:30"
+        }
+      ],
+      "fri": [
+        {
+          "open": "09:00",
+          "close": "17:30"
+        }
+      ],
+      "sat": [
+        {
+          "open": "08:30",
+          "close": "13:00"
+        }
+      ],
+      "sun": []
+    },
+    "payment_methods": [
+      "Efectivo",
+      "Transferencia bancaria",
+      "Tarjetas de débito y crédito (Visa, Mastercard)",
+      "Cuotas sin interés con tarjetas bancarias seleccionadas, según promoción vigente"
+    ],
+    "shipping": "Envíos a domicilio en Mar del Plata y Batán con camión propio. El costo y el día se coordinan con un vendedor según el volumen y la zona.",
+    "website": "https://www.revestimientosdelpuerto.example",
+    "email": "ventas@revestimientosdelpuerto.example"
+  },
+  "knowledge": {
+    "faqs": [
+      {
+        "question": "¿Hacen envíos?",
+        "answer": "Sí, a domicilio en Mar del Plata y Batán con camión propio. El costo y el día se coordinan con un vendedor."
+      },
+      {
+        "question": "¿Puedo retirar en el local?",
+        "answer": "Sí, en cualquiera de las dos sucursales; en Constitución hay estacionamiento para cargar."
+      },
+      {
+        "question": "¿Venden pegamento y pastina?",
+        "answer": "Sí, trabajamos pegamentos, pastinas, crucetas y perfiles de terminación."
+      },
+      {
+        "question": "¿Hacen colocación?",
+        "answer": "No hacemos colocación, pero podemos recomendar colocadores de la zona."
+      },
+      {
+        "question": "¿Cuántos m² tengo que comprar?",
+        "answer": "Medí largo por ancho del ambiente y sumá un 10 % por los cortes."
+      }
+    ],
+    "policies": {
+      "returns": "Cambios dentro de los 30 días con el ticket, en cajas cerradas y en buen estado. Los cortes a medida no tienen cambio.",
+      "warranty": "Los productos tienen la garantía del fabricante. Ante un problema, un vendedor revisa el caso.",
+      "shipping": null,
+      "financing": "Cuotas sin interés con tarjetas bancarias seleccionadas, según la promoción vigente del mes."
+    }
+  },
+  "agent": {
+    "persona": {
+      "name": null,
+      "tone": "cordial, cercano y breve, tuteando, como un vendedor de mostrador de Mar del Plata"
+    },
+    "custom_instructions": "Muchos clientes no saben cuántos metros necesitan: si no lo saben, explicales cómo calcularlo (está en las preguntas frecuentes).",
+    "sales_guidance": "Si compra porcelanato o cerámica, ofrecé pegamento y pastina. Si es para un baño, mencioná los perfiles de terminación.",
+    "business_rules": [
+      {
+        "id": "sin_descuentos",
+        "text": "No ofrecer descuentos ni bonificaciones."
+      },
+      {
+        "id": "sin_colocacion",
+        "text": "No prometer colocación: no la hacemos."
+      }
+    ],
+    "offers": [
+      {
+        "id": "showroom",
+        "description": "Visita al showroom de la Sucursal Centro para ver los modelos",
+        "when": "Cuando el cliente duda entre modelos o colores"
+      },
+      {
+        "id": "asesoramiento",
+        "description": "Asesoramiento de un vendedor para elegir el material",
+        "when": "Cuando el cliente no sabe qué material le conviene"
+      }
+    ],
+    "must_not": ["Recomendar marcas de la competencia", "Opinar sobre el trabajo de un colocador"]
+  },
+  "qualification": {
+    "fields": [
+      {
+        "key": "producto_ambiente",
+        "label": "Producto o ambiente",
+        "type": "string",
+        "how_to_ask": "¿Para qué ambiente es o qué producto estás buscando?",
+        "required": true,
+        "priority": 1
+      },
+      {
+        "key": "m2",
+        "label": "Metros cuadrados aproximados",
+        "type": "number",
+        "how_to_ask": "¿Cuántos m² necesitás, más o menos?",
+        "required": true,
+        "priority": 2
+      },
+      {
+        "key": "fecha_compra",
+        "label": "Fecha estimada de compra",
+        "type": "date",
+        "how_to_ask": "¿Para cuándo lo necesitás?",
+        "required": true,
+        "priority": 3
+      },
+      {
+        "key": "entrega",
+        "label": "Retiro o envío",
+        "type": "enum",
+        "options": ["retiro", "envio"],
+        "how_to_ask": "¿Lo retirarías por el local o necesitás envío?",
+        "required": true,
+        "priority": 4
+      },
+      {
+        "key": "zona_entrega",
+        "label": "Zona de entrega",
+        "type": "string",
+        "how_to_ask": "¿En qué zona sería la entrega?",
+        "required": false,
+        "priority": 5,
+        "ask_when_score_gte": 40
+      },
+      {
+        "key": "nombre",
+        "label": "Nombre",
+        "type": "string",
+        "how_to_ask": "¿Cómo es tu nombre?",
+        "required": false,
+        "priority": 6,
+        "ask_when_score_gte": 60
+      },
+      {
+        "key": "cuit",
+        "label": "CUIT (obras con factura A)",
+        "type": "string",
+        "how_to_ask": "Si necesitás factura A para la obra, ¿me pasás el CUIT?",
+        "required": false,
+        "priority": 7,
+        "ask_when_score_gte": 60
+      }
+    ],
+    "discovery_guidance": "Pedile el DNI para la factura. Si ves la oportunidad, averiguá si es una compra desde cero o si necesita más de un producto que ya compró para terminar un trabajo (en ese caso importa el mismo lote y tono: pedile, si lo tiene, el código o una foto de la caja). Averiguá también si ya tiene pegamento, pastina, crucetas y perfiles o varillas de terminación.",
+    "max_questions_per_message": 2,
+    "max_qualification_turns": 6,
+    "max_turns_when_hot": 2
+  },
+  "scoring": {
+    "dimensions": [
+      {
+        "key": "intent",
+        "description": "intención de compra: quiere comprar, pide presupuesto o habla de una obra concreta",
+        "weight": 3
+      },
+      {
+        "key": "urgency",
+        "description": "urgencia: lo necesita esta semana, tiene fecha o la obra ya empezó",
+        "weight": 2
+      },
+      {
+        "key": "volume",
+        "description": "volumen o ticket: muchos m², varios productos o una obra grande",
+        "weight": 2
+      },
+      {
+        "key": "fit",
+        "description": "encaja con lo que vende el negocio (cerámicos, porcelanatos, sanitarios, grifería)",
+        "weight": 1
+      }
+    ],
+    "completeness_weight": 2,
+    "thresholds": {
+      "hot": 70,
+      "warm": 40
+    }
+  },
+  "handoff": {
+    "triggers": {
+      "asks_human": {
+        "enabled": true,
+        "mode": {
+          "type": "immediate"
+        }
+      },
+      "availability": {
+        "enabled": true,
+        "mode": {
+          "type": "immediate"
+        }
+      },
+      "payment_or_reservation": {
+        "enabled": true,
+        "mode": {
+          "type": "immediate"
+        }
+      },
+      "price_negotiation": {
+        "enabled": true,
+        "mode": {
+          "type": "immediate"
+        }
+      },
+      "complaint": {
+        "enabled": true,
+        "mode": {
+          "type": "immediate"
+        }
+      },
+      "frustration": {
+        "enabled": true,
+        "mode": {
+          "type": "immediate"
+        }
+      },
+      "cannot_answer": {
+        "enabled": true,
+        "mode": {
+          "type": "immediate"
+        }
+      }
+    },
+    "custom_triggers": [
+      {
+        "id": "custom_obra_grande",
+        "description": "Pedido de más de 100 m², o cliente constructor, arquitecto o de una obra con varias unidades",
+        "mode": {
+          "type": "after_fields",
+          "fields": ["fecha_compra", "nombre"],
+          "intro": {
+            "es": "¡Buenísimo! Para que un vendedor te arme la propuesta de la obra, necesito un par de datos."
+          }
+        }
+      },
+      {
+        "id": "custom_recomendacion",
+        "description": "Pide que le recomienden un producto, modelo, color o material (todavía no hay catálogo para recomendar uno concreto)",
+        "mode": {
+          "type": "after_fields",
+          "fields": ["producto_ambiente", "m2"],
+          "intro": {
+            "es": "¡Te ayudamos a elegir! Para que un vendedor te recomiende la mejor opción, necesito un par de datos."
+          }
+        }
+      }
+    ],
+    "message_in_hours": "Gracias por escribirnos. Ya le paso tu consulta a un vendedor, que sigue la conversación por acá.",
+    "message_after_hours": "Gracias por escribirnos. Ahora estamos cerrados; un vendedor sigue la conversación por acá cuando abramos.",
+    "qualify_after_hours": true,
+    "unsupported_media": {
+      "mode": "ask_text",
+      "message": "Todavía no puedo escuchar audios ni ver fotos. ¿Me lo podés escribir?"
+    }
+  }
+}

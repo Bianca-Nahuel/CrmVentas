@@ -8,9 +8,13 @@ import type {
   WhatsAppEvent,
 } from '@ventas/shared';
 import { and, desc, eq, gt, inArray, isNull, ne, sql } from 'drizzle-orm';
+import { fromDrizzle, type PgBoss } from 'pg-boss';
+import { AI_DEBOUNCE_SECONDS } from '../../ai/ai.constants.js';
+import type { AiReplyJob } from '../../ai/reply/ai-reply.job.js';
 import { APP_DB, type AppDatabase } from '../../db/database.module.js';
 import { channels, contacts, conversations, messages, outboundMessages } from '../../db/schema/messaging.js';
 import { withTenantTransaction, type AppTx } from '../../db/tenant-context.js';
+import { BOSS, QUEUES } from '../../jobs/jobs.module.js';
 import {
   AI_PAUSE_AFTER_HUMAN_HOURS,
   ECHO_RECHECK_MAX,
@@ -45,7 +49,10 @@ const OPEN_CONVERSATION_ATTEMPTS = 3;
 // la empresa sale de resolve_channel() (por el external_id que generó el sistema), nunca del payload.
 @Injectable()
 export class InboundService {
-  constructor(@Inject(APP_DB) private readonly database: AppDatabase) {}
+  constructor(
+    @Inject(APP_DB) private readonly database: AppDatabase,
+    @Inject(BOSS) private readonly boss: PgBoss,
+  ) {}
 
   /**
    * Canal y empresa por el identificador del proveedor. null si no existe, está banned o la empresa no
@@ -121,6 +128,16 @@ export class InboundService {
         lastInboundAt: sql`GREATEST(COALESCE(${conversations.lastInboundAt}, ${sentAt}), ${sentAt})`,
       })
       .where(eq(conversations.id, conversationId));
+
+    // Agente (tarea 006): un trabajo por entrante nuevo, en esta misma transacción (existe solo si el
+    // mensaje se guarda). Espera AI_DEBOUNCE_SECONDS para juntar mensajes seguidos; si al correr hay un
+    // entrante más nuevo, no hace nada (lo procesa el trabajo de ese). Solo ids, nunca el texto.
+    const job: AiReplyJob = { tenantId: channel.tenantId, conversationId, messageId: inserted[0]!.id };
+    await this.boss.send(QUEUES.aiReply, job, {
+      singletonKey: conversationId,
+      startAfter: AI_DEBOUNCE_SECONDS,
+      db: fromDrizzle(tx, sql),
+    });
     return 'guardado';
   }
 

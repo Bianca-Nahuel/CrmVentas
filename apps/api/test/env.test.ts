@@ -77,4 +77,37 @@ describe('parseEnv', () => {
       /DATABASE_URL_MIGRATIONS/,
     );
   });
+
+  describe('IA (tarea 006)', () => {
+    const KEY = 'sk-or-v1-clave-de-prueba-0123456789';
+
+    it('por defecto la IA está apagada, sin clave y con el modelo por defecto', () => {
+      const env = parseEnv({ ...BASE });
+      expect(env.AI_ENABLED).toBe(false);
+      expect(env.OPENROUTER_API_KEY).toBeUndefined();
+      expect(env.AI_DEFAULT_MODEL).toBe('deepseek/deepseek-v4.1-flash');
+    });
+
+    it('una clave vacía (línea del .env.example sin completar) cuenta como no definida', () => {
+      expect(parseEnv({ ...BASE, OPENROUTER_API_KEY: '' }).OPENROUTER_API_KEY).toBeUndefined();
+    });
+
+    it('con AI_ENABLED=true la clave es obligatoria', () => {
+      expect(() => parseEnv({ ...BASE, AI_ENABLED: 'true' })).toThrow(/OPENROUTER_API_KEY/);
+      expect(parseEnv({ ...BASE, AI_ENABLED: 'true', OPENROUTER_API_KEY: KEY }).AI_ENABLED).toBe(true);
+    });
+
+    it('rechaza una clave con otro formato sin mostrarla, y un modelo fuera de la lista', () => {
+      let message = '';
+      try {
+        parseEnv({ ...BASE, OPENROUTER_API_KEY: 'sk-ant-secreta-123' });
+      } catch (error) {
+        message = (error as Error).message;
+      }
+      expect(message).toContain('OPENROUTER_API_KEY');
+      expect(message).not.toContain('sk-ant-secreta-123');
+      expect(() => parseEnv({ ...BASE, AI_DEFAULT_MODEL: 'openai/inventado' })).toThrow(/AI_DEFAULT_MODEL/);
+      expect(() => parseEnv({ ...BASE, AI_ENABLED: 'si' })).toThrow(/AI_ENABLED/);
+    });
+  });
 });

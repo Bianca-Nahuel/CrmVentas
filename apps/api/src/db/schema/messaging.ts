@@ -19,6 +19,7 @@ import {
   jsonb,
   numeric,
   pgTable,
+  smallint,
   text,
   timestamp,
   unique,
@@ -121,6 +122,24 @@ export const conversations = pgTable(
     aiPausedUntil: timestamp('ai_paused_until', { withTimezone: true }),
     lastMessageAt: timestamp('last_message_at', { withTimezone: true }).notNull(),
     lastInboundAt: timestamp('last_inbound_at', { withTimezone: true }),
+    // Agente (tarea 006): puntaje y calificación. Las escribe solo el worker de la IA.
+    leadScore: smallint('lead_score'),
+    leadScorePeak: smallint('lead_score_peak'),
+    leadScoreAt: timestamp('lead_score_at', { withTimezone: true }),
+    scoreBreakdown: jsonb('score_breakdown'),
+    // hot | warm | cold, derivado de los umbrales de la config: solo para mostrar y ordenar.
+    leadTier: text('lead_tier'),
+    // Mensajes que mandó la IA (respuestas y preguntas de un disparador), y cuántos con el lead caliente.
+    qualificationTurns: integer('qualification_turns').notNull().default(0),
+    hotTurns: integer('hot_turns').notNull().default(0),
+    suggestionsCount: integer('suggestions_count').notNull().default(0),
+    // Campos de calificación obtenidos (se combinan, nunca se borran) y lo descubierto por la guía.
+    extractedData: jsonb('extracted_data').notNull().default({}),
+    discoveredNotes: jsonb('discovered_notes').notNull().default([]),
+    // Derivada a una persona: desde acá la IA no vuelve a escribir (salvo el texto fijo, una vez).
+    handedOffAt: timestamp('handed_off_at', { withTimezone: true }),
+    handoffReason: text('handoff_reason'),
+    handoffSummary: text('handoff_summary'),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
@@ -147,6 +166,18 @@ export const conversations = pgTable(
     index('conversations_tenant_contact_idx').on(t.tenantId, t.contactId),
     check('conversations_status_check', sql`${t.status} IN ('open', 'closed', 'archived')`),
     check('conversations_inbox_check', sql`${t.inbox} IN ('sales', 'other')`),
+    check('conversations_lead_score_check', sql`${t.leadScore} BETWEEN 0 AND 100`),
+    check('conversations_lead_score_peak_check', sql`${t.leadScorePeak} BETWEEN 0 AND 100`),
+    check('conversations_lead_tier_check', sql`${t.leadTier} IN ('hot', 'warm', 'cold')`),
+    check(
+      'conversations_turns_check',
+      sql`${t.qualificationTurns} >= 0 AND ${t.hotTurns} >= 0 AND ${t.suggestionsCount} >= 0`,
+    ),
+    check('conversations_extracted_data_check', sql`jsonb_typeof(${t.extractedData}) = 'object'`),
+    check('conversations_discovered_notes_check', sql`jsonb_typeof(${t.discoveredNotes}) = 'array'`),
+    check('conversations_handoff_reason_check', sql`${t.handoffReason} ~ '^[a-z0-9_:]{1,80}$'`),
+    check('conversations_handoff_summary_check', sql`char_length(${t.handoffSummary}) <= 2000`),
+    check('conversations_handoff_check', sql`(${t.handedOffAt} IS NULL) = (${t.handoffReason} IS NULL)`),
   ],
 );
 
@@ -233,6 +264,8 @@ export const outboundMessages = pgTable(
   },
   (t) => [
     unique('outbound_messages_tenant_idempotency_unique').on(t.tenantId, t.idempotencyKey),
+    // Destino de la FK de ai_runs.outbound_message_id (tarea 006).
+    unique('outbound_messages_tenant_id_id_unique').on(t.tenantId, t.id),
     // El canal tiene que ser el de la conversación (misma FK compuesta que messages).
     foreignKey({
       name: 'outbound_messages_conversation_fk',

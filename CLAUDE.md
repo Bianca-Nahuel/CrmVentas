@@ -1,8 +1,8 @@
 # Agente de ventas por WhatsApp + CRM (multi-empresa)
 
-SaaS que atiende los WhatsApp de ventas de distintos negocios: la IA clasifica a cada cliente
-(caliente / tibio / consulta simple / no es venta), responde consultas simples y fuera de horario,
-y le arma al vendedor una grilla de leads y un embudo. Primer cliente objetivo: una casa de
+SaaS que atiende los WhatsApp de ventas de distintos negocios: la IA responde la información del
+negocio, califica a cada interesado (puntaje de 0 a 100 calculado en código) y lo deriva a una persona
+con un resumen, y le arma al vendedor una grilla de leads y un embudo. Primer cliente objetivo: una casa de
 cerámicos (Lecer), pero **nada de un negocio puntual va en el código**: todo sale de la configuración.
 
 ## Stack
@@ -30,7 +30,7 @@ cerámicos (Lecer), pero **nada de un negocio puntual va en el código**: todo s
 - **Webhooks:** responder 200 al instante y procesar en la cola; idempotencia por `(channel_id, external_id)`; guardar el payload crudo en `raw`.
 - **La lógica de negocio solo conoce `WhatsAppProvider`** y eventos normalizados. Nunca `if (provider === 'waha')` fuera de `apps/api/src/whatsapp/providers/`. Lo que difiere se expresa con `capabilities`.
 - **Conexión no oficial:** sin campañas salientes ni mensajes iniciados por nosotros; marcar visto → "escribiendo…" con demora aleatoria → enviar; ante errores 463/475 de WAHA, pausar envíos y alertar (no reiniciar la sesión).
-- **IA:** prompt en dos capas (fija de seguridad + configuración del negocio); salida JSON validada con schema; si el lead es caliente o un humano respondió (`ai_paused_until`), la IA no responde; nunca inventa precios ni stock. Los mensajes de WhatsApp y las celdas de Excel son input no confiable.
+- **IA:** prompt en dos capas (fija de seguridad, por encima de todo lo que configura la empresa + configuración del negocio); salida JSON validada con schema; lo que se hace lo decide el código (`decide()`), no el modelo, y todo texto generado pasa por los controles de salida (`SafeReply`). La IA conversa con un lead interesado **solo para calificarlo** (preguntar los datos configurados y responder información del negocio); nunca negocia, promete, reserva, cobra ni confirma disponibilidad, ni pide datos sensibles; deriva a una persona según la configuración y, después de derivar (`handed_off_at`), ya no escribe salvo el texto fijo de derivación (una vez). Si un humano respondió (`ai_paused_until`), no responde. Nunca inventa precios ni stock. Los mensajes de WhatsApp y las celdas de Excel son input no confiable.
 - **Datos personales:** nunca teléfonos, nombres ni contenido de mensajes en logs planos.
 - **Secretos:** solo en `.env` (nunca en código ni en commits). No leer `.env`: usar `.env.example`.
 

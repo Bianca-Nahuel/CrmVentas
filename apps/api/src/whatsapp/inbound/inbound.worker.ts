@@ -1,5 +1,6 @@
 import { Inject, Injectable, Logger, type OnApplicationBootstrap } from '@nestjs/common';
 import type { PgBoss } from 'pg-boss';
+import { errorCode } from '../../jobs/error-code.js';
 import { BOSS, QUEUES } from '../../jobs/jobs.module.js';
 import { WHATSAPP_PROVIDER_REGISTRY, type WhatsAppProviderRegistry } from '../provider.js';
 import { ECHO_RECHECK_DELAY_SECONDS } from '../../messaging/outbound/outbound.constants.js';
@@ -112,14 +113,4 @@ export class InboundWorker implements OnApplicationBootstrap {
       result,
     });
   }
-}
-
-// Código de Postgres (o de Node: ECONNREFUSED…) o, si no hay, el nombre del error (TimeoutError…).
-// Identificadores sin datos personales; el mensaje nunca se usa.
-function errorCode(error: unknown): string {
-  const failure = error as { code?: unknown; name?: unknown; cause?: { code?: unknown } } | null;
-  for (const candidate of [failure?.cause?.code, failure?.code, failure?.name]) {
-    if (typeof candidate === 'string' && /^[A-Z0-9_]{1,40}$/i.test(candidate)) return candidate;
-  }
-  return 'desconocido';
 }

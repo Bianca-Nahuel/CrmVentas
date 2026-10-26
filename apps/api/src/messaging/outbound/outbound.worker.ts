@@ -3,8 +3,9 @@ import { Inject, Injectable, Logger, Optional, type OnApplicationBootstrap } fro
 import { and, eq, inArray, ne, sql } from 'drizzle-orm';
 import type { PgBoss } from 'pg-boss';
 import { APP_DB, type AppDatabase } from '../../db/database.module.js';
-import { channels, conversations, messages, outboundMessages } from '../../db/schema/messaging.js';
+import { conversations, messages, outboundMessages } from '../../db/schema/messaging.js';
 import { withTenantTransaction, type AppTx } from '../../db/tenant-context.js';
+import { errorCode } from '../../jobs/error-code.js';
 import { BOSS, QUEUES } from '../../jobs/jobs.module.js';
 import {
   WHATSAPP_PROVIDER_REGISTRY,
@@ -21,10 +22,17 @@ import {
   MAX_SENDS_PER_MINUTE_PER_CHANNEL,
   RATE_WINDOW_MS,
   STUCK_SENDING_AFTER_MS,
+  TYPING_INDICATOR_MAX_MS,
   sameChatGapMs,
   typingDelayMs,
 } from './outbound.constants.js';
-import { loadSendContext, type OutboundJob, type SendContext } from './outbound.service.js';
+import {
+  applyChannelFailure,
+  loadSendContext,
+  unreadInbound,
+  type OutboundJob,
+  type SendContext,
+} from './outbound.service.js';
 
 const WORK_OPTIONS = { localConcurrency: 4, pollingIntervalSeconds: 1, includeMetadata: true } as const;
 
@@ -118,7 +126,13 @@ export class OutboundWorker implements OnApplicationBootstrap {
     if (claim.kind === 'reschedule') {
       await this.boss.send(
         QUEUES.whatsappOutbound,
-        { ...job, ...(claim.gapMs === undefined ? {} : { gapMs: claim.gapMs }) } satisfies OutboundJob,
+        // Sin typingSince: para cuando corra, ese "escribiendo…" ya venció.
+        {
+          outboundId: job.outboundId,
+          tenantId: job.tenantId,
+          ...(job.gapMs === undefined ? {} : { gapMs: job.gapMs }),
+          ...(claim.gapMs === undefined ? {} : { gapMs: claim.gapMs }),
+        } satisfies OutboundJob,
         { singletonKey: claim.conversationId, startAfter: claim.startAfter },
       );
       this.logger.log({ ...base, result: 'reprogramado', reason: claim.reason });
@@ -135,6 +149,8 @@ export class OutboundWorker implements OnApplicationBootstrap {
           body,
           unread,
           log,
+          // Un reintento ya no tiene el "escribiendo…" de la IA a la vista.
+          job.typingSince && attempt.retryCount === 0 ? new Date(job.typingSince) : null,
         )
       : { ok: false, error: 'invalid_recipient', code: 'unknown_provider' };
 
@@ -286,13 +302,19 @@ export class OutboundWorker implements OnApplicationBootstrap {
     return { kind: 'send', context, body: row.body, unread: await unreadInbound(tx, row.conversationId) };
   }
 
-  /** Visto → escribiendo → espera → dejar de escribir → enviar. Solo session_down y blocked_risk cortan. */
+  /**
+   * Visto → escribiendo → espera → dejar de escribir → enviar. Solo session_down y blocked_risk cortan.
+   * Si el chat ya mostraba "escribiendo…" desde typingSince (la IA pensando), ese tiempo se descuenta de
+   * la espera: la secuencia es la misma, solo que empezó antes. El visto y el escribiendo se repiten igual
+   * (el indicador de WhatsApp vence solo y puede haber entrantes nuevos sin marcar).
+   */
   private async deliver(
     provider: WhatsAppProvider,
     target: ChatTarget,
     body: string,
     unread: SeenMessage[],
     log: Record<string, unknown>,
+    typingSince: Date | null,
   ): Promise<SendResult> {
     const presence = async (step: string, call: Promise<PresenceResult>): Promise<ProviderFailure | null> => {
       const result = await call;
@@ -305,7 +327,10 @@ export class OutboundWorker implements OnApplicationBootstrap {
       (await presence('mark_seen', provider.markSeen({ ...target, messages: unread }))) ??
       (await presence('start_typing', provider.startTyping(target)));
     if (down) return down;
-    await this.timing.sleep(typingDelayMs(body, this.timing.random));
+    // Solo si el indicador sigue a la vista (WhatsApp lo saca solo): si no, la demora completa.
+    const elapsed = typingSince ? Date.now() - typingSince.getTime() : Infinity;
+    const alreadyTyping = elapsed >= 0 && elapsed <= TYPING_INDICATOR_MAX_MS ? elapsed : 0;
+    await this.timing.sleep(Math.max(0, typingDelayMs(body, this.timing.random) - alreadyTyping));
     const downAfterTyping = await presence('stop_typing', provider.stopTyping(target));
     if (downAfterTyping) return downAfterTyping;
     return provider.sendText({ ...target, text: body });
@@ -391,22 +416,7 @@ export class OutboundWorker implements OnApplicationBootstrap {
       .set({ status: retry ? 'queued' : 'failed', lastError: failure.error })
       .where(and(eq(outboundMessages.id, job.outboundId), eq(outboundMessages.status, 'sending')));
 
-    if (failure.error === 'blocked_risk') {
-      // Sin vencimiento: lo levanta una persona (dev:resume-channel; después, el panel). Nunca se reinicia
-      // ni se re-vincula la sesión.
-      await tx
-        .update(channels)
-        .set({
-          sendingPausedUntil: sql`'infinity'::timestamptz`,
-          sendingPausedReason: `blocked_risk:${failure.code}`,
-        })
-        .where(eq(channels.id, context.channelId));
-    } else if (failure.error === 'session_down') {
-      await tx
-        .update(channels)
-        .set({ status: 'disconnected' })
-        .where(and(eq(channels.id, context.channelId), inArray(channels.status, ['pending', 'connected'])));
-    }
+    await applyChannelFailure(tx, context.channelId, failure);
     return retry ? 'reintento' : 'fallido';
   }
 
@@ -420,32 +430,7 @@ export class OutboundWorker implements OnApplicationBootstrap {
 
 // Entrantes que todavía no vio nadie: los posteriores al último saliente del chat (los entrantes no
 // guardan si se leyeron). Tope de 20: el visto marca todo el chat igual con los más recientes.
-async function unreadInbound(tx: AppTx, conversationId: string): Promise<SeenMessage[]> {
-  const result = await tx.execute<{ external_id: string; raw: unknown }>(sql`
-    SELECT external_id, raw FROM (
-      SELECT m.external_id, m.raw, m.sent_at FROM messages m
-      WHERE m.conversation_id = ${conversationId}
-        AND m.direction = 'inbound'
-        AND m.sent_at > COALESCE(
-          (SELECT max(o.sent_at) FROM messages o
-           WHERE o.conversation_id = ${conversationId} AND o.direction = 'outbound'),
-          '-infinity'::timestamptz)
-      ORDER BY m.sent_at DESC
-      LIMIT 20
-    ) recent ORDER BY sent_at
-  `);
-  return result.rows.map((row) => ({ externalId: row.external_id, raw: row.raw }));
-}
-
 async function dbNow(tx: AppTx): Promise<Date> {
   const result = await tx.execute<{ now: Date | string }>(sql`SELECT now() AS now`);
   return new Date(result.rows[0]!.now);
-}
-
-function errorCode(error: unknown): string {
-  const failure = error as { code?: unknown; name?: unknown; cause?: { code?: unknown } } | null;
-  for (const candidate of [failure?.cause?.code, failure?.code, failure?.name]) {
-    if (typeof candidate === 'string' && /^[A-Z0-9_]{1,40}$/i.test(candidate)) return candidate;
-  }
-  return 'desconocido';
 }

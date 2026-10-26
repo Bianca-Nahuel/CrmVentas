@@ -15,5 +15,8 @@
   },
   "peerDependencies": {
     "better-auth": "1.7.12"
+  },
+  "dependencies": {
+    "zod": "4.6.7"
   }
 }

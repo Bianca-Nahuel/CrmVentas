@@ -18,6 +18,12 @@ export const TYPING_DELAY = {
   maxMs: 8_000,
 } as const;
 
+/**
+ * Un "escribiendo…" puesto antes (la IA pensando, PresenceService) se descuenta de la demora solo si
+ * empezó hace menos que esto: WhatsApp saca el indicador solo a los ~25 s.
+ */
+export const TYPING_INDICATOR_MAX_MS = 20_000;
+
 /** Envíos por canal en cualquier ventana de 60 s (se cuentan los claims, salgan o no). */
 export const MAX_SENDS_PER_MINUTE_PER_CHANNEL = 6;
 export const RATE_WINDOW_MS = 60_000;

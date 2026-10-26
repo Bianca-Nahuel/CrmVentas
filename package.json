@@ -24,7 +24,9 @@
     "dev:create-channel": "npm run build:shared && npm run dev:create-channel -w @ventas/api --",
     "dev:sync-channel-webhook": "npm run build:shared && npm run dev:sync-channel-webhook -w @ventas/api --",
     "dev:send": "npm run build:shared && npm run dev:send -w @ventas/api --",
-    "dev:resume-channel": "npm run build:shared && npm run dev:resume-channel -w @ventas/api --"
+    "dev:resume-channel": "npm run build:shared && npm run dev:resume-channel -w @ventas/api --",
+    "dev:set-config": "npm run build:shared && npm run dev:set-config -w @ventas/api --",
+    "evals": "npm run build:shared && npm run evals -w @ventas/api --"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
