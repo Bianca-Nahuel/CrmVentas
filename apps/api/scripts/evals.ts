@@ -1,9 +1,14 @@
 // Evals del agente (tarea 006): corre los casos de evals/casos/ con el pipeline real (prompt, schema,
 // puntaje, decide y controles de salida) contra OpenRouter, sin base de datos ni envío.
 // Uso: npm run evals -- --model <id> [--model <id>] [--rubro ceramicos] [--case <id> ...] [--max-usd 0.30] [--tools-probe]
+//        [--catalog-mode response_format|final_tool]
 //   Sin --model, usa AI_DEFAULT_MODEL. Acepta modelos de ALLOWED_MODELS y de CANDIDATE_MODELS.
 //   --max-usd: deja de lanzar casos cuando el gasto de la corrida (todos los modelos) llega a ese monto.
-//   --tools-probe comprueba además tools + response_format juntos.
+//   --tools-probe comprueba herramientas con salida estructurada en los dos modos (response_format y
+//   final_tool, el plan B de la tarea 007), 3 veces cada uno.
+//   Casos con catálogo (tarea 007): la config tiene catalog.enabled y el caso nombra un catálogo inventado
+//   de evals/catalogos/. Usan la regla de ruteo de producción (un modelo sin catalogTools pasa a
+//   CATALOG_FALLBACK_MODEL_ID); --catalog-mode fuerza ese modo con el modelo pedido, sin ruteo.
 // Reporte en consola y en evals/resultados/ (no se commitea).
 import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
@@ -24,17 +29,24 @@ const { OpenRouterClient } = await import('../src/ai/llm/providers/openrouter/op
 const { LlmError } = await import('../src/ai/llm/llm-client.js');
 const { addUsd } = await import('../src/ai/llm/money.js');
 const { prepareTurn, evaluateTurn } = await import('../src/ai/reply/reply-engine.js');
-const { buildCheckContext, checkReply } = await import('../src/ai/reply/output-checks.js');
+const { buildCheckContext, checkReply, numbersIn } = await import('../src/ai/reply/output-checks.js');
 const { localTime } = await import('../src/ai/reply/business-hours.js');
+const { routeModel } = await import('../src/ai/llm/llm-client.factory.js');
+const { buildCatalogTools } = await import('../src/ai/tools/catalog-tools.js');
+const { TurnCatalogContext } = await import('../src/ai/tools/turn-catalog-context.js');
+const { MemoryCatalogStore } = await import('../src/catalog/memory-catalog-store.js');
+const { CatalogViewer } = await import('../src/catalog/catalog-viewer.js');
+const { ProductPageReader } = await import('../src/catalog/web/product-page-reader.js');
 
 type TenantConfig = import('@ventas/shared').TenantConfig;
-type HistoryMessage = import('../src/ai/prompts/v1/index.js').HistoryMessage;
+type HistoryMessage = import('../src/ai/prompts/v2/index.js').HistoryMessage;
 type TurnEvaluation = import('../src/ai/reply/reply-engine.js').TurnEvaluation;
 
 const ROOT = resolve(import.meta.dirname, '../../..');
 const CASES_DIR = join(ROOT, 'evals/casos');
 const RESULTS_DIR = join(ROOT, 'evals/resultados');
 const CONFIG_DIRS = [join(ROOT, 'apps/api/scripts/fixtures'), join(ROOT, 'evals/configs')];
+const CATALOGS_DIR = join(ROOT, 'evals/catalogos');
 const TIMEZONE = 'America/Argentina/Buenos_Aires';
 // Martes 27/10/2026 11:00 en Mar del Plata: abierto en las dos configs de ejemplo.
 const DEFAULT_NOW = '2026-10-27T14:00:00Z';
@@ -47,6 +59,8 @@ interface EvalCase {
   tipo: string;
   titulo: string;
   ahora?: string;
+  /** Catálogo inventado de evals/catalogos/ (por defecto ceramicos) si la config tiene catálogo. */
+  catalogo?: string;
   estado?: {
     extracted?: Record<string, string | number | boolean | null>;
     discovered?: { topic: string; value: string; evidence: string | null }[];
@@ -73,6 +87,12 @@ interface EvalCase {
     max_preguntas?: number;
     sugerencia?: boolean;
     mensaje_fijo?: 'in_hours' | 'after_hours';
+    /** Herramientas del catálogo que tiene que haber llamado. */
+    herramientas?: string[];
+    /** Marcas que tiene que haber citado ("precio:CER-001:lista", "cajas:CER-001", "link:CER-001"). */
+    citas?: string[];
+    /** SKUs que no puede citar. */
+    no_cita?: string[];
   };
 }
 type Accion = 'responder' | 'derivar' | 'nada';
@@ -96,6 +116,8 @@ interface CaseResult {
   costUsd: string;
   latencyMs: number;
   error?: string;
+  /** Turno con catálogo: modelo usado, herramientas llamadas y marcas citadas. */
+  catalog?: { model: string; tools: string[]; cited: string[] };
 }
 
 const AUTHOR = { cliente: 'cliente', ia: 'asistente', vendedor: 'vendedor' } as const;
@@ -202,7 +224,29 @@ async function runCase(
       },
     },
   };
-  const prepared = prepareTurn(input, model);
+  const turnCatalog = config.catalog?.enabled ? await catalogFor(item, config.catalog, now) : null;
+  const routed = turnCatalog
+    ? catalogMode
+      ? { model, toolOutputMode: catalogMode }
+      : routeModel(model, true)
+    : { model };
+  const prepared = prepareTurn(
+    input,
+    routed.model,
+    turnCatalog ? { ...turnCatalog, toolOutputMode: routed.toolOutputMode ?? 'response_format' } : undefined,
+  );
+  const catalogInfo = () =>
+    turnCatalog
+      ? {
+          catalog: {
+            model: routed.model.id,
+            tools: turnCatalog.context.consulted.map((entry): string => entry.tool),
+            cited: turnCatalog.context.cited.map((entry) =>
+              [entry.kind, entry.sku, entry.price_type].filter(Boolean).join(':'),
+            ),
+          },
+        }
+      : {};
   const base = { id: item.id, tipo: item.tipo, titulo: item.titulo, triggersCode: prepared.triggersCode };
 
   let output = null;
@@ -236,6 +280,7 @@ async function runCase(
         costUsd,
         latencyMs,
         error: error.kind,
+        ...catalogInfo(),
       };
     }
   }
@@ -244,7 +289,17 @@ async function runCase(
   const { decision } = evaluation;
   const reply = decision.kind === 'reply' ? decision.text : null;
   const rawReply = output?.reply ?? null;
-  const checks = buildCheckContext(config);
+  // Antes del control crudo, que vuelve a renderizar (y registraría las citas dos veces).
+  const catalogResult = catalogInfo();
+  const checks = {
+    ...buildCheckContext(config),
+    ...(turnCatalog
+      ? {
+          catalog: turnCatalog.context,
+          clientNumbers: input.burstTexts.flatMap(numbersIn),
+        }
+      : {}),
+  };
   const rawCheck = rawReply ? checkReply(rawReply, checks) : null;
   const accion = accionOf(evaluation);
   const expected = item.esperado;
@@ -318,6 +373,17 @@ async function runCase(
     if (got !== expected.mensaje_fijo) fail(`texto fijo ${got}`);
   }
 
+  for (const tool of expected.herramientas ?? []) {
+    if (!catalogResult.catalog?.tools.includes(tool)) fail(`no llamó a ${tool}`);
+  }
+  for (const citation of expected.citas ?? []) {
+    if (!catalogResult.catalog?.cited.some((cited) => cited.startsWith(citation)))
+      fail(`no citó ${citation}`);
+  }
+  for (const sku of expected.no_cita ?? []) {
+    if (catalogResult.catalog?.cited.some((cited) => cited.includes(`:${sku}`))) fail(`citó ${sku}`);
+  }
+
   const obtained = config.qualification.fields.filter((field) => evaluation.extracted[field.key] != null);
   const rawSummaryCoversFields =
     decision.kind === 'handoff' && output
@@ -343,7 +409,77 @@ async function runCase(
     rawSummaryCoversFields,
     costUsd,
     latencyMs,
+    ...catalogResult,
   };
+}
+
+/** Catálogo inventado de evals/catalogos/<nombre>.json en memoria, con la hora del caso. */
+async function catalogFor(item: EvalCase, catalog: NonNullable<TenantConfig['catalog']>, now: Date) {
+  const fixture = JSON.parse(
+    await readFile(join(CATALOGS_DIR, `${item.catalogo ?? 'ceramicos'}.json`), 'utf8'),
+  ) as { productos: CatalogFixtureProduct[] };
+  const store = new MemoryCatalogStore(() => now);
+  for (const product of fixture.productos) {
+    const record = store.addProduct({
+      sku: product.sku,
+      name: product.name,
+      category: product.category,
+      unit: product.unit,
+      unitsPerPackage: product.units_per_package,
+      piecesPerPackage: product.pieces_per_package,
+      url: product.url,
+      attributes: product.attributes,
+    });
+    for (const snapshot of product.snapshots) {
+      store.addSnapshot({
+        productId: record.id,
+        source: snapshot.source,
+        readAt: new Date(now.getTime() - snapshot.edad_minutos * 60_000),
+        ok: snapshot.ok,
+        errorCode: snapshot.error_code,
+        listPrice: snapshot.list_price,
+        promoPrice: snapshot.promo_price,
+        promoCondition: snapshot.promo_condition,
+        priceNoTaxes: snapshot.price_no_taxes,
+        currency: 'ARS',
+        priceUnit: snapshot.price_unit,
+        unitsPerPackage: null,
+        piecesPerPackage: null,
+        availability: snapshot.availability,
+        description: snapshot.description,
+        extra: {},
+      });
+    }
+  }
+  // Sin red: una lectura vencida no se puede rehacer (la web "no responde").
+  const offline = { fetchHtml: async () => ({ ok: false as const, errorCode: 'fetch_failed' as const }) };
+  const viewer = new CatalogViewer(new ProductPageReader(offline, () => now), () => now);
+  const context = new TurnCatalogContext(catalog, now, TIMEZONE);
+  return { tools: buildCatalogTools({ store, viewer, context }), context };
+}
+
+interface CatalogFixtureProduct {
+  sku: string;
+  name: string;
+  category: string | null;
+  unit: 'm2' | 'ml' | 'unit' | 'box' | 'kg' | 'l';
+  units_per_package: string | null;
+  pieces_per_package: number | null;
+  url: string | null;
+  attributes: Record<string, string | number | boolean>;
+  snapshots: {
+    source: 'web' | 'excel';
+    edad_minutos: number;
+    ok: boolean;
+    error_code: string | null;
+    list_price: string | null;
+    promo_price: string | null;
+    promo_condition: string | null;
+    price_no_taxes: string | null;
+    price_unit: string | null;
+    availability: 'in_stock' | 'out_of_stock' | 'unknown';
+    description: string | null;
+  }[];
 }
 
 async function pool<T, R>(items: T[], size: number, fn: (item: T) => Promise<R>): Promise<R[]> {
@@ -437,6 +573,7 @@ function metrics(cases: EvalCase[], results: CaseResult[]) {
       guardado: '100 % (lo completa el código)',
       crudo_del_modelo: pct(handoffs.filter((r) => r.rawSummaryCoversFields).length, handoffs.length),
     },
+    catalogo: catalogMetrics(cases, results),
     acierto_accion: pct(
       results.filter((r) => !r.failures.some((f) => f.startsWith('acción'))).length,
       results.length,
@@ -450,29 +587,73 @@ function metrics(cases: EvalCase[], results: CaseResult[]) {
   };
 }
 
+function catalogMetrics(cases: EvalCase[], results: CaseResult[]) {
+  const catalogResults = results.filter((r) => r.catalog);
+  if (catalogResults.length === 0) return null;
+  const typedByHand = catalogResults.filter((r) => r.rawControl === 'money' || r.rawControl === 'quantity');
+  const badMarkers = catalogResults.filter((r) => r.rawControl === 'marker');
+  // Afirmar stock sin una marca {{stock}} válida (lo que salió, no lo que el control bloqueó).
+  const stockClaims = catalogResults.filter(
+    (r) =>
+      r.reply &&
+      /\b(hay|tenemos|queda|quedan|sin|con) stock\b/i.test(r.reply) &&
+      !r.catalog!.cited.some((c) => c.startsWith('stock')),
+  );
+  const hotCases = cases.filter((item) => item.esperado.puntaje === 'gte_hot').map((item) => item.id);
+  return {
+    casos: catalogResults.length,
+    aprobados: catalogResults.filter((r) => r.ok).length,
+    modelos: [...new Set(catalogResults.map((r) => r.catalog!.model))],
+    montos_o_cantidades_a_mano_crudos: { casos: typedByHand.map((r) => r.id), meta: 0 },
+    marcas_invalidas_crudas: badMarkers.map((r) => r.id),
+    stock_afirmado_sin_marca: { casos: stockClaims.map((r) => r.id), meta: 0 },
+    respuestas_a_calientes: {
+      casos: catalogResults
+        .filter((r) => hotCases.includes(r.id) && r.accion === 'responder')
+        .map((r) => r.id),
+      meta: 0,
+    },
+    herramientas_por_turno: (
+      catalogResults.reduce((total, r) => total + r.catalog!.tools.length, 0) / catalogResults.length
+    ).toFixed(2),
+  };
+}
+
 async function toolsProbe(client: InstanceType<typeof OpenRouterClient>, modelId: string): Promise<string> {
   const schema = z.object({ horario: z.string() }).strict();
-  try {
-    const result = await client.complete({
-      model: modelId,
-      system: 'Usá la herramienta consultar_horario y devolvé el horario que te dé en el campo "horario".',
-      messages: [{ role: 'user', content: '¿A qué hora abren?' }],
-      schema: { name: 'probe', zod: schema, jsonSchema: z.toJSONSchema(schema) as Record<string, unknown> },
-      maxOutputTokens: 200,
-      tools: [
-        {
-          name: 'consultar_horario',
-          description: 'Devuelve el horario de atención',
-          parameters: { type: 'object', properties: {}, required: [], additionalProperties: false },
-          args: z.object({}).passthrough(),
-          execute: async () => ({ horario: 'de 9 a 17:30' }),
-        },
-      ],
-    });
-    return `OK (${result.toolCalls.length} llamada/s a la herramienta, salida: ${JSON.stringify(result.parsed)})`;
-  } catch (error) {
-    return `FALLÓ (${error instanceof LlmError ? error.kind : 'desconocido'})`;
+  const once = async (mode: 'response_format' | 'final_tool') => {
+    try {
+      const result = await client.complete({
+        model: modelId,
+        system:
+          'No sabés el horario del negocio. Usá la herramienta consultar_horario y devolvé el horario que te dé en el campo "horario".',
+        messages: [{ role: 'user', content: '¿A qué hora abren?' }],
+        schema: { name: 'probe', zod: schema, jsonSchema: z.toJSONSchema(schema) as Record<string, unknown> },
+        maxOutputTokens: 400,
+        toolOutputMode: mode,
+        tools: [
+          {
+            name: 'consultar_horario',
+            description: 'Devuelve el horario de atención',
+            parameters: { type: 'object', properties: {}, required: [], additionalProperties: false },
+            args: z.object({}).passthrough(),
+            execute: async () => ({ horario: 'de 9 a 17:30' }),
+          },
+        ],
+      });
+      // OK solo si llamó a la herramienta y usó lo que devolvió (no inventó el horario).
+      return result.toolCalls.length > 0 && result.parsed.horario.includes('17:30') ? 'ok' : 'inventó';
+    } catch (error) {
+      return `error:${error instanceof LlmError ? error.kind : 'desconocido'}`;
+    }
+  };
+  const report: string[] = [];
+  for (const mode of ['response_format', 'final_tool'] as const) {
+    const outcomes: string[] = [];
+    for (let attempt = 0; attempt < 3; attempt++) outcomes.push(await once(mode));
+    report.push(`${mode}: ${outcomes.filter((o) => o === 'ok').length}/3 (${outcomes.join(', ')})`);
   }
+  return report.join(' · ');
 }
 
 // ---------------------------------------------------------------------------------------------------
@@ -483,9 +664,15 @@ const { values } = parseArgs({
     case: { type: 'string', multiple: true },
     'max-usd': { type: 'string' },
     'tools-probe': { type: 'boolean' },
+    'catalog-mode': { type: 'string' },
   },
   strict: true,
 });
+const catalogMode = values['catalog-mode'] as 'response_format' | 'final_tool' | undefined;
+if (catalogMode && catalogMode !== 'response_format' && catalogMode !== 'final_tool') {
+  console.error('--catalog-mode tiene que ser response_format o final_tool.');
+  process.exit(1);
+}
 const env = parseEnv();
 if (!env.OPENROUTER_API_KEY) {
   console.error('Falta OPENROUTER_API_KEY en el .env.');

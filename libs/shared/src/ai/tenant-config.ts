@@ -3,6 +3,7 @@
 // Textos con largo máximo y listas con tamaño máximo: acotan el prompt y lo que una empresa puede meter
 // en su propia capa (que igual queda por debajo de la capa fija).
 import { z } from 'zod';
+import { catalogConfigSchema } from './catalog-config.js';
 import { findAllowedModel } from './models.js';
 import { normalizeText } from './text.js';
 
@@ -216,6 +217,8 @@ export const tenantConfigSchema = z
         ]),
       })
       .strict(),
+    // Catálogo (tarea 007). Sin esta sección, el agente no tiene herramientas ni precios.
+    catalog: catalogConfigSchema.optional(),
   })
   .strict()
   .superRefine((config, ctx) => {

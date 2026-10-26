@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { tenantConfigSchema, type TenantConfig } from '@ventas/shared';
+import { invalidSelectors } from '../../catalog/web/extract.js';
 import { desc, sql } from 'drizzle-orm';
 import { tenantConfigs } from '../../db/schema/ai.js';
 import type { AppTx } from '../../db/tenant-context.js';
@@ -44,6 +45,13 @@ export class TenantConfigService {
     if (!parsed.success) {
       throw new InvalidTenantConfigError(
         parsed.error.issues.map((issue) => `- ${issue.path.join('.') || '(raíz)'}: ${issue.message}`),
+      );
+    }
+    // La sintaxis CSS del extractor del catálogo la valida css-select (libs/shared no lo conoce).
+    const badSelectors = invalidSelectors(parsed.data.catalog?.extractor);
+    if (badSelectors.length > 0) {
+      throw new InvalidTenantConfigError(
+        badSelectors.map((field) => `- catalog.extractor.fields.${field}.selector: selector CSS inválido`),
       );
     }
     for (let attempt = 1; ; attempt++) {

@@ -2,9 +2,10 @@ import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres';
 import pg from 'pg';
 import { aiSchema } from './schema/ai.js';
 import { authSchema } from './schema/auth.js';
+import { catalogSchema } from './schema/catalog.js';
 import { messagingSchema } from './schema/messaging.js';
 
-const appSchema = { ...authSchema, ...messagingSchema, ...aiSchema };
+const appSchema = { ...authSchema, ...messagingSchema, ...aiSchema, ...catalogSchema };
 
 export type AppDb = NodePgDatabase<typeof appSchema>;
 export type AuthDb = NodePgDatabase<typeof authSchema>;

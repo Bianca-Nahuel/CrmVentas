@@ -1,8 +1,14 @@
 # Estado del proyecto
 
-_Última actualización: 2026-10-26_
+_Última actualización: 2026-10-26 (tarea 007)_
 
 ## Hecho
+
+- Tarea 007 (catálogo Excel y web): ver el "Resultado" en `docs/tareas/hechas/007-catalogo-excel-y-web.md` y las decisiones #48–#57.
+  - Migraciones 0011–0012: `catalog_products` (búsqueda con unaccent + trigramas), `catalog_imports`, `catalog_import_rows`, `product_snapshots`, `ai_runs.catalog_citations`, cola `catalog-refresh`.
+  - `npm run dev:import-catalog` (vista previa, `--apply`, `--revert`) y `npm run dev:test-extractor` (un pedido, con las protecciones SSRF).
+  - Herramientas `buscar_productos` (con `precio_max` y `orden`), `ver_producto` y `calcular_cantidad`; marcas que escribe el código; prompt v2; plan B (`final_tool`) y ruteo a Haiku.
+  - 525 tests. Evals de catálogo (26 casos) y `--tools-probe` con `final_tool`: **sin correr** (no hay clave de OpenRouter en el contenedor de la sesión).
 
 - Tarea 006 (reemplazó a "primera respuesta de la IA"): agente configurable con puntaje de lead y calificación antes de derivar.
   - Config del agente versionada en `tenant_configs`, validada con zod en `libs/shared`, cargada con `npm run dev:set-config`. Fixtures de cerámicos e inmobiliaria.
@@ -28,7 +34,8 @@ _Última actualización: 2026-10-26_
 ## Siguiente
 
 - `.claude/settings.json` quedó afuera del commit de la 006 (cambio del usuario): el revisor de seguridad sugirió volver a "preguntar" `node *`, `docker compose *` y `npm run db:*`.
-- Tarea 007 (catálogo Excel y web): el ciclo de herramientas de `OpenRouterClient` ya está y `--tools-probe` dio OK con Haiku y Sonnet. **Con DeepSeek (el modelo por defecto), herramientas + `response_format` en la misma llamada no funciona: 0 de 3 pruebas llamó a la herramienta y siempre inventó el dato** (2026-10-26). Antes del catálogo, probar con evals: (1) dos fases (vueltas con herramientas sin `response_format` y una llamada final con la salida estructurada) o (2) la salida final como herramienta forzada; si ninguna anda con DeepSeek, usar Haiku en los turnos con catálogo. La interfaz `LlmClient` no cambia. Los controles de salida tienen `parseMarkers`/`render` listos para `{{precio:SKU}}`. Hoy un precio marca `cannot_answer`.
+- Tarea 007, pendiente con el usuario: (1) `npm run evals -- --model deepseek/deepseek-v4.1-flash --tools-probe --case CAT01 --max-usd 0.05`; si `final_tool` da 3/3, cambiar `catalogTools` de DeepSeek a `final_tool` en `libs/shared/src/ai/models.ts` (hoy sus turnos con catálogo van a Haiku); (2) evals de catálogo (`--rubro ceramicos`, ~USD 0,10–0,25) y las 80 de la 006 con el prompt v2; (3) prueba real: Excel con 5 productos, extractor con `dev:test-extractor` (pocos pedidos), precio, 45 m² y stock por WhatsApp.
+- Proponer al usuario actualizar la línea de disponibilidad de `CLAUDE.md` (decisión #56).
 - Tarea 008 (créditos): reemplazar `NoopBudgetGuard`; ver la deuda de la 006 (doble llamada si falla la T2, tope de corridas por conversación, límite de gasto en la clave de OpenRouter).
 - Tarea 014: volver a activar la IA en una conversación derivada (hoy se cierra a mano en la base para probar) y mostrar el resumen como "automático, no verificado".
 - Antes de `npm run test`, bajar `npm run dev:api` (comparten la cola de pg-boss).

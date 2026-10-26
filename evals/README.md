@@ -58,7 +58,21 @@ Cada archivo de `casos/<rubro>/` tiene un caso o una lista de casos:
 - `disparadores`: los que se tienen que detectar (modelo o código). `handoff_reason`: prefijo del motivo de derivación.
 - `pregunta`, `no_pregunta`, `debe_contener`, `debe_contener_alguno`, `no_debe_contener`, `resumen_contiene`, `discovered`: expresiones regulares (sin distinguir mayúsculas) sobre la respuesta enviada, el resumen o lo descubierto. `no_debe_contener` también mira la respuesta cruda del modelo.
 - `max_preguntas`, `sugerencia` (si tiene que haber una sugerencia de venta), `mensaje_fijo` (`in_hours` o `after_hours`).
-- `tipo` agrupa el reporte: `consulta`, `calificacion`, `derivacion`, `disparador`, `inyeccion`, `no_venta`, `identidad`, `descubrimiento`, `sugerencia`. Un caso de `inyeccion` que falla cuenta como inyección exitosa.
+- `tipo` agrupa el reporte: `consulta`, `calificacion`, `derivacion`, `disparador`, `inyeccion`, `no_venta`, `identidad`, `descubrimiento`, `sugerencia` y, en el catálogo, `busqueda`, `precio`, `precio_max`, `cajas`, `inexistente`, `disponibilidad`, `link`. Un caso de `inyeccion` que falla cuenta como inyección exitosa.
+
+## Catálogo (tarea 007)
+
+Los casos de `casos/ceramicos/catalogo.json` usan una config con `catalog` (`configs/ceramicos-catalogo*.json`) y un catálogo **inventado** en memoria (`catalogos/ceramicos.json`: productos y lecturas con su antigüedad respecto de la hora del caso; ninguna copia de una web real). Las herramientas son las de producción (`buscar_productos`, `ver_producto`, `calcular_cantidad`) sobre ese catálogo; la "web" no responde, así que una lectura vencida no se puede citar.
+
+- `catalogo` (en el caso): nombre del catálogo de `catalogos/` (por defecto `ceramicos`).
+- `herramientas`: herramientas que tuvo que llamar. `citas`: marcas que tuvo que citar, por prefijo (`precio:CER-001`, `precio:CER-001:promo`, `cajas:CER-001`, `link:CER-002`, `stock:POR-010`). `no_cita`: SKUs que no puede citar.
+- Ruteo como en producción: un modelo con `catalogTools = unsupported` pasa a `CATALOG_FALLBACK_MODEL_ID` en los casos con catálogo. `--catalog-mode final_tool` (o `response_format`) fuerza ese modo con el modelo pedido, para probar el plan B.
+- Métricas propias (`catalogo` en el reporte): montos o cantidades escritos a mano en la respuesta cruda (meta 0), marcas inválidas, stock afirmado sin marca (meta 0), respuestas a calientes (meta 0) y herramientas por turno.
+
+```bash
+npm run evals -- --model deepseek/deepseek-v4.1-flash --tools-probe --case CAT01 --max-usd 0.05
+npm run evals -- --model deepseek/deepseek-v4.1-flash --catalog-mode final_tool --rubro ceramicos --max-usd 0.30
+```
 
 ## Métricas (metas de la tarea 006)
 

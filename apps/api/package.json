@@ -17,6 +17,8 @@
     "dev:send": "tsx scripts/send-dev-message.ts",
     "dev:resume-channel": "tsx scripts/resume-dev-channel.ts",
     "dev:set-config": "tsx scripts/set-tenant-config.ts",
+    "dev:import-catalog": "tsx scripts/import-catalog.ts",
+    "dev:test-extractor": "tsx scripts/test-extractor.ts",
     "evals": "tsx scripts/evals.ts"
   },
   "dependencies": {
@@ -26,12 +28,18 @@
     "@thallesp/nestjs-better-auth": "2.8.0",
     "@ventas/shared": "*",
     "better-auth": "1.7.12",
+    "css-select": "7.0.0",
+    "domhandler": "6.0.1",
+    "domutils": "4.0.2",
     "drizzle-orm": "0.45.4",
     "express": "5.3.0",
+    "fflate": "0.8.3",
+    "htmlparser2": "12.0.0",
     "pg": "8.23.1",
     "pg-boss": "12.37.1",
     "reflect-metadata": "0.2.2",
     "rxjs": "7.8.2",
+    "saxen": "11.2.0",
     "zod": "4.6.7"
   },
   "devDependencies": {

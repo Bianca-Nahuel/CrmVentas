@@ -26,6 +26,8 @@
     "dev:send": "npm run build:shared && npm run dev:send -w @ventas/api --",
     "dev:resume-channel": "npm run build:shared && npm run dev:resume-channel -w @ventas/api --",
     "dev:set-config": "npm run build:shared && npm run dev:set-config -w @ventas/api --",
+    "dev:import-catalog": "npm run build:shared && npm run dev:import-catalog -w @ventas/api --",
+    "dev:test-extractor": "npm run build:shared && npm run dev:test-extractor -w @ventas/api --",
     "evals": "npm run build:shared && npm run evals -w @ventas/api --"
   },
   "devDependencies": {

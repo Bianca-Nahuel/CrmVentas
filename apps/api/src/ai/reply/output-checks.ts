@@ -2,10 +2,14 @@
 // bloquea el envío (y la conversación se deriva). checkReply es la única forma de obtener un SafeReply,
 // el único tipo que acepta el envío de la IA.
 //
-// Preparado para la 007: parseMarkers separa las marcas ({{precio:SKU}}) antes de los controles y render
-// las reemplaza con datos de la base DESPUÉS. Hoy la gramática está vacía: cualquier {{…}} bloquea.
+// Marcas del catálogo (tarea 007, markers.ts): parseMarkers las separa antes de los controles (que corren
+// sobre el texto con un marcador neutro en su lugar) y renderMarkers pone los valores DESPUÉS. Una marca
+// inválida bloquea; cualquier otro {{…}} también.
 import { normalizeText, type TenantConfig } from '@ventas/shared';
-import { AI_REPLY_MAX_CHARS } from '../ai.constants.js';
+import { AI_REPLY_MAX_CHARS, AI_REPLY_RENDERED_MAX_CHARS } from '../ai.constants.js';
+import { canonical, parseArNumber } from '../../catalog/decimal.js';
+import type { TurnCatalogContext } from '../tools/turn-catalog-context.js';
+import { markersValid, parseMarkers, renderMarkers } from './markers.js';
 
 declare const safeReplyBrand: unique symbol;
 /** Texto que pasó los controles de salida. */
@@ -22,7 +26,9 @@ export type OutputControl =
   | 'sensitive_request'
   | 'commitment'
   | 'denies_assistant'
-  | 'leak';
+  | 'leak'
+  | 'marker'
+  | 'quantity';
 
 export type CheckResult = { ok: true; reply: SafeReply } | { ok: false; control: OutputControl };
 
@@ -35,6 +41,10 @@ export interface CheckContext {
   emails: string[];
   /** Dígitos de los teléfonos que aparecen en la config. */
   phones: string[];
+  /** Lo que devolvieron las herramientas del catálogo en este turno (sin catálogo: undefined). */
+  catalog?: TurnCatalogContext;
+  /** Números que escribió el cliente (canónicos): los m² que el modelo puede repetir. */
+  clientNumbers?: string[];
 }
 
 // Cualquier dominio con TLD de letras (no una lista fija: un .xyz también es un link). Un "palabra.Palabra"
@@ -201,22 +211,26 @@ function normalizeLink(link: string): string {
     .replace(/[.,;:!?/]+$/, '');
 }
 
-/** Marcas que el código reemplaza después de los controles. 006: ninguna. */
-function parseMarkers(text: string): { template: string } {
-  return { template: text };
-}
+// Cantidades escritas por el modelo: cajas o piezas nunca (van con marcas); m² solo si los dijo el cliente.
+const PACKAGE_QUANTITY = /\b\d+(?:[.,]\d+)?\s*(cajas?|piezas?)\b/;
+const AREA_QUANTITY = /\b(\d+(?:[.,]\d+)?)\s*(?:m2|m²|mts?2|metros? cuadrados?)/g;
 
-function render(template: string): string {
-  return template;
+/** Los números de un texto, canónicos ("45", "45,5" → "45.5"). */
+export function numbersIn(text: string): string[] {
+  return [...text.matchAll(/(?<![\p{L}\d])\d+(?:[.,]\d+)*/gu)]
+    .map((match) => parseArNumber(match[0]) ?? canonical(match[0].replace(',', '.')))
+    .filter((value): value is string => value !== null);
 }
 
 export function checkReply(reply: string, context: CheckContext): CheckResult {
   const fail = (control: OutputControl): CheckResult => ({ ok: false, control });
-  const { template } = parseMarkers(reply);
+  const original = reply.trim();
+  const { markers, template } = parseMarkers(original);
   const text = template.trim();
   if (text === '') return fail('empty');
   if ([...text].length > AI_REPLY_MAX_CHARS) return fail('max_length');
   if (/\{\{|\}\}/.test(text)) return fail('placeholder');
+  if (!markersValid(markers, context.catalog)) return fail('marker');
 
   const emails = [...text.matchAll(EMAIL_PATTERN)].map((match) => match[0].toLowerCase());
   if (emails.some((email) => !context.emails.includes(email))) return fail('email');
@@ -244,10 +258,21 @@ export function checkReply(reply: string, context: CheckContext): CheckResult {
   for (const match of normalized.matchAll(PRICE_WORDS)) {
     if (digits(match[2]!).length >= 3 && !inConfig(match[2]!, context)) return fail('money');
   }
+  if (context.catalog) {
+    if (PACKAGE_QUANTITY.test(normalized)) return fail('quantity');
+    const said = new Set(context.clientNumbers ?? []);
+    for (const match of text.toLowerCase().matchAll(AREA_QUANTITY)) {
+      const value = numbersIn(match[1]!)[0];
+      if (!value || !said.has(value)) return fail('quantity');
+    }
+  }
   if (failsWithLiteralException(SENSITIVE_PATTERNS, normalized, context)) return fail('sensitive_request');
   if (failsWithLiteralException(COMMITMENT_PATTERNS, normalized, context)) return fail('commitment');
   if (DENIES_ASSISTANT_PATTERNS.some((pattern) => pattern.test(normalized))) return fail('denies_assistant');
   if (LEAK_MARKERS.some((marker) => normalized.includes(marker))) return fail('leak');
 
-  return { ok: true, reply: render(text) as SafeReply };
+  // Recién acá se ponen los valores (y se registran las citas).
+  const rendered = renderMarkers(original, markers, context.catalog);
+  if ([...rendered].length > AI_REPLY_RENDERED_MAX_CHARS) return fail('max_length');
+  return { ok: true, reply: rendered as SafeReply };
 }

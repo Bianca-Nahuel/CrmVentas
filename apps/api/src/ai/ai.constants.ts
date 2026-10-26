@@ -9,6 +9,8 @@ export const AI_MESSAGE_MAX_CHARS = 1_000;
 
 /** Tope de una respuesta enviada como 'ai' (control de salida). */
 export const AI_REPLY_MAX_CHARS = 500;
+/** Tope después de poner los valores de las marcas del catálogo (precios con condición, links). */
+export const AI_REPLY_RENDERED_MAX_CHARS = 900;
 
 /**
  * Tokens de salida del modelo: señales + extracción + respuesta + resumen (~600) más el razonamiento, que

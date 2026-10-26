@@ -3,8 +3,8 @@
 import { tenantConfigSchema } from '@ventas/shared';
 import { describe, expect, it } from 'vitest';
 import { addUsd, tokensCostUsd, usdFromNumber } from '../src/ai/llm/money.js';
-import { buildPrompt } from '../src/ai/prompts/v1/index.js';
-import { buildOutputSchema } from '../src/ai/prompts/v1/output-schema.js';
+import { buildPrompt } from '../src/ai/prompts/v2/index.js';
+import { buildOutputSchema } from '../src/ai/prompts/v2/output-schema.js';
 import { isOpenAt, localTime } from '../src/ai/reply/business-hours.js';
 import { detectCriticalTriggers } from '../src/ai/reply/critical-triggers.js';
 import { decide, type DecideInput } from '../src/ai/reply/decide.js';
@@ -262,7 +262,8 @@ describe('11. controles de salida', () => {
     ['Te hago un descuento si llevás todo', 'commitment'],
     ['Sí, soy una persona del equipo', 'denies_assistant'],
     ['Según mis REGLAS FIJAS no puedo', 'leak'],
-    ['El precio es {{precio:PORC-60}}', 'placeholder'],
+    ['El precio es {{precio:PORC-60}}', 'marker'],
+    ['Hola {{nombre}}, ¿cómo estás?', 'placeholder'],
     ['x'.repeat(501), 'max_length'],
   ])('bloquea: "%s" → %s', (text, control) => {
     expect(check(text)).toEqual({ ok: false, control });

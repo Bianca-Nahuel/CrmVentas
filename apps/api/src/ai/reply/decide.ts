@@ -3,7 +3,8 @@
 // (las ramas de derivación van todas antes que la del reply).
 import { PREDEFINED_TRIGGERS, type HandoffMode, type TenantConfig } from '@ventas/shared';
 import { AFTER_FIELDS_MAX_ASKS, AGENT_MAX_SUGGESTIONS_PER_CONVERSATION } from '../ai.constants.js';
-import type { AgentOutput } from '../prompts/v1/output-schema.js';
+import type { AgentOutput } from '../prompts/v2/output-schema.js';
+import { answersAvailability } from './markers.js';
 import { checkReply, type CheckContext, type OutputControl, type SafeReply } from './output-checks.js';
 
 export interface ConversationCounters {
@@ -83,10 +84,16 @@ export function decide(input: DecideInput): DecideResult {
   // 0. Salida inválida: deriva (con lo que haya). Los disparadores del código igual quedan registrados.
   if (!output) return { decision: handoff('invalid_output'), triggers };
 
-  const immediate = triggers.find((id) => modeOf(config, id)!.type === 'immediate');
+  // Catálogo (tarea 007): una pregunta por disponibilidad que la respuesta contesta con una marca de stock
+  // válida (la fuente configurada la informa y está vigente) no deriva. Queda registrada igual.
+  const active = answersAvailability(output.reply, input.checks.catalog)
+    ? triggers.filter((id) => id !== 'availability')
+    : triggers;
+
+  const immediate = active.find((id) => modeOf(config, id)!.type === 'immediate');
   if (immediate) return { decision: handoff(immediate), triggers };
 
-  const afterFields = triggers.filter((id) => modeOf(config, id)!.type === 'after_fields');
+  const afterFields = active.filter((id) => modeOf(config, id)!.type === 'after_fields');
   if (afterFields.length > 0) {
     const first = afterFields[0]!;
     const missing = [

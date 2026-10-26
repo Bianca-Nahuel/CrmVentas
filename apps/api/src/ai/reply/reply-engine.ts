@@ -2,23 +2,24 @@
 // devolvió, combinar datos, puntuar y decidir (evaluateTurn). Lo usan el worker y el runner de evals, así
 // los evals prueban el mismo prompt, schema, decisión y controles que producción.
 import { normalizeText, type AllowedModel, type CriticalTrigger, type TenantConfig } from '@ventas/shared';
-import { AI_MAX_OUTPUT_TOKENS, DISCOVERED_NOTES_MAX } from '../ai.constants.js';
-import type { LlmRequest } from '../llm/llm-client.js';
+import { AI_MAX_OUTPUT_TOKENS, DISCOVERED_NOTES_MAX, MAX_TOOL_CALLS_PER_TURN } from '../ai.constants.js';
+import type { LlmRequest, LlmTool } from '../llm/llm-client.js';
+import type { TurnCatalogContext } from '../tools/turn-catalog-context.js';
 import { addUsd, tokensCostUsd } from '../llm/money.js';
-import { buildPrompt, type HistoryMessage } from '../prompts/v1/index.js';
+import { buildPrompt, type HistoryMessage } from '../prompts/v2/index.js';
 import {
   buildOutputSchema,
   type AgentOutput,
   type DiscoveredNote,
   type ExtractedValue,
-} from '../prompts/v1/output-schema.js';
-import type { TenantLayerState } from '../prompts/v1/tenant-layer.js';
+} from '../prompts/v2/output-schema.js';
+import type { TenantLayerState } from '../prompts/v2/tenant-layer.js';
 import { computeScore, type ScoreBreakdown } from '../scoring/score.js';
 import { isOpenAt, localTime } from './business-hours.js';
 import { detectCriticalTriggers } from './critical-triggers.js';
 import { decide, type Decision } from './decide.js';
 import { composeHandoffSummary } from './handoff-summary.js';
-import { buildCheckContext } from './output-checks.js';
+import { buildCheckContext, numbersIn } from './output-checks.js';
 
 export interface TurnInput {
   config: TenantConfig;
@@ -30,12 +31,20 @@ export interface TurnInput {
   state: TenantLayerState;
 }
 
+/** Herramientas del catálogo del turno (tarea 007) y lo que van devolviendo. */
+export interface TurnCatalog {
+  tools: LlmTool[];
+  context: TurnCatalogContext;
+  toolOutputMode: 'response_format' | 'final_tool';
+}
+
 export interface PreparedTurn {
   request: LlmRequest<AgentOutput>;
   triggersCode: CriticalTrigger[];
   isOpen: boolean;
   /** Estimación previa para el AiBudgetGuard (USD). */
   estimateUsd: string;
+  catalog?: TurnCatalogContext;
 }
 
 export interface TurnEvaluation {
@@ -52,7 +61,7 @@ export interface TurnEvaluation {
   handoffSummary: string | null;
 }
 
-export function prepareTurn(input: TurnInput, model: AllowedModel): PreparedTurn {
+export function prepareTurn(input: TurnInput, model: AllowedModel, catalog?: TurnCatalog): PreparedTurn {
   const local = localTime(input.now, input.timezone);
   const isOpen = isOpenAt(input.config.business.service_hours, input.timezone, input.now);
   const prompt = buildPrompt({
@@ -69,19 +78,29 @@ export function prepareTurn(input: TurnInput, model: AllowedModel): PreparedTurn
     schema: buildOutputSchema(input.config),
     maxOutputTokens: AI_MAX_OUTPUT_TOKENS,
     ...(model.reasoningEffort ? { reasoningEffort: model.reasoningEffort } : {}),
+    ...(catalog
+      ? {
+          tools: catalog.tools,
+          maxToolCalls: MAX_TOOL_CALLS_PER_TURN,
+          toolOutputMode: catalog.toolOutputMode,
+        }
+      : {}),
   };
   // Tokens de entrada aproximados: un token cada ~3 caracteres (alcanza para reservar).
   const chars =
     prompt.system.length + prompt.messages.reduce((total, message) => total + message.content.length, 0);
-  const estimateUsd = addUsd(
+  const oneCall = addUsd(
     tokensCostUsd(Math.ceil(chars / 3), model.inputUsdPerMTok),
     tokensCostUsd(AI_MAX_OUTPUT_TOKENS, model.outputUsdPerMTok),
   );
+  // Con herramientas, cada vuelta reenvía el prompt: se reserva para dos llamadas (la mayoría usa 1 o 2).
+  const estimateUsd = catalog ? addUsd(oneCall, oneCall) : oneCall;
   return {
     request,
     triggersCode: detectCriticalTriggers(input.burstTexts, input.config),
     isOpen,
     estimateUsd,
+    ...(catalog ? { catalog: catalog.context } : {}),
   };
 }
 
@@ -133,7 +152,12 @@ export function evaluateTurn(
     triggersCode: prepared.triggersCode,
     counters: { ...state.counters, afterFieldsAsks },
     isOpen: prepared.isOpen,
-    checks: buildCheckContext(config),
+    checks: {
+      ...buildCheckContext(config),
+      ...(prepared.catalog
+        ? { catalog: prepared.catalog, clientNumbers: input.burstTexts.flatMap(numbersIn) }
+        : {}),
+    },
   });
 
   const handoffSummary =

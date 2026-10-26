@@ -2,7 +2,7 @@
 // que no falte (todos los campos obtenidos y lo descubierto). Si la salida fue inválida, lo arma el código.
 import { normalizeText, type TenantConfig } from '@ventas/shared';
 import { HANDOFF_SUMMARY_STORED_MAX_CHARS } from '../ai.constants.js';
-import type { DiscoveredNote, ExtractedValue } from '../prompts/v1/output-schema.js';
+import type { DiscoveredNote, ExtractedValue } from '../prompts/v2/output-schema.js';
 
 function display(value: ExtractedValue): string {
   if (value === true) return 'sí';

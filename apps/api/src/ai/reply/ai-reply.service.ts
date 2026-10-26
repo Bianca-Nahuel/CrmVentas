@@ -22,9 +22,11 @@ import { TenantConfigService } from '../config/tenant-config.service.js';
 import { AI_BUDGET_GUARD, type AiBudgetGuard } from '../llm/budget-guard.js';
 import { LLM_CLIENT_FACTORY, type LlmClientFactory, type LlmSelection } from '../llm/llm-client.factory.js';
 import { LlmError, type LlmResult } from '../llm/llm-client.js';
-import { PROMPT_VERSION, type HistoryAuthor, type HistoryMessage } from '../prompts/v1/index.js';
-import type { AgentOutput, DiscoveredNote, ExtractedValue } from '../prompts/v1/output-schema.js';
-import type { TenantLayerState } from '../prompts/v1/tenant-layer.js';
+import { CatalogRefreshWorker } from '../../catalog/catalog-refresh.worker.js';
+import { CatalogService } from '../../catalog/catalog.service.js';
+import { PROMPT_VERSION, type HistoryAuthor, type HistoryMessage } from '../prompts/v2/index.js';
+import type { AgentOutput, DiscoveredNote, ExtractedValue } from '../prompts/v2/output-schema.js';
+import type { TenantLayerState } from '../prompts/v2/tenant-layer.js';
 import { tierFor } from '../scoring/score.js';
 import type { AiReplyJob } from './ai-reply.job.js';
 import { isOpenAt, localTime } from './business-hours.js';
@@ -114,6 +116,8 @@ export class AiReplyService {
     private readonly configs: TenantConfigService,
     private readonly outbound: OutboundService,
     private readonly presence: PresenceService,
+    private readonly catalog: CatalogService,
+    private readonly catalogRefresh: CatalogRefreshWorker,
   ) {}
 
   async process(job: AiReplyJob): Promise<AiReplyOutcome> {
@@ -161,12 +165,20 @@ export class AiReplyService {
     // ---- Modelo (fuera de toda transacción) ----
     const { input, configVersion } = first;
     let selection: LlmSelection;
+    // Catálogo (tarea 007): herramientas atadas a esta empresa, y el modelo según la regla de ruteo.
+    const turnCatalog = this.catalog.forTurn(job.tenantId, input.config.catalog, now, input.timezone);
     try {
-      selection = await this.llm.forTenant(job.tenantId, input.config);
+      selection = await this.llm.forTenant(job.tenantId, input.config, { catalogTurn: turnCatalog !== null });
     } catch {
       return this.recordOnly(job, configVersion, 'error:model_unavailable');
     }
-    const prepared = prepareTurn(input, selection.model);
+    const prepared = prepareTurn(
+      input,
+      selection.model,
+      turnCatalog
+        ? { ...turnCatalog, toolOutputMode: selection.toolOutputMode ?? 'response_format' }
+        : undefined,
+    );
     const reservation = await this.budget.reserve(job.tenantId, prepared.estimateUsd);
     if (!reservation.ok) {
       return this.finish(job, input, prepared, selection, configVersion, {
@@ -201,6 +213,10 @@ export class AiReplyService {
     }
     // Sin mensaje que mandar (none, pausada, error…): que no quede "escribiendo…" colgado.
     if (typingSince && !outcome.sent) await this.stopTyping(job);
+    if (prepared.catalog?.used && input.config.catalog?.refresh.enabled) {
+      // Sin bloquear la respuesta: si falla, el próximo turno con catálogo lo vuelve a pedir.
+      await this.catalogRefresh.schedule(job.tenantId).catch(() => undefined);
+    }
     const charged = call.kind === 'ok' ? call.result : call.error.charged;
     if (charged && outcome.runId)
       await this.budget.settle(reservation.reservationId, charged.costUsd, outcome.runId);
@@ -237,7 +253,7 @@ export class AiReplyService {
         triggersCode: prepared.triggersCode,
         ...(call.kind === 'ok' ? { output: call.result.parsed, toolCalls: call.result.toolCalls } : {}),
       };
-      const base = { configVersion, ...usage };
+      const base = { configVersion, ...usage, ...catalogRecord(prepared) };
 
       const snapshot = await this.lockSnapshot(tx, job.conversationId);
       const loaded = await this.configs.latest(tx);
@@ -274,7 +290,9 @@ export class AiReplyService {
       const afterFieldsAsks = await this.countRuns(tx, job.conversationId, 'asked_fields');
       const output = call.kind === 'ok' ? call.result.parsed : null;
       const evaluation = evaluateTurn({ ...input, state }, prepared, output, afterFieldsAsks);
-      return this.apply(tx, job, input, snapshot!, prepared.isOpen, evaluation, base, typingSince);
+      // Las citas se registran al renderizar las marcas (dentro de evaluateTurn).
+      const run = { ...base, ...catalogRecord(prepared) };
+      return this.apply(tx, job, input, snapshot!, prepared.isOpen, evaluation, run, typingSince);
     });
   }
 
@@ -667,6 +685,16 @@ export class AiReplyService {
 }
 
 type CallResult = { kind: 'ok'; result: LlmResult<AgentOutput> } | { kind: 'error'; error: LlmError };
+
+/**
+ * Qué productos consultaron las herramientas (con el snapshot y la fuente del precio) y qué marcas se
+ * citaron en la respuesta, para ai_runs.catalog_citations. Solo SKUs e ids: nada del cliente.
+ */
+function catalogRecord(prepared: PreparedTurn): Partial<NewAiRun> {
+  const context = prepared.catalog;
+  if (!context?.used) return {};
+  return { catalogCitations: { consulted: context.consulted, cited: context.cited } };
+}
 
 function stateOf(snapshot: Snapshot): TenantLayerState {
   return {
