@@ -2,7 +2,7 @@
 // ({{precio:SKU:lista}}…) solo valen para productos de acá, y su valor sale de acá (de la base o de la
 // lectura de la web hecha en el turno), nunca del modelo. También registra qué se consultó y qué se citó
 // para ai_runs (sin texto del cliente).
-import type { CatalogConfig } from '@ventas/shared';
+import { CATALOG_UNITS, type CatalogConfig, type CatalogUnit } from '@ventas/shared';
 import type { ProductView } from '../../catalog/catalog-viewer.js';
 import type { ProductRecord, SnapshotSource } from '../../catalog/catalog.types.js';
 
@@ -60,14 +60,32 @@ export class TurnCatalogContext {
     return this.views.get(sku);
   }
 
-  /** m² (o unidades) por caja: el del Excel o, si no está, el de la última lectura de la web del turno. */
+  /**
+   * Fuente de los datos comerciales (unidad, m² y piezas por caja): la web, salvo que la empresa cite
+   * precios del Excel (price_source 'excel'). El Excel puede estar desactualizado: con la web como fuente,
+   * si la página no los muestra, no se usan los del Excel (no se calculan cajas y se deriva).
+   */
+  private fromExcel(): boolean {
+    return this.catalog.price_source === 'excel';
+  }
+
+  /** m² (o unidades) y piezas por caja, de la lectura de la web del turno (o del Excel, ver fromExcel). */
   perPackage(sku: string): { units: string | null; pieces: number | null } {
-    const product = this.products.get(sku);
+    if (this.fromExcel()) {
+      const product = this.products.get(sku);
+      return { units: product?.unitsPerPackage ?? null, pieces: product?.piecesPerPackage ?? null };
+    }
     const web = this.views.get(sku)?.web;
-    return {
-      units: product?.unitsPerPackage ?? web?.unitsPerPackage ?? null,
-      pieces: product?.piecesPerPackage ?? web?.piecesPerPackage ?? null,
-    };
+    return { units: web?.unitsPerPackage ?? null, pieces: web?.piecesPerPackage ?? null };
+  }
+
+  /** Unidad de venta: la que muestra la web en el precio ("$37.290 x m²"), o la del Excel (ver fromExcel). */
+  unitOf(sku: string): CatalogUnit | undefined {
+    const product = this.products.get(sku);
+    if (!product) return undefined;
+    if (this.fromExcel()) return product.unit;
+    const web = this.views.get(sku)?.web?.priceUnit;
+    return web && (CATALOG_UNITS as readonly string[]).includes(web) ? (web as CatalogUnit) : undefined;
   }
 
   noteCalculated(sku: string, quantity: string): void {

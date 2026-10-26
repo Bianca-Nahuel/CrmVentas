@@ -21,7 +21,7 @@ export const IMPORT_FIELDS = [
 export type ImportField = (typeof IMPORT_FIELDS)[number];
 
 export const IMPORT_LIMITS = {
-  maxRows: 5_000,
+  maxRows: 10_000,
   maxCellChars: 1_000,
   maxHeaderChars: 100,
   maxAttributes: 60,
@@ -50,7 +50,7 @@ export type ImportMapping = z.infer<typeof mappingSchema>;
 
 /** Encabezados conocidos (normalizados) para proponer el mapeo cuando no hay uno guardado. */
 const KNOWN_HEADERS: Record<ImportField, string[]> = {
-  sku: ['sku', 'codigo', 'cod', 'cod_articulo', 'codigo_articulo', 'codigo_producto', 'id_producto'],
+  sku: ['sku', 'codigo', 'cod', 'cod_articulo', 'codigo_articulo', 'codigo_producto', 'id_producto', 'id'],
   name: ['nombre', 'descripcion', 'producto', 'detalle', 'nombre_producto'],
   url: ['url', 'link', 'enlace', 'pagina', 'pagina_web', 'link_web'],
   category: ['categoria', 'rubro', 'familia', 'linea'],
@@ -64,7 +64,7 @@ const KNOWN_HEADERS: Record<ImportField, string[]> = {
     'rendimiento',
   ],
   pieces_per_package: ['piezas_x_caja', 'piezas_por_caja', 'piezas', 'pzas_x_caja'],
-  price: ['precio', 'precio_lista', 'precio_de_lista', 'pvp', 'precio_m2', 'precio_x_m2'],
+  price: ['precio', 'precio_lista', 'precio_de_lista', 'pvp', 'precio_m2', 'precio_x_m2', 'precio_lista_m2'],
   stock: ['stock', 'disponible', 'disponibilidad', 'existencia'],
 };
 

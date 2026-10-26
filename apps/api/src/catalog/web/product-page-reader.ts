@@ -109,7 +109,8 @@ export class ProductPageReader {
       promoCondition: fields.promo_condition ?? null,
       priceNoTaxes: fields.price_no_taxes ?? null,
       currency: fields.currency ?? catalog.currency,
-      priceUnit: fields.price_unit ?? product.unit,
+      // Solo lo que muestra la página: la unidad del Excel puede estar desactualizada.
+      priceUnit: fields.price_unit ?? null,
       // Fuera de rango para la base (numeric(12,4), integer): se descarta el dato, no la lectura.
       unitsPerPackage:
         fields.units_per_package && Number(fields.units_per_package) < 100_000

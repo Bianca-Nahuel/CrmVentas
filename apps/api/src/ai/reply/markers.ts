@@ -85,7 +85,8 @@ function renderOne(
       if (!view?.price?.current) return fail;
       const quote = catalog.price_policy.quote;
       const snapshot = view.price.snapshot;
-      const unit = UNIT_PHRASE[snapshot.priceUnit ?? product.unit] ?? '';
+      // La unidad del precio sale de la misma lectura (web o Excel) que el precio.
+      const unit = snapshot.priceUnit ? (UNIT_PHRASE[snapshot.priceUnit] ?? '') : '';
       let value: string;
       if (marker.arg === 'lista') {
         if ((quote !== 'list' && quote !== 'both') || !snapshot.listPrice) return fail;
@@ -117,7 +118,8 @@ function renderOne(
       return { ok: true, value: product.url, citation: { kind: 'link', sku: product.sku } };
     case 'cajas': {
       const { units } = context.perPackage(marker.sku);
-      if (!units || (product.unit !== 'm2' && product.unit !== 'ml') || marker.arg === null) return fail;
+      const unit = context.unitOf(marker.sku);
+      if (!units || (unit !== 'm2' && unit !== 'ml') || marker.arg === null) return fail;
       if (!/^\d{1,6}([.,]\d{1,2})?$/.test(marker.arg)) return fail;
       const quantity = parseArNumber(marker.arg.replace('.', ','));
       // La cantidad tiene que ser una que calculó calcular_cantidad en este turno: el modelo no la inventa.
@@ -133,15 +135,18 @@ function renderOne(
       const boxes = packages === 1 ? '1 caja' : `${packages} cajas`;
       return {
         ok: true,
-        value: `${boxes} (${formatArNumber(total)} ${UNIT_SHORT[product.unit]})`,
+        value: `${boxes} (${formatArNumber(total)} ${UNIT_SHORT[unit]})`,
         citation: { kind: 'cajas', sku: product.sku },
       };
     }
     case 'por_caja': {
       const { units, pieces } = context.perPackage(marker.sku);
       if (marker.arg !== null || (!units && !pieces)) return fail;
+      const unit = context.unitOf(marker.sku);
+      if (units && !unit) return fail;
+      const unitShort = unit ? (UNIT_SHORT[unit] ?? '') : '';
       const parts = [
-        units ? `${formatArNumber(units)} ${UNIT_SHORT[product.unit] ?? ''}`.trim() : null,
+        units ? `${formatArNumber(units)} ${unitShort}`.trim() : null,
         pieces ? `${pieces} ${pieces === 1 ? 'pieza' : 'piezas'}` : null,
       ].filter(Boolean);
       return {

@@ -21,7 +21,7 @@ import {
   type NormalizedProduct,
   type NormalizedRow,
 } from './normalize-rows.js';
-import { readXlsx, type XlsxLimits } from './xlsx-reader.js';
+import { readXlsx, SpreadsheetError, type XlsxLimits } from './xlsx-reader.js';
 
 export class CatalogImportError extends Error {
   constructor(
@@ -133,10 +133,34 @@ export class CatalogImportService {
       }
     }
 
-    const sheet = readXlsx(input.data, {
-      ...(mapping?.sheet ? { sheet: mapping.sheet } : {}),
-      ...(input.limits ? { limits: input.limits } : {}),
-    });
+    // El mapeo guardado es de un archivo anterior: si su hoja o sus columnas no están en este, se propone
+    // uno nuevo por los encabezados (y la vista previa lo muestra como propuesto).
+    const read = (sheetName?: string) =>
+      readXlsx(input.data, {
+        ...(sheetName ? { sheet: sheetName } : {}),
+        ...(input.limits ? { limits: input.limits } : {}),
+      });
+    let sheet: ReturnType<typeof readXlsx>;
+    try {
+      sheet = read(mapping?.sheet);
+    } catch (error) {
+      if (!(
+        mappingSource === 'saved' &&
+        error instanceof SpreadsheetError &&
+        error.code === 'sheet_not_found'
+      )) {
+        throw error;
+      }
+      mapping = undefined;
+      sheet = read();
+    }
+    if (
+      mapping &&
+      mappingSource === 'saved' &&
+      normalizeRows(sheet.rows.slice(0, 50), mapping, { allowedDomains: [] }).missingHeaders.length > 0
+    ) {
+      mapping = undefined;
+    }
     if (!mapping) {
       const headerIndex = findHeaderRow(sheet.rows);
       const proposed =

@@ -430,6 +430,13 @@ describe('herramientas del catálogo', () => {
 
   it('calcular_cantidad: devuelve la marca; la cuenta la hace el render', async () => {
     const { tools } = setup();
+    // Sin consultar la página, no calcula (los datos por caja salen de la web).
+    expect(
+      await call(tools, 'calcular_cantidad', { sku: 'CER-001', cantidad: 45, unidad: 'm2' }),
+    ).toMatchObject({
+      posible: false,
+    });
+    await call(tools, 'ver_producto', { sku: 'CER-001' });
     expect(await call(tools, 'calcular_cantidad', { sku: 'CER-001', cantidad: 45, unidad: 'm2' })).toEqual({
       posible: true,
       marca: '{{cajas:CER-001:45}}',
@@ -438,6 +445,58 @@ describe('herramientas del catálogo', () => {
       await call(tools, 'calcular_cantidad', { sku: 'PEG-100', cantidad: 3, unidad: 'm2' }),
     ).toMatchObject({
       posible: false,
+    });
+  });
+});
+
+describe('el Excel puede estar desactualizado: unidad y datos por caja salen de la web', () => {
+  it('si la web dice otro m² por caja, gana la web', async () => {
+    const s = setup();
+    s.fetcher.page(
+      URL_CER,
+      html('producto-ceramicos.html').replace('<strong>2,02</strong>', '<strong>1,44</strong>'),
+    );
+    await call(s.tools, 'ver_producto', { sku: 'CER-001' });
+    await call(s.tools, 'calcular_cantidad', { sku: 'CER-001', cantidad: 45, unidad: 'm2' });
+    s.context.clientNumbers = ['45'];
+    const config = testConfig([], { catalog: catalogConfig() as never });
+    expect(
+      checkReply('Son {{cajas:CER-001:45}}. Cada caja trae {{por_caja:CER-001}}.', {
+        ...buildCheckContext(config),
+        catalog: s.context,
+      }),
+    ).toEqual({ ok: true, reply: 'Son 32 cajas (46,08 m²). Cada caja trae 1,44 m², 10 piezas por caja.' });
+  });
+
+  it('si la web no muestra los datos por caja ni la unidad, no se usan los del Excel', async () => {
+    const s = setup();
+    s.fetcher.page(
+      URL_CER,
+      html('producto-ceramicos.html')
+        .replace(/<ul class="specs">[\s\S]*?<\/ul>/, '')
+        .replace('<small>x m²</small>', ''),
+    );
+    const viewed = await call(s.tools, 'ver_producto', { sku: 'CER-001' });
+    expect(viewed).toMatchObject({ unidad: null, por_caja: null, calculo_de_cajas: false });
+    expect(
+      await call(s.tools, 'calcular_cantidad', { sku: 'CER-001', cantidad: 45, unidad: 'm2' }),
+    ).toMatchObject({
+      posible: false,
+    });
+    const config = testConfig([], { catalog: catalogConfig() as never });
+    expect(
+      checkReply('El precio es {{precio:CER-001:lista}}.', {
+        ...buildCheckContext(config),
+        catalog: s.context,
+      }),
+    ).toMatchObject({ ok: true, reply: expect.stringMatching(/^El precio es \$37\.290\. /) });
+  });
+
+  it('con price_source excel, los datos por caja salen del Excel', async () => {
+    const s = setup(catalogConfig({ price_source: 'excel' }));
+    expect(await call(s.tools, 'calcular_cantidad', { sku: 'POR-010', cantidad: 10, unidad: 'm2' })).toEqual({
+      posible: true,
+      marca: '{{cajas:POR-010:10}}',
     });
   });
 });

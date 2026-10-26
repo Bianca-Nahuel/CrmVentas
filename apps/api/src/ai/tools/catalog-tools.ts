@@ -118,7 +118,8 @@ export function buildCatalogTools({ store, viewer, context }: CatalogToolDeps): 
           sku: product.sku,
           nombre: product.name,
           categoria: product.category,
-          unidad: product.unit,
+          // Del Excel, solo orientativa: la que vale es la de ver_producto (la página).
+          unidad_excel: product.unit,
           atributos: attributes,
           tiene_link: product.url !== null,
           precio_antiguedad_min: priceReadAt
@@ -179,7 +180,8 @@ export function buildCatalogTools({ store, viewer, context }: CatalogToolDeps): 
         sku: product.sku,
         nombre: product.name,
         categoria: product.category,
-        unidad: product.unit,
+        // La de la página (el Excel puede estar desactualizado); null si la página no la muestra.
+        unidad: context.unitOf(product.sku) ?? null,
         precio:
           priceReason === null
             ? {
@@ -194,7 +196,8 @@ export function buildCatalogTools({ store, viewer, context }: CatalogToolDeps): 
             ? { informable: true, marca: `{{stock:${product.sku}}}` }
             : { informable: false, motivo: availabilityReason },
         por_caja: units || pieces ? { marca: `{{por_caja:${product.sku}}}` } : null,
-        calculo_de_cajas: !!units && (product.unit === 'm2' || product.unit === 'ml'),
+        calculo_de_cajas:
+          !!units && (context.unitOf(product.sku) === 'm2' || context.unitOf(product.sku) === 'ml'),
         link: product.url ? { marca: `{{link:${product.sku}}}` } : null,
         descripcion: view.web?.description ? truncate(view.web.description, DESCRIPTION_CHARS) : null,
         atributos: Object.fromEntries(
@@ -222,12 +225,20 @@ export function buildCatalogTools({ store, viewer, context }: CatalogToolDeps): 
       } else {
         context.consulted.push({ tool: 'calcular_cantidad', sku: product.sku });
       }
-      if (product.unit !== args.unidad) {
-        return { posible: false, motivo: `el producto se vende por ${product.unit}, no por ${args.unidad}` };
+      if (catalog.price_source !== 'excel' && !context.view(product.sku)) {
+        return {
+          posible: false,
+          motivo: 'primero consultá el producto con ver_producto (los datos por caja salen de su página)',
+        };
+      }
+      const unit = context.unitOf(product.sku);
+      if (!unit) return { posible: false, motivo: 'la página del producto no muestra la unidad de venta' };
+      if (unit !== args.unidad) {
+        return { posible: false, motivo: `el producto se vende por ${unit}, no por ${args.unidad}` };
       }
       const { units } = context.perPackage(product.sku);
       if (!units)
-        return { posible: false, motivo: 'no se sabe cuánto trae cada caja (probá con ver_producto)' };
+        return { posible: false, motivo: 'la página del producto no muestra cuánto trae cada caja' };
       const quantity = canonical(args.cantidad);
       if (!quantity || !/^\d{1,6}(\.\d{1,2})?$/.test(quantity)) {
         return { posible: false, motivo: 'cantidad fuera de rango' };
