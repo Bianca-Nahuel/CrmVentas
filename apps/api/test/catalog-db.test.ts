@@ -316,6 +316,17 @@ describe('1. importación del Excel', () => {
     });
   });
 
+  it('una importación sin ninguna fila válida no se aplica (no desactiva todo el catálogo)', async () => {
+    const empty = await preview(tenantId, [
+      HEADER,
+      ['MAL 1', 'Con espacio', null, null, null, null, null, null, null],
+    ]);
+    await expect(tx(tenantId, (t) => importer.apply(t, empty.importId))).rejects.toMatchObject({
+      code: 'no_valid_rows',
+    });
+    expect((await products(tenantId)).every((product) => product.active)).toBe(true);
+  });
+
   it('archivo .csv → error claro; columnas del mapeo que no están → error', async () => {
     await expect(
       tx(tenantId, (t) =>

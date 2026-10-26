@@ -15,6 +15,9 @@ export const CATALOG_TOOL_NAMES = ['buscar_productos', 'ver_producto', 'calcular
 const MAX_RESULTS = 5;
 const ATTRIBUTE_CHARS = 100;
 const DESCRIPTION_CHARS = 300;
+// Atributos del Excel que parecen de stock no se le muestran al modelo: la disponibilidad solo sale de
+// availability_source y de la marca {{stock:SKU}}.
+const STOCK_LIKE_KEY = /stock|existen|dispon|inventario|cantidad/;
 
 export interface CatalogToolDeps {
   store: CatalogStore;
@@ -108,7 +111,7 @@ export function buildCatalogTools({ store, viewer, context }: CatalogToolDeps): 
         context.noteFound('buscar_productos', product);
         const attributes = Object.fromEntries(
           catalog.key_attributes
-            .filter((key) => product.attributes[key] !== undefined)
+            .filter((key) => product.attributes[key] !== undefined && !STOCK_LIKE_KEY.test(key))
             .map((key) => [key, truncate(product.attributes[key], ATTRIBUTE_CHARS)]),
         );
         return {
@@ -196,7 +199,7 @@ export function buildCatalogTools({ store, viewer, context }: CatalogToolDeps): 
         descripcion: view.web?.description ? truncate(view.web.description, DESCRIPTION_CHARS) : null,
         atributos: Object.fromEntries(
           catalog.key_attributes
-            .filter((key) => product.attributes[key] !== undefined)
+            .filter((key) => product.attributes[key] !== undefined && !STOCK_LIKE_KEY.test(key))
             .map((key) => [key, truncate(product.attributes[key], ATTRIBUTE_CHARS)]),
         ),
       };
@@ -229,6 +232,7 @@ export function buildCatalogTools({ store, viewer, context }: CatalogToolDeps): 
       if (!quantity || !/^\d{1,6}(\.\d{1,2})?$/.test(quantity)) {
         return { posible: false, motivo: 'cantidad fuera de rango' };
       }
+      context.noteCalculated(product.sku, quantity);
       return { posible: true, marca: `{{cajas:${product.sku}:${quantity.replace('.', ',')}}}` };
     },
   };

@@ -13,6 +13,20 @@ export interface HtmlFetcher {
   fetchHtml(url: string, allowedDomains: readonly string[]): Promise<FetchResult>;
 }
 
+/** Después de una lectura fallida, no se vuelve a pedir la página por este tiempo (salvo force). */
+export const FAILURE_BACKOFF_MS = 10 * 60_000;
+/** Separación mínima entre dos lecturas iguales para aceptar un salto de precio. */
+export const JUMP_CONFIRM_MS = 30 * 60_000;
+
+function samePrices(
+  a: { list_price?: string; promo_price?: string; price_no_taxes?: string },
+  b: { list_price?: string; promo_price?: string; price_no_taxes?: string },
+): boolean {
+  return (
+    a.list_price === b.list_price && a.promo_price === b.promo_price && a.price_no_taxes === b.price_no_taxes
+  );
+}
+
 export interface PageReadResult {
   /** La lectura válida a usar (nueva o de la caché), o null si nunca hubo una. */
   snapshot: SnapshotRecord | null;
@@ -42,6 +56,13 @@ export class ProductPageReader {
       return { snapshot: lastOk, fetched: false, errorCode: null };
     }
     if (!product.url) return { snapshot: lastOk, fetched: false, errorCode: 'no_url' };
+    // Caché de fallas: si la última lectura falló hace poco, no se vuelve a pedir la página en cada consulta
+    // (una web caída sumaría hasta 8 s a cada ver_producto).
+    const lastRead = await store.latestSnapshot(product.id, 'web', false);
+    const sinceLastRead = lastRead ? this.now().getTime() - lastRead.readAt.getTime() : Infinity;
+    if (!options.force && lastRead && !lastRead.ok && sinceLastRead < FAILURE_BACKOFF_MS) {
+      return { snapshot: lastOk, fetched: false, errorCode: lastRead.errorCode };
+    }
 
     const page = await this.fetcher.fetchHtml(product.url, catalog.allowed_domains);
     if (!page.ok) {
@@ -54,17 +75,30 @@ export class ProductPageReader {
     }
 
     const extraction = extractProduct(page.html, catalog.extractor);
-    const sanity = checkSanity(
+    const pricesOf = (snapshot: SnapshotRecord) => ({
+      list_price: snapshot.listPrice ?? undefined,
+      promo_price: snapshot.promoPrice ?? undefined,
+      price_no_taxes: snapshot.priceNoTaxes ?? undefined,
+    });
+    let sanity = checkSanity(
       extraction.fields,
-      lastOk
-        ? {
-            list_price: lastOk.listPrice ?? undefined,
-            promo_price: lastOk.promoPrice ?? undefined,
-            price_no_taxes: lastOk.priceNoTaxes ?? undefined,
-          }
-        : null,
+      lastOk ? pricesOf(lastOk) : null,
       catalog.max_price_change_pct,
     );
+    // Un cambio grande de verdad (inflación, una promo nueva): se acepta cuando dos lecturas separadas por al
+    // menos JUMP_CONFIRM_MS dan los mismos precios. Si no, el precio quedaría vencido para siempre.
+    let confirmedJump = false;
+    if (
+      sanity.errorCode === 'price_jump' &&
+      lastRead &&
+      !lastRead.ok &&
+      lastRead.errorCode === 'price_jump' &&
+      sinceLastRead >= JUMP_CONFIRM_MS &&
+      samePrices(pricesOf(lastRead), sanity.fields)
+    ) {
+      sanity = checkSanity(extraction.fields, pricesOf(lastRead), catalog.max_price_change_pct);
+      confirmedJump = sanity.ok;
+    }
     const fields = sanity.fields;
     const snapshot: NewSnapshot = {
       source: 'web',
@@ -87,6 +121,7 @@ export class ProductPageReader {
       description: fields.description ?? null,
       extra: {},
       fieldSources: {
+        ...(confirmedJump ? { price_check: 'jump_confirmed' } : {}),
         ...extraction.sources,
         ...Object.fromEntries(sanity.dropped.map((field) => [field, 'dropped'])),
       },
@@ -95,6 +130,7 @@ export class ProductPageReader {
     };
     // Una lectura con montos imposibles para la base (mal formados) se guarda sin ellos.
     const saved = await store.insertSnapshot(product.id, sanity.ok ? snapshot : stripInvalid(snapshot));
+    if (confirmedJump) this.warn(product, 'price_jump_confirmed');
     if (!sanity.ok) {
       this.warn(product, sanity.errorCode!);
       return { snapshot: lastOk, fetched: true, errorCode: sanity.errorCode };

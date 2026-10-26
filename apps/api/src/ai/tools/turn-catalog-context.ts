@@ -24,7 +24,11 @@ export interface Citation {
 export class TurnCatalogContext {
   private readonly products = new Map<string, ProductRecord>();
   private readonly views = new Map<string, ProductView>();
+  /** Cantidades (canónicas) que calculó calcular_cantidad, por SKU. */
+  private readonly quantities = new Map<string, string[]>();
   readonly consulted: Consultation[] = [];
+  /** Números (canónicos) que escribió el cliente en la conversación: los m² de una marca cajas salen de acá. */
+  clientNumbers: string[] = [];
   readonly cited: Citation[] = [];
 
   constructor(
@@ -64,6 +68,14 @@ export class TurnCatalogContext {
       units: product?.unitsPerPackage ?? web?.unitsPerPackage ?? null,
       pieces: product?.piecesPerPackage ?? web?.piecesPerPackage ?? null,
     };
+  }
+
+  noteCalculated(sku: string, quantity: string): void {
+    this.quantities.set(sku, [...(this.quantities.get(sku) ?? []), quantity]);
+  }
+
+  calculated(sku: string): string[] {
+    return this.quantities.get(sku) ?? [];
   }
 
   cite(citation: Citation): void {

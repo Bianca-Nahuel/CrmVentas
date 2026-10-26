@@ -222,6 +222,11 @@ describe('rechazos antes de conectarse', () => {
     });
   });
 
+  it('DNS que no responde: corta con el timeout total', async () => {
+    const fetcher = localFetcher({ timeoutMs: 200, resolver: () => new Promise(() => undefined) });
+    expect(await fetcher.fetchHtml(`https://${HOST}/ok`, ALLOWED)).toMatchObject({ errorCode: 'timeout' });
+  });
+
   it('DNS que falla', async () => {
     const fetcher = localFetcher({
       resolver: async () => {

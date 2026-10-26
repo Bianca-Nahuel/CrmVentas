@@ -55,7 +55,8 @@ export const catalogProducts = pgTable(
     check('catalog_products_pieces_per_package_check', sql`${t.piecesPerPackage} > 0`),
     check(
       'catalog_products_url_check',
-      sql`${t.url} ~ '^https://[^[:space:]]+$' AND char_length(${t.url}) <= 2048`,
+      // Solo ASCII imprimible: la URL se escribe tal cual en el mensaje al cliente (0013).
+      sql`${t.url} ~ '^https://[!-~]+$' AND char_length(${t.url}) <= 2048`,
     ),
     check('catalog_products_attributes_check', sql`jsonb_typeof(${t.attributes}) = 'object'`),
   ],

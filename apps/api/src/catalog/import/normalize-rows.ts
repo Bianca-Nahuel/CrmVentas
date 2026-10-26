@@ -96,6 +96,8 @@ const UNIT_ALIASES: Record<string, CatalogUnit> = {
 };
 
 export const SKU_PATTERN = /^[A-Za-z0-9._/-]{1,64}$/;
+/** URL https con solo ASCII imprimible (sin espacios): la misma regla que el CHECK de la base (0013). */
+export const SAFE_URL = /^https:\/\/[!-~]{1,2040}$/;
 
 /** "M2 x caja" → "m2_x_caja". Clave estable para attributes (y para comparar encabezados). */
 export function normalizeHeader(header: string): string {
@@ -191,14 +193,21 @@ function parseStock(value: CellValue | undefined): NormalizedProduct['availabili
   return 'bad';
 }
 
-/** Valida la URL de un producto contra los dominios permitidos. null = válida. */
+/**
+ * Valida la URL de un producto contra los dominios permitidos. null = válida. La URL se escribe tal cual en
+ * el mensaje al cliente ({{link:SKU}}): solo ASCII imprimible y en su forma canónica (la que devuelve
+ * new URL().href), así no puede llevar espacios raros (NBSP, U+200B…) con texto pegado atrás.
+ */
 export function urlError(raw: string, allowedDomains: readonly string[]): string | null {
+  if (/^http:\/\//i.test(raw)) return 'url_not_https';
+  if (!SAFE_URL.test(raw)) return 'url_invalid';
   let url: URL;
   try {
     url = new URL(raw);
   } catch {
     return 'url_invalid';
   }
+  if (url.href !== raw) return 'url_not_canonical';
   if (url.protocol !== 'https:') return 'url_not_https';
   if (url.username || url.password || (url.port && url.port !== '443')) return 'url_invalid';
   const host = url.hostname.replace(/\.$/, '');
@@ -274,7 +283,11 @@ export function normalizeRows(
     if (!unit) errors.push('bad_unit');
 
     const unitsPerPackage = parseNumberCell(get('units_per_package'));
-    if (unitsPerPackage === 'bad' || unitsPerPackage === '0') errors.push('bad_number:units_per_package');
+    // numeric(12,4) en la base: como mucho 8 dígitos enteros.
+    const uppOk =
+      unitsPerPackage === null ||
+      (unitsPerPackage !== 'bad' && unitsPerPackage !== '0' && Number(unitsPerPackage) < 1e8);
+    if (!uppOk) errors.push('bad_number:units_per_package');
     const pieces = parseNumberCell(get('pieces_per_package'));
     const piecesOk = pieces === null || (pieces !== 'bad' && /^[1-9]\d{0,6}$/.test(pieces));
     if (!piecesOk) errors.push('bad_number:pieces_per_package');
@@ -305,7 +318,7 @@ export function normalizeRows(
       name,
       category,
       unit: unit ?? 'unit',
-      units_per_package: unitsPerPackage === 'bad' ? null : unitsPerPackage,
+      units_per_package: uppOk ? unitsPerPackage : null,
       pieces_per_package: piecesOk && pieces !== null ? Number(pieces) : null,
       url,
       price: price === 'bad' ? null : price,
@@ -358,7 +371,9 @@ export function describeRowError(code: string, allowedDomains: readonly string[]
     case 'url_not_https':
       return 'la URL no es https';
     case 'url_invalid':
-      return 'la URL no es válida';
+      return 'la URL no es válida (solo https, sin espacios ni caracteres especiales)';
+    case 'url_not_canonical':
+      return 'la URL no está en su forma normal (por ejemplo, el dominio en mayúsculas o caracteres sin codificar): copiala tal como aparece en el navegador';
     case 'url_domain':
       return `la URL no es de un dominio permitido (${allowedDomains.join(', ')})`;
     case 'url_domain_www_variant':

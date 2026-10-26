@@ -28,8 +28,8 @@ const { parseEnv } = await import('../src/config/env.js');
 const { OpenRouterClient } = await import('../src/ai/llm/providers/openrouter/openrouter.client.js');
 const { LlmError } = await import('../src/ai/llm/llm-client.js');
 const { addUsd } = await import('../src/ai/llm/money.js');
-const { prepareTurn, evaluateTurn } = await import('../src/ai/reply/reply-engine.js');
-const { buildCheckContext, checkReply, numbersIn } = await import('../src/ai/reply/output-checks.js');
+const { prepareTurn, evaluateTurn, catalogChecks } = await import('../src/ai/reply/reply-engine.js');
+const { buildCheckContext, checkReply } = await import('../src/ai/reply/output-checks.js');
 const { localTime } = await import('../src/ai/reply/business-hours.js');
 const { routeModel } = await import('../src/ai/llm/llm-client.factory.js');
 const { buildCatalogTools } = await import('../src/ai/tools/catalog-tools.js');
@@ -291,15 +291,7 @@ async function runCase(
   const rawReply = output?.reply ?? null;
   // Antes del control crudo, que vuelve a renderizar (y registraría las citas dos veces).
   const catalogResult = catalogInfo();
-  const checks = {
-    ...buildCheckContext(config),
-    ...(turnCatalog
-      ? {
-          catalog: turnCatalog.context,
-          clientNumbers: input.burstTexts.flatMap(numbersIn),
-        }
-      : {}),
-  };
+  const checks = { ...buildCheckContext(config), ...catalogChecks(input, prepared) };
   const rawCheck = rawReply ? checkReply(rawReply, checks) : null;
   const accion = accionOf(evaluation);
   const expected = item.esperado;
@@ -596,7 +588,7 @@ function catalogMetrics(cases: EvalCase[], results: CaseResult[]) {
   const stockClaims = catalogResults.filter(
     (r) =>
       r.reply &&
-      /\b(hay|tenemos|queda|quedan|sin|con) stock\b/i.test(r.reply) &&
+      /\b(stock|agotad|disponib|lo tenemos|la tenemos|los tenemos|las tenemos|quedan? (pocas|pocos|cajas|unidades))/i.test(r.reply) &&
       !r.catalog!.cited.some((c) => c.startsWith('stock')),
   );
   const hotCases = cases.filter((item) => item.esperado.puntaje === 'gte_hot').map((item) => item.id);

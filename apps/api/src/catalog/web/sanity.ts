@@ -5,8 +5,16 @@ import type { ExtractedFields } from './extract.js';
 
 const PRICE_FIELDS = ['list_price', 'promo_price', 'price_no_taxes'] as const;
 const MAX_PRICE = '1000000000';
-// Una condición de promo se escribe tal cual en el mensaje al cliente: sin links, emails ni teléfonos.
-const UNSAFE_CONDITION = /https?:|www\.|@|\b[a-z0-9-]+\.(com|ar|net|org)\b|\d[\d\s().-]{7,}\d|[{}<>]/i;
+// Una condición de promo se escribe tal cual en el mensaje al cliente: solo letras, números, espacios y
+// puntuación simple ("30% OFF, 1 cuota MP"), sin links (cualquier dominio), emails, teléfonos, montos ni
+// datos para pagar.
+const CONDITION_CHARS = /^[\p{L}\p{N} %,.:;()+\-/!¡¿?°ºª×x]+$/u;
+const UNSAFE_CONDITION =
+  /https?:|www\.|@|\b[\p{L}\d-]+\.[\p{L}]{2,24}\b|\d[\d\s().-]{7,}\d|\$|\b(cbu|cvu|alias|transfer|deposit|whatsapp|wa\.me)/iu;
+
+export function safePromoCondition(text: string): boolean {
+  return text.length <= 120 && CONDITION_CHARS.test(text) && !UNSAFE_CONDITION.test(text);
+}
 
 export type SanityError = 'no_price' | 'bad_price' | 'promo_above_list' | 'bad_no_taxes' | 'price_jump';
 
@@ -29,7 +37,7 @@ export function checkSanity(
   const fail = (errorCode: SanityError): SanityResult => ({ ok: false, errorCode, fields, dropped });
 
   // Una promo sin condición segura no se puede mostrar: se descartan las dos (el precio de lista sigue).
-  if (fields.promo_condition !== undefined && UNSAFE_CONDITION.test(fields.promo_condition)) {
+  if (fields.promo_condition !== undefined && !safePromoCondition(fields.promo_condition)) {
     delete fields.promo_condition;
     delete fields.promo_price;
     dropped.push('promo_condition', 'promo_price');

@@ -165,11 +165,27 @@ export class SafeFetcher {
   }
 
   /** Pasos 2 y 3: resolver, validar todas las IPs y conectarse a la validada. */
-  private async pinnedAddress(host: string): Promise<ResolvedAddress> {
+  private async pinnedAddress(host: string, signal: AbortSignal): Promise<ResolvedAddress> {
     let addresses: ResolvedAddress[];
     try {
-      addresses = await this.resolver(host);
-    } catch {
+      // dns.lookup no se puede cancelar: se corta la espera con la señal del timeout total.
+      addresses = await new Promise<ResolvedAddress[]>((resolve, reject) => {
+        const onAbort = () => reject(new FetchFailure('timeout'));
+        if (signal.aborted) return onAbort();
+        signal.addEventListener('abort', onAbort, { once: true });
+        this.resolver(host).then(
+          (value) => {
+            signal.removeEventListener('abort', onAbort);
+            resolve(value);
+          },
+          (error: unknown) => {
+            signal.removeEventListener('abort', onAbort);
+            reject(error);
+          },
+        );
+      });
+    } catch (error) {
+      if (error instanceof FetchFailure) throw error;
       throw new FetchFailure('dns_failed');
     }
     if (addresses.length === 0) throw new FetchFailure('dns_failed');
@@ -182,7 +198,7 @@ export class SafeFetcher {
     signal: AbortSignal,
   ): Promise<{ kind: 'redirect'; location: string } | { kind: 'page'; html: string; status: number }> {
     const host = url.hostname.replace(/\.$/, '').toLowerCase();
-    const pinned = await this.pinnedAddress(host);
+    const pinned = await this.pinnedAddress(host, signal);
     await this.rateLimiter.wait(host, signal);
     if (signal.aborted) throw new FetchFailure('timeout');
 

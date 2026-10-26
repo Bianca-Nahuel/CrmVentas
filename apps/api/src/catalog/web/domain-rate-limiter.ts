@@ -21,6 +21,9 @@ export class DomainRateLimiter {
         'abort',
         () => {
           clearTimeout(timer);
+          // El pedido no va a salir: devuelve su turno para no empujar la cola del dominio.
+          const next = this.next.get(host);
+          if (next !== undefined) this.next.set(host, Math.max(this.now(), next - this.intervalMs));
           resolve();
         },
         { once: true },

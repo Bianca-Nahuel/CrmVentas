@@ -51,6 +51,8 @@ function selectAll(selector: string, root: AnyNode | AnyNode[]): Element[] {
 }
 const MAX_JSONLD_SCRIPTS = 20;
 const MAX_RULE_TEXT = 20_000;
+/** Texto sobre el que corre una regex de la empresa (acota el costo de un backtracking malo). */
+const MAX_REGEX_TEXT = 2_000;
 const LIMITS: Partial<Record<FieldKey, number>> = { promo_condition: 120, description: 1_000 };
 
 const DEFAULT_PARSER: Record<ExtractorField, ExtractorParser> = {
@@ -71,7 +73,10 @@ function collapse(text: string): string {
 
 /** El primer número en formato argentino de un texto ("$37.290 x m²" → "37290"). */
 export function firstArNumber(text: string): string | null {
-  const match = /\d{1,3}(?:\.\d{3})+(?:,\d{1,4})?|\d+(?:,\d{1,4})?/.exec(text);
+  // El primer número completo (dígitos con sus separadores, no pegado a una letra como el 2 de "m2"), y se
+  // interpreta entero: "2.02" o "37290.50" no son formato argentino y no se cortan en "2" o "37290", quedan
+  // sin valor y la regla se informa.
+  const match = /(?<![\p{L}\d.,])\d(?:[\d.,]*\d)?/u.exec(text);
   return match ? parseArNumber(match[0]) : null;
 }
 
@@ -268,7 +273,7 @@ function fromExtractor(doc: AnyNode[], extractor: ExtractorConfig | null) {
     let text = (rule.attribute ? getAttributeValue(node, rule.attribute) : textContent(node)) ?? '';
     text = collapse(text).slice(0, MAX_RULE_TEXT);
     if (rule.regex) {
-      const match = new RegExp(rule.regex, 'iu').exec(text);
+      const match = new RegExp(rule.regex, 'iu').exec(text.slice(0, MAX_REGEX_TEXT));
       if (!match) {
         issues.push(`${field}: la expresión regular no coincidió`);
         continue;

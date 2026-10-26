@@ -92,6 +92,13 @@
       "when": 1793047816853,
       "tag": "0012_catalog_permissions_rls",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1793050438378,
+      "tag": "0013_catalog_url_ascii",
+      "breakpoints": true
     }
   ]
 }

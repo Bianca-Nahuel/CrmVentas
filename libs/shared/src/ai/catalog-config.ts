@@ -39,6 +39,14 @@ export const catalogHostname = z
   )
   .refine((host) => /[a-z]/.test(host.split('.').at(-1)!), 'no puede ser una IP');
 
+/**
+ * Cuantificador aplicado a un grupo que ya tiene uno adentro o una alternativa ("(a+)+", "(a|a)*"): la
+ * forma típica de un backtracking catastrófico (ReDoS). Se rechaza al cargar la config.
+ */
+export function hasNestedQuantifier(pattern: string): boolean {
+  return /\((?:[^()\\]|\\.)*(?:[+*]|\{\d+,\d*\}|\|)(?:[^()\\]|\\.)*\)\s*(?:[+*]|\{\d+,\d*\})/.test(pattern);
+}
+
 function compiles(pattern: string): boolean {
   try {
     new RegExp(pattern, 'iu');
@@ -59,7 +67,10 @@ const extractorRuleSchema = z
       .optional(),
     index: z.number().int().min(0).max(20).default(0),
     // Sobre el texto del nodo (cortado): se usa el grupo 1, o todo lo que coincide si no hay grupos.
-    regex: str(1, 200).refine(compiles, 'expresión regular inválida').optional(),
+    regex: str(1, 200)
+      .refine(compiles, 'expresión regular inválida')
+      .refine((pattern) => !hasNestedQuantifier(pattern), 'cuantificadores anidados (riesgo de ReDoS)')
+      .optional(),
     parse: z.enum(EXTRACTOR_PARSERS).optional(),
     // true: le gana a JSON-LD, microdatos y metaetiquetas para este campo.
     prefer: z.boolean().default(false),

@@ -12,6 +12,7 @@
 // Una marca vale solo si el producto lo devolvió una herramienta EN ESTE TURNO (precio y stock: ver_producto)
 // y el dato está vigente. Si una sola marca no vale, la respuesta entera se bloquea y se deriva.
 import { formatArMoney, formatArNumber, packagesFor, parseArNumber } from '../../catalog/decimal.js';
+import { urlError } from '../../catalog/import/normalize-rows.js';
 import { localTime } from './business-hours.js';
 import type { TurnCatalogContext } from '../tools/turn-catalog-context.js';
 
@@ -110,14 +111,24 @@ function renderOne(
       };
     }
     case 'link':
-      if (marker.arg !== null || !product.url) return fail;
+      // Se revalida contra los dominios vigentes (un revert puede reaplicar una URL de una config vieja).
+      if (marker.arg !== null || !product.url || urlError(product.url, catalog.allowed_domains) !== null)
+        return fail;
       return { ok: true, value: product.url, citation: { kind: 'link', sku: product.sku } };
     case 'cajas': {
       const { units } = context.perPackage(marker.sku);
       if (!units || (product.unit !== 'm2' && product.unit !== 'ml') || marker.arg === null) return fail;
       if (!/^\d{1,6}([.,]\d{1,2})?$/.test(marker.arg)) return fail;
       const quantity = parseArNumber(marker.arg.replace('.', ','));
-      if (!quantity || quantity === '0' || Number(quantity) > 100_000) return fail;
+      // La cantidad tiene que ser una que calculó calcular_cantidad en este turno: el modelo no la inventa.
+      // Y una que dijo el cliente (el modelo pudo pedirle a calcular_cantidad otra cantidad).
+      if (
+        !quantity ||
+        !context.calculated(marker.sku).includes(quantity) ||
+        !context.clientNumbers.includes(quantity)
+      ) {
+        return fail;
+      }
       const { packages, total } = packagesFor(quantity, units);
       const boxes = packages === 1 ? '1 caja' : `${packages} cajas`;
       return {

@@ -308,6 +308,13 @@ export class CatalogImportService {
       SELECT data, status, sku FROM catalog_import_rows WHERE import_id = ${importId} ORDER BY row_number
     `);
     const valid = rows.rows.filter((row) => row.status === 'valid').map((row) => row.data);
+    // Sin ninguna fila válida, aplicar desactivaría todo el catálogo: se rechaza.
+    if (valid.length === 0) {
+      throw new CatalogImportError(
+        'no_valid_rows',
+        'La importación no tiene ninguna fila válida: no se aplica.',
+      );
+    }
     // Un SKU con la fila inválida no cuenta como ausente: el producto queda como estaba.
     const fileSkus = rows.rows.map((row) => row.sku).filter((sku): sku is string => !!sku);
 

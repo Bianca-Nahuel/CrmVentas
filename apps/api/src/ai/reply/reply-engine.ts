@@ -152,12 +152,7 @@ export function evaluateTurn(
     triggersCode: prepared.triggersCode,
     counters: { ...state.counters, afterFieldsAsks },
     isOpen: prepared.isOpen,
-    checks: {
-      ...buildCheckContext(config),
-      ...(prepared.catalog
-        ? { catalog: prepared.catalog, clientNumbers: input.burstTexts.flatMap(numbersIn) }
-        : {}),
-    },
+    checks: { ...buildCheckContext(config), ...catalogChecks(input, prepared) },
   });
 
   const handoffSummary =
@@ -172,4 +167,17 @@ export function evaluateTurn(
       : null;
 
   return { output, extracted, discovered, breakdown, score, decision, triggers, handoffSummary };
+}
+
+/**
+ * Contexto del catálogo para los controles de salida: lo que devolvieron las herramientas y los números que
+ * escribió el cliente en la conversación (los m² que el modelo puede repetir o usar en {{cajas}}).
+ */
+export function catalogChecks(input: TurnInput, prepared: PreparedTurn) {
+  if (!prepared.catalog) return {};
+  const clientNumbers = input.history
+    .filter((message) => message.author === 'cliente' && message.text)
+    .flatMap((message) => numbersIn(message.text!));
+  prepared.catalog.clientNumbers = clientNumbers;
+  return { catalog: prepared.catalog, clientNumbers };
 }

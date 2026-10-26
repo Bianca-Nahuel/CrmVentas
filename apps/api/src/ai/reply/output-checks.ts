@@ -74,6 +74,17 @@ const COMMITMENT_PATTERNS = [
   /\bte (hago|dejo) (un|el) precio\b/,
   /\b(te )?llega (hoy|manana|el )/,
 ];
+// Con catálogo, la disponibilidad solo sale de la marca {{stock:SKU}} (que el código escribe después de
+// estos controles): cualquier forma de afirmarla o negarla escrita por el modelo bloquea.
+const AVAILABILITY_PATTERNS = [
+  /\bstock\b/,
+  /\bagotad/,
+  /\bdisponib/,
+  /\bexistencias?\b/,
+  /\b(lo|la|los|las) (tenemos|tengo|hay)\b/,
+  /\b(hay|tenemos|contamos con|quedan?|nos quedan?) (pocas?|pocos?|cajas|unidades|piezas|metros|m2)\b/,
+  /\b(entra|ingresa|llega) (la|el) (semana|mes|lunes|martes|miercoles|jueves|viernes)\b/,
+];
 const DENIES_ASSISTANT_PATTERNS = [
   /(?<!no )\bsoy (una )?persona\b/,
   /(?<!no )\bsoy (un )?humano\b/,
@@ -268,6 +279,9 @@ export function checkReply(reply: string, context: CheckContext): CheckResult {
   }
   if (failsWithLiteralException(SENSITIVE_PATTERNS, normalized, context)) return fail('sensitive_request');
   if (failsWithLiteralException(COMMITMENT_PATTERNS, normalized, context)) return fail('commitment');
+  if (context.catalog && failsWithLiteralException(AVAILABILITY_PATTERNS, normalized, context)) {
+    return fail('commitment');
+  }
   if (DENIES_ASSISTANT_PATTERNS.some((pattern) => pattern.test(normalized))) return fail('denies_assistant');
   if (LEAK_MARKERS.some((marker) => normalized.includes(marker))) return fail('leak');
 

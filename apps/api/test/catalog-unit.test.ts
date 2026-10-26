@@ -449,11 +449,10 @@ describe('marcas y controles de salida', () => {
     await call(s.tools, 'ver_producto', { sku: 'CER-001' });
     return s;
   }
-  const checks = (s: Awaited<ReturnType<typeof turn>>, clientNumbers: string[] = []) => ({
-    ...buildCheckContext(config),
-    catalog: s.context,
-    clientNumbers,
-  });
+  const checks = (s: Awaited<ReturnType<typeof turn>>, clientNumbers: string[] = []) => {
+    s.context.clientNumbers = clientNumbers;
+    return { ...buildCheckContext(config), catalog: s.context, clientNumbers };
+  };
 
   it('gramática: parseMarkers separa las marcas y deja un marcador neutro', () => {
     const { markers, template } = parseMarkers('Sale {{precio:CER-001:lista}} y {{ link : CER-001 }}.');
@@ -533,10 +532,21 @@ describe('marcas y controles de salida', () => {
     const s = await turn();
     expect(checkReply('Está a $37.290 el m²', checks(s))).toEqual({ ok: false, control: 'money' });
     expect(checkReply('Son 23 cajas', checks(s, ['45']))).toEqual({ ok: false, control: 'quantity' });
-    expect(checkReply('Para 50 m² te alcanza con {{cajas:CER-001:50}}', checks(s, ['45']))).toEqual({
+    expect(checkReply('Para 50 m² te alcanza con dos cajas', checks(s, ['45']))).toEqual({
       ok: false,
       control: 'quantity',
     });
+    // La cantidad de una marca cajas tiene que salir de calcular_cantidad y de lo que dijo el cliente.
+    expect(checkReply('Te alcanza con {{cajas:CER-001:50}}', checks(s, ['45']))).toEqual({
+      ok: false,
+      control: 'marker',
+    });
+    await call(s.tools, 'calcular_cantidad', { sku: 'CER-001', cantidad: 5, unidad: 'm2' });
+    expect(checkReply('Te alcanza con {{cajas:CER-001:5}}', checks(s, ['45']))).toEqual({
+      ok: false,
+      control: 'marker',
+    });
+    await call(s.tools, 'calcular_cantidad', { sku: 'CER-001', cantidad: 45, unidad: 'm2' });
     // Los m² que dijo el cliente sí se pueden repetir.
     expect(checkReply('Para 45 m² te alcanza con {{cajas:CER-001:45}}', checks(s, ['45']))).toMatchObject({
       ok: true,

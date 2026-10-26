@@ -18,6 +18,7 @@ export type SpreadsheetErrorCode =
   | 'too_large'
   | 'too_many_rows'
   | 'too_many_columns'
+  | 'too_many_merges'
   | 'sheet_not_found'
   | 'corrupt';
 
@@ -30,6 +31,7 @@ const MESSAGES: Record<SpreadsheetErrorCode, string> = {
   too_large: 'El archivo es demasiado grande.',
   too_many_rows: 'La hoja tiene demasiadas filas.',
   too_many_columns: 'La hoja tiene demasiadas columnas.',
+  too_many_merges: 'La hoja tiene demasiadas celdas combinadas.',
   sheet_not_found: 'No existe esa hoja en el archivo.',
   corrupt: 'No se pudo leer el archivo (está dañado o no es un .xlsx válido).',
 };
@@ -69,6 +71,12 @@ export interface XlsxSheet {
   /** rows[i] es la fila i + 1 de la planilla; las filas vacías quedan como []. */
   rows: CellValue[][];
 }
+
+/** Filas vacías intercaladas que se toleran además de maxRows. */
+const MAX_BLANK_ROWS = 1_000;
+/** Celdas combinadas: cantidad de rangos y total de celdas que se rellenan. */
+const MAX_MERGES = 2_000;
+const MAX_MERGED_CELLS = 100_000;
 
 // Formatos de número predefinidos que son fechas u horas (ECMA-376, 18.8.30).
 const BUILTIN_DATE_FORMATS = new Set([14, 15, 16, 17, 18, 19, 20, 21, 22, 27, 30, 36, 45, 46, 47, 50, 57]);
@@ -352,9 +360,13 @@ function parseSheet(
     phonetic: number;
   } | null = null;
 
+  // El índice de fila sale del archivo (<row r>, <c r>): con un tope, así un r="100000000" no hace crecer
+  // la lista hasta agotar la memoria. Deja lugar para filas vacías intercaladas.
+  const maxRowIndex = context.limits.maxRows + MAX_BLANK_ROWS;
   const set = (row: number, col: number, value: CellValue) => {
     if (value === null || value === '') return;
     if (col >= context.limits.maxColumns) throw new SpreadsheetError('too_many_columns');
+    if (row >= maxRowIndex) throw new SpreadsheetError('too_many_rows');
     while (rows.length <= row) rows.push([]);
     const target = rows[row]!;
     while (target.length < col) target.push(null);
@@ -391,6 +403,7 @@ function parseSheet(
       } else if (cell && name === 't' && cell.type === 'inlineStr' && cell.phonetic === 0) {
         cell.inInline = true;
       } else if (name === 'mergeCell' && attrs.ref) {
+        if (merges.length >= MAX_MERGES) throw new SpreadsheetError('too_many_merges');
         const [from, to] = attrs.ref.split(':').map(cellRef);
         if (from && to) merges.push({ from, to });
       }
@@ -415,8 +428,12 @@ function parseSheet(
 
   // Celdas combinadas: el valor de la primera celda vale para todo el rango (por ejemplo, una categoría
   // combinada en vertical para varias filas). Rangos absurdos se ignoran.
+  let filled = 0;
   for (const { from, to } of merges) {
-    if (to.row - from.row > context.limits.maxRows || to.col >= context.limits.maxColumns) continue;
+    if (to.row < from.row || to.col < from.col) continue;
+    if (to.row >= maxRowIndex || to.col >= context.limits.maxColumns) continue;
+    filled += (to.row - from.row + 1) * (to.col - from.col + 1);
+    if (filled > MAX_MERGED_CELLS) throw new SpreadsheetError('too_many_merges');
     const value = rows[from.row]?.[from.col] ?? null;
     if (value === null) continue;
     for (let row = from.row; row <= to.row; row++) {
