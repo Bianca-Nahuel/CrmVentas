@@ -2,28 +2,27 @@
   "model": "opusplan",
   "permissions": {
     "allow": [
-      "Bash(git status)",
-      "Bash(git diff:*)",
-      "Bash(git log:*)",
-      "Bash(git add:*)",
-      "Bash(docker compose -f infra/docker-compose.yml ps)",
-      "Bash(docker compose -f infra/docker-compose.yml logs:*)",
-      "Bash(npm run test:*)",
-      "Bash(npm run lint:*)",
-      "Bash(npm run typecheck:*)",
-      "Bash(npm run build:*)",
-      "Bash(npm run evals:*)"
+      "Bash(git status *)",
+      "Bash(git diff *)",
+      "Bash(git log *)",
+      "Bash(git show *)",
+      "Bash(git add *)",
+      "Bash(git mv *)",
+      "Bash(npm run *)",
+      "Bash(npm install)",
+      "Bash(npm ci)",
+      "Bash(npx tsc *)",
+      "Bash(npx vitest *)",
+      "Bash(npx drizzle-kit *)",
+      "Bash(npx prettier *)",
+      "Bash(npx eslint *)",
+      "Bash(node *)",
+      "Bash(docker compose *)",
+      "Bash(curl http://localhost*)",
+      "Bash(curl -s http://localhost*)",
+      "Bash(mkdir *)"
     ],
-    "ask": [
-      "Bash(git commit:*)",
-      "Bash(git push:*)",
-      "Bash(npm install:*)",
-      "Bash(npx:*)",
-      "Bash(docker compose -f infra/docker-compose.yml up:*)",
-      "Bash(docker compose -f infra/docker-compose.yml down:*)",
-      "Bash(npm run migrate:*)",
-      "Bash(npm run db:*)"
-    ],
+    "ask": ["Bash(git commit *)", "Bash(git push *)"],
     "deny": [
       "Read(**/.env)",
       "Read(**/.env.local)",
@@ -35,12 +34,12 @@
       "Write(**/.env)",
       "Write(**/.env.local)",
       "Write(**/.env.production)",
-      "Bash(git push --force:*)",
-      "Bash(git push -f:*)",
-      "Bash(rm -rf:*)",
-      "Bash(rm -r:*)",
-      "Bash(ssh:*)",
-      "Bash(scp:*)"
+      "Bash(git push --force *)",
+      "Bash(git push -f *)",
+      "Bash(rm -rf *)",
+      "Bash(rm -r *)",
+      "Bash(ssh *)",
+      "Bash(scp *)"
     ]
   },
   "hooks": {

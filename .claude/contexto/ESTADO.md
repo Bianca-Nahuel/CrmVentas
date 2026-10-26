@@ -14,7 +14,7 @@ _Última actualización: 2026-10-26_
   - `PresenceService`: visto + "escribiendo…" mientras la IA piensa, que bajó la respuesta de ~25 s a ~19 s.
   - Migraciones 0008–0010 (la 0010 deja a los workers leer la empresa activa).
   - Evals: 80 casos en `evals/`; DeepSeek 77/80 con todas las metas.
-  - Decisiones #36–#47 y deuda de la 006. 371 tests. Prueba real OK. Aprobada por los dos revisores. **Sin commitear.**
+  - Decisiones #36–#47 y deuda de la 006. 371 tests. Prueba real OK. Aprobada por los dos revisores. Commiteada (1930c1c).
 - Tarea 005: envío por outbox `outbound_messages` (migraciones 0006/0007, cola `whatsapp-outbound` singleton por chat), worker visto → escribiendo → enviar (claim atómico, lock por canal, nunca reenvía un `sending`, 5xx/timeout = `unknown_outcome`), ecos por `message.any` (de una persona → `user` y la IA pausada 12 h), acuses por `message.ack`, `blocked_risk` pausa el canal sin vencimiento. Commiteada (5100f3d).
 - Tarea 004: webhook de WAHA con HMAC → cola `whatsapp-inbound` → worker idempotente. Commiteada (f125cc0).
 - Tarea 003: tablas de mensajería con RLS y FKs compuestas. Commiteada (cdc370b).
@@ -27,8 +27,8 @@ _Última actualización: 2026-10-26_
 
 ## Siguiente
 
-- Commit de la tarea 006 (lo confirma el usuario). Dejar `.claude/settings.json` afuera: es un cambio del usuario, y el revisor de seguridad sugirió volver a "preguntar" `node *`, `docker compose *` y `npm run db:*`.
-- Tarea 007 (catálogo Excel y web): el ciclo de herramientas de `OpenRouterClient` ya está y `--tools-probe` dio OK con Haiku y Sonnet; a DeepSeek no se le corrió la prueba de herramientas (correr `npm run evals -- --model deepseek/deepseek-v4.1-flash --tools-probe --case C01 --max-usd 0.02`). Los controles de salida tienen `parseMarkers`/`render` listos para `{{precio:SKU}}`. Hoy un precio marca `cannot_answer`.
+- `.claude/settings.json` quedó afuera del commit de la 006 (cambio del usuario): el revisor de seguridad sugirió volver a "preguntar" `node *`, `docker compose *` y `npm run db:*`.
+- Tarea 007 (catálogo Excel y web): el ciclo de herramientas de `OpenRouterClient` ya está y `--tools-probe` dio OK con Haiku y Sonnet. **Con DeepSeek (el modelo por defecto), herramientas + `response_format` en la misma llamada no funciona: 0 de 3 pruebas llamó a la herramienta y siempre inventó el dato** (2026-10-26). Antes del catálogo, probar con evals: (1) dos fases (vueltas con herramientas sin `response_format` y una llamada final con la salida estructurada) o (2) la salida final como herramienta forzada; si ninguna anda con DeepSeek, usar Haiku en los turnos con catálogo. La interfaz `LlmClient` no cambia. Los controles de salida tienen `parseMarkers`/`render` listos para `{{precio:SKU}}`. Hoy un precio marca `cannot_answer`.
 - Tarea 008 (créditos): reemplazar `NoopBudgetGuard`; ver la deuda de la 006 (doble llamada si falla la T2, tope de corridas por conversación, límite de gasto en la clave de OpenRouter).
 - Tarea 014: volver a activar la IA en una conversación derivada (hoy se cierra a mano en la base para probar) y mostrar el resumen como "automático, no verificado".
 - Antes de `npm run test`, bajar `npm run dev:api` (comparten la cola de pg-boss).
