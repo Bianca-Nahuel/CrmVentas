@@ -61,6 +61,8 @@ pero si le preguntan si es una persona, sigue diciendo que es un asistente autom
      - se registran por conversación los campos que el cliente no quiso dar o que ya se preguntaron dos
        veces, y no vuelven a `faltan`.
    - No usar cierres genéricos ("¿algo más?"), frases de manual ni el nombre del cliente en cada mensaje.
+   - Pedidos ajenos al negocio: una respuesta corta y simpática (no "con eso no puedo ayudarte") y volver
+     al tema que venían hablando.
    - `availability`: separar "¿venden o trabajan X?" (consulta de catálogo: se responde con
      `buscar_productos`, sin afirmar stock) de "¿hay stock de este producto, para cuándo, lo puedo retirar
      hoy?" (disparador). Mantener la regla de marcarlo ante la duda solo para el segundo caso. Lo mismo en
@@ -70,8 +72,8 @@ pero si le preguntan si es una persona, sigue diciendo que es un asistente autom
    oraciones; `reply` desaparece). El modelo **elige** cuántos: por defecto 1. Dos solo cuando son dos cosas
    distintas, como una respuesta y una pregunta aparte, o una respuesta con un dato y un comentario, y
    nunca dos para un saludo o una respuesta corta. El eval mide que la mayoría de los turnos salga en 1. `decide()` controla **cada parte** con `checkReply` y también la
-   concatenación (los topes de largo valen para el total). Si una parte falla, no sale ninguna y se deriva
-   como hoy.
+   concatenación (los topes de largo valen para el total). Si una parte falla, no sale ninguna; se deriva como
+   hoy (la reformulación ante un bloqueo es la tarea 015).
    - `sendAiReply` encola una fila por parte, con `idempotencyKey` `ai:<messageId>:<n>`, en la misma
      transacción.
    - Las partes de una misma respuesta usan su propio "escribiendo…" (`typingDelayMs`) en lugar de
@@ -128,6 +130,9 @@ pero si le preguntan si es una persona, sigue diciendo que es un asistente autom
 - Que el agente diga o dé a entender que es una persona (la regla IDENTIDAD y `denies_assistant` quedan
   igual).
 - El panel para editar la config (tarea 012).
+- Controles de salida y reformulación (015), robustez del pipeline (016), modo acompañante y textos
+  contextuales (017), audios (018), contexto del contacto (019), extracción (020), categorización (021) y
+  fotos del catálogo (022).
 - Transcribir audios o ver fotos.
 - Relajar el detector en código de disparadores críticos o los controles de salida.
 

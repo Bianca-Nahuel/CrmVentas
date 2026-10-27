@@ -35,6 +35,7 @@ _Última actualización: 2026-10-26 (tarea 007, prueba local y real)_
 
 ## Siguiente
 
+- **Plan del agente conversacional (2026-10-27, decisión #63):** tareas 010 y 015–022 en `docs/tareas/pendientes/`. Orden sugerido: 010 (prompt v3, 1 o 2 mensajes, no repreguntar) → 015 (controles y reformulación) → 016 (reintento, visto, espera adaptativa) → 017 (modo acompañante y textos contextuales) → 020 (extracción) → 019 (contexto del contacto) → 018 (audios) → 021 (categorización) → 022 (fotos del catálogo). La 017 cambia una regla de `CLAUDE.md` al cerrarse. Config conversacional propuesta para cerámicos: `max_questions_per_message: 1`, `availability`/`cannot_answer` como `after_fields`, sin `custom_recomendacion` y estilo en `custom_instructions`.
 - `.claude/settings.json` quedó afuera del commit de la 006 (cambio del usuario): el revisor de seguridad sugirió volver a "preguntar" `node *`, `docker compose *` y `npm run db:*`.
 - Tarea 007: commiteada y pusheada en `claude/vibrant-dirac-ujisy4`; falta mergearla a `main`. `package-lock.json` quedó modificado solo por `npm install` (saca `"dev": true` de los binarios de esbuild): no va en el commit.
 - Seguimientos de la 007 (ver "Deuda pendiente (tarea 007)" en `docs/decisiones.md`): error de OpenRouter que deja al cliente sin respuesta y sin detalle registrado; lead caliente al que se le responde (CAT24, C16); 45 m² sin calcular en el primer turno (CAT05); parser `number_dot`.
