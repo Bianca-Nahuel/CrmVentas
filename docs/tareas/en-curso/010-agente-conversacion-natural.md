@@ -164,4 +164,3 @@ Implementada y aprobada por los dos revisores; **falta la verificación con el m
   dos mensajes esquivaba los controles. Se corrigió controlando también las partes unidas.
 - Decisiones #64 y #65, y la deuda de la tarea 010 en `docs/decisiones.md`.
 - Para cerrar: correr los evals (línea base v2 y v3), comparar, hacer la prueba real y mover a `hechas/`.
-
