@@ -20,6 +20,7 @@ import {
 import type { JobAttempt } from '../../whatsapp/inbound/inbound.worker.js';
 import {
   MAX_SENDS_PER_MINUTE_PER_CHANNEL,
+  NEXT_PART_MAX_WAIT_MS,
   NEXT_PART_RECHECK_MS,
   RATE_WINDOW_MS,
   STUCK_SENDING_AFTER_MS,
@@ -328,7 +329,9 @@ export class OutboundWorker implements OnApplicationBootstrap {
 
   /**
    * ¿La parte siguiente puede salir? 'wait' mientras la anterior no terminó; 'superseded' si la anterior no
-   * salió, si después de armar la respuesta escribió el cliente, respondió una persona o se pausó la IA.
+   * salió (o no sale en NEXT_PART_MAX_WAIT_MS), si después de armar la respuesta escribió el cliente,
+   * respondió una persona o se pausó la IA. Nota para el envío desde el panel (011): una respuesta del
+   * vendedor encolada todavía no está en messages; ese envío tiene que pausar la IA (o mirarse acá).
    */
   private async nextPartState(
     tx: AppTx,
@@ -341,7 +344,10 @@ export class OutboundWorker implements OnApplicationBootstrap {
       .from(outboundMessages)
       .where(eq(outboundMessages.id, previousId));
     if (!previous || previous.status === 'failed' || previous.status === 'rejected') return 'superseded';
-    if (previous.status !== 'sent') return 'wait';
+    if (previous.status !== 'sent') {
+      const waited = (await dbNow(tx)).getTime() - createdAt.getTime();
+      return waited > NEXT_PART_MAX_WAIT_MS ? 'superseded' : 'wait';
+    }
     const result = await tx.execute<{ changed: boolean }>(sql`
       SELECT EXISTS (
         SELECT 1 FROM messages m

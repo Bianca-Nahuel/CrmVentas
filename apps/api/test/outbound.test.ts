@@ -651,6 +651,25 @@ describe('4b. respuesta en partes (tarea 010)', () => {
     expect(provider.sends()).toHaveLength(1);
   });
 
+  it('si la anterior no sale en 10 minutos, la siguiente ya no va (superseded)', async () => {
+    const chat = await freshChat();
+    const first = await enqueue(chat);
+    const second = await enqueue(chat, { afterOutboundId: first.outboundId });
+    await ctx.ownerPool.query(
+      `UPDATE outbound_messages SET created_at = now() - interval '11 minutes' WHERE id = $1`,
+      [second.outboundId],
+    );
+    const provider = new FakeProvider();
+    const { worker } = workerWith(provider);
+    expect(await worker.handle(partJob(chat, second.outboundId, first.outboundId), attempt())).toBe(
+      'rechazado',
+    );
+    expect(await outbox(second.outboundId)).toMatchObject({
+      status: 'rejected',
+      reject_reason: 'superseded',
+    });
+  });
+
   it('con la IA pausada (una persona tomó la conversación) → superseded', async () => {
     const chat = await freshChat();
     const first = await enqueue(chat);

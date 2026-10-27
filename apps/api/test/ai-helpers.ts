@@ -172,6 +172,7 @@ export function agentOutput(config: TenantConfig, overrides: Partial<AgentOutput
     action: 'none',
     replies: [],
     asks_field: null,
+    declined_fields: [],
     suggestion: null,
     handoff_summary: 'Cliente consultando.',
     reason: null,

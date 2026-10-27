@@ -1,5 +1,6 @@
-// Capa de la empresa del prompt v3 (tarea 010: disponibilidad acotada, una pregunta por turno): se arma solo con la config de ESA empresa y el estado de ESA
-// conversación (nunca con datos de otra). Va como JSON escapado dentro de <negocio>.
+// Capa de la empresa del prompt v3 (tarea 010: disponibilidad acotada, una pregunta por turno y datos que
+// no se vuelven a preguntar). Se arma solo con la config de ESA empresa y el estado de ESA conversación
+// (nunca con datos de otra). Va como JSON escapado dentro de <negocio>.
 import { PREDEFINED_TRIGGERS, type PredefinedTrigger, type TenantConfig } from '@ventas/shared';
 import { AGENT_MAX_SUGGESTIONS_PER_CONVERSATION, AI_MAX_QUESTIONS_PER_TURN } from '../../ai.constants.js';
 import { jsonForPrompt } from '../../llm/json-for-prompt.js';
@@ -20,11 +21,38 @@ const TRIGGER_DESCRIPTIONS: Record<PredefinedTrigger, string> = {
     'pregunta algo sobre el negocio, sus productos o servicios que no está en la información del negocio ni en lo que devuelven las herramientas del catálogo, incluido un precio que no se puede citar (no los pedidos ajenos al negocio)',
 };
 
+/** Lo que ya se preguntó en la conversación (de ai_runs): para no insistir con un dato. */
+export interface FieldAsks {
+  /** Veces que se envió una respuesta que preguntaba cada campo. */
+  asked: Record<string, number>;
+  /** Campos que el cliente dijo que no quiere o no puede dar. */
+  declined: string[];
+  /** Campo que preguntó la última respuesta enviada, o null. */
+  lastAsked: string | null;
+}
+
+export const NO_FIELD_ASKS: FieldAsks = { asked: {}, declined: [], lastAsked: null };
+
+/** Un dato se deja de preguntar si el cliente no lo quiso dar o si ya se preguntó estas veces. */
+export const MAX_ASKS_PER_FIELD = 2;
+
 export interface TenantLayerState {
   extracted: Record<string, ExtractedValue>;
   discovered: DiscoveredNote[];
   lastScore: number | null;
   counters: ConversationCounters;
+  /** Sin dato (evals, conversación nueva): nada preguntado. */
+  fieldAsks?: FieldAsks;
+}
+
+/** Campos que no se vuelven a preguntar: rechazados o ya preguntados MAX_ASKS_PER_FIELD veces. */
+export function exhaustedFields(fieldAsks: FieldAsks = NO_FIELD_ASKS): Set<string> {
+  return new Set([
+    ...fieldAsks.declined,
+    ...Object.entries(fieldAsks.asked)
+      .filter(([, count]) => count >= MAX_ASKS_PER_FIELD)
+      .map(([key]) => key),
+  ]);
 }
 
 export interface TenantLayerInput {
@@ -36,8 +64,10 @@ export interface TenantLayerInput {
 
 /** Campos que todavía hay que preguntar (sin valor y habilitados por el puntaje), por prioridad. */
 export function pendingFields(config: TenantConfig, state: TenantLayerState) {
+  const exhausted = exhaustedFields(state.fieldAsks);
   return config.qualification.fields
     .filter((field) => state.extracted[field.key] === null || state.extracted[field.key] === undefined)
+    .filter((field) => !exhausted.has(field.key))
     .filter(
       (field) => field.ask_when_score_gte === undefined || (state.lastScore ?? 0) >= field.ask_when_score_gte,
     )
@@ -118,6 +148,8 @@ export function buildTenantLayer({ config, local, isOpen, state }: TenantLayerIn
     ),
     // Calculado con lo anterior a este turno: lo que el cliente dice ahora también cuenta como dato.
     faltan_antes_de_este_turno: qualify ? pendingFields(config, state).map((field) => field.key) : [],
+    // Datos que el cliente no quiso dar o que ya se le preguntaron dos veces: no se vuelven a preguntar.
+    no_insistir: [...exhaustedFields(state.fieldAsks)],
     calificar: qualify,
     preguntas_por_mensaje: Math.min(
       config.qualification.max_questions_per_message,

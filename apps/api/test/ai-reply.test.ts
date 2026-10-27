@@ -337,6 +337,25 @@ describe('3 y 7. puntaje y calificación', () => {
     expect(aiRun.outbound_message_id).toBe(rows[0]!.id);
   });
 
+  it('un dato ya preguntado dos veces (según ai_runs) no se vuelve a preguntar', async () => {
+    const chat = await setup();
+    const asksM2 = (text: string) =>
+      agentOutput(config, { action: 'reply', replies: [text], asks_field: 'm2' });
+    for (const text of ['Busco cerámica', '¿Qué colores tienen?']) {
+      const messageId = await addMessage(ctx, chat, { text });
+      fake.respond = () => asksM2('Tenemos varios. ¿Cuántos m² necesitás, más o menos?');
+      expect((await run(chat, messageId)).decision).toBe('replied');
+      await deliver(chat);
+    }
+    const third = await addMessage(ctx, chat, { text: '¿Y para pared sirve?' });
+    fake.respond = () => asksM2('Sí, sirve para pared. ¿Cuántos m² necesitás, más o menos?');
+    expect((await run(chat, third)).decision).toBe('replied');
+    const bodies = (await outbox(chat)).map((row) => row.body);
+    expect(bodies.at(-1)).toBe('Sí, sirve para pared.');
+    // El prompt también lo marca para no insistir.
+    expect(fake.requests.at(-1)!.system).toContain('"no_insistir":["m2"]');
+  });
+
   it('reply de calificación: se envía como ai con ai:<id>, el puntaje y el desglose quedan guardados y los datos se combinan', async () => {
     const chat = await setup();
     await ctx.ownerPool.query(`UPDATE conversations SET extracted_data = '{"m2": 40}' WHERE id = $1`, [

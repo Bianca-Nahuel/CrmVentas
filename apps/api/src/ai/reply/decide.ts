@@ -10,6 +10,7 @@ import {
   AI_MAX_QUESTIONS_PER_TURN,
 } from '../ai.constants.js';
 import type { AgentOutput } from '../prompts/v3/output-schema.js';
+import { exhaustedFields, NO_FIELD_ASKS, type FieldAsks } from '../prompts/v3/tenant-layer.js';
 import { answersAvailability } from './markers.js';
 import { checkReplies, type CheckContext, type OutputControl, type SafeReply } from './output-checks.js';
 
@@ -32,6 +33,8 @@ export interface DecideInput {
   counters: ConversationCounters;
   isOpen: boolean;
   checks: CheckContext;
+  /** Lo ya preguntado en la conversación (sin dato: nada). */
+  fieldAsks?: FieldAsks;
 }
 
 export type Decision =
@@ -92,14 +95,34 @@ function askFieldsText(
   return [...(intro ? [intro] : []), ...questions].join(' ');
 }
 
-// Una oración termina en "?" (con o sin "¿" al principio): es una pregunta.
-const SENTENCE = /[^.!?\n]+(?:[.!?]+|$)/g;
+/**
+ * Oraciones de un texto: terminan en . ! o ? seguidos de un espacio o del final (así "2.5 m²" o
+ * "$37.290" no cortan), y nunca dentro de una marca {{…}}. Unidas devuelven el texto original.
+ */
+export function sentences(text: string): string[] {
+  const result: string[] = [];
+  let current = '';
+  let inMarker = false;
+  for (let index = 0; index < text.length; index++) {
+    const char = text[index]!;
+    current += char;
+    if (text.startsWith('{{', index)) inMarker = true;
+    if (inMarker && char === '}' && text[index - 1] === '}') inMarker = false;
+    const next = text[index + 1];
+    if (!inMarker && '.!?'.includes(char) && (next === undefined || /\s/.test(next))) {
+      result.push(current);
+      current = '';
+    }
+  }
+  if (current !== '') result.push(current);
+  return result;
+}
 
 /** Saca las oraciones que preguntan (terminan en "?"); quedan las partes que tienen algo más. */
 export function withoutQuestions(parts: string[]): string[] {
   return parts
     .map((part) =>
-      (part.match(SENTENCE) ?? [])
+      sentences(part)
         .filter((sentence) => !sentence.trim().endsWith('?'))
         .join('')
         .trim(),
@@ -107,12 +130,25 @@ export function withoutQuestions(parts: string[]): string[] {
     .filter((part) => part !== '');
 }
 
-/** El siguiente dato que conviene preguntar si se sacó una repregunta y no quedó nada para decir. */
-function nextFieldQuestion(input: DecideInput, language: string): string | null {
-  const { config, obtained, score, counters } = input;
-  if (counters.qualificationTurns >= config.qualification.max_qualification_turns) return null;
+/** ¿Corresponde hacer preguntas de calificación en este turno? (lo mismo que shouldQualify del prompt) */
+function canQualify(input: DecideInput): boolean {
+  const { config, isOpen, score, counters } = input;
+  if (!isOpen && !config.handoff.qualify_after_hours) return false;
+  if (counters.qualificationTurns >= config.qualification.max_qualification_turns) return false;
+  return !(
+    score >= config.scoring.thresholds.hot && counters.hotTurns >= config.qualification.max_turns_when_hot
+  );
+}
+
+/**
+ * El siguiente dato que conviene preguntar si se sacó una repregunta y no quedó nada para decir: solo si
+ * corresponde calificar, y nunca uno agotado ni el que se preguntó en el turno anterior.
+ */
+function nextFieldQuestion(input: DecideInput, skip: ReadonlySet<string>, language: string): string | null {
+  const { config, obtained, score } = input;
+  if (!canQualify(input)) return null;
   const next = config.qualification.fields
-    .filter((field) => !obtained.has(field.key))
+    .filter((field) => !obtained.has(field.key) && !skip.has(field.key))
     .filter((field) => field.ask_when_score_gte === undefined || score >= field.ask_when_score_gte)
     .sort((a, b) => a.priority - b.priority)[0];
   return next ? howToAsk(config, next.key, language) : null;
@@ -134,9 +170,18 @@ export function decide(input: DecideInput): DecideResult {
   // 0. Salida inválida: deriva (con lo que haya). Los disparadores del código igual quedan registrados.
   if (!output) return { decision: handoff('invalid_output'), triggers };
 
+  // Nunca se repregunta un dato que ya está (también lo dicho en este turno), que el cliente no quiso dar
+  // o que ya se preguntó dos veces: se sacan las oraciones que preguntan. Se calcula antes que el catálogo
+  // para que la marca de stock cuente solo si sigue en lo que se va a enviar.
+  const fieldAsks = input.fieldAsks ?? NO_FIELD_ASKS;
+  const skip = new Set([...exhaustedFields(fieldAsks), ...output.declined_fields]);
+  const repeat =
+    output.asks_field !== null && (obtained.has(output.asks_field) || skip.has(output.asks_field));
+  const replies = repeat ? withoutQuestions(output.replies) : output.replies;
+
   // Catálogo (tarea 007): una pregunta por disponibilidad que la respuesta contesta con una marca de stock
   // válida (la fuente configurada la informa y está vigente) no deriva. Queda registrada igual.
-  const active = answersAvailability(output.replies.join('\n'), input.checks.catalog)
+  const active = answersAvailability(replies.join('\n'), input.checks.catalog)
     ? triggers.filter((id) => id !== 'availability')
     : triggers;
 
@@ -204,17 +249,16 @@ export function decide(input: DecideInput): DecideResult {
     if (suggestion && counters.suggestionsCount >= AGENT_MAX_SUGGESTIONS_PER_CONVERSATION) {
       return { decision: handoff('blocked:suggestion_limit', 'suggestion_limit'), triggers };
     }
-    // Nunca se repregunta un dato que ya está (también lo dicho en este turno): se saca la pregunta y, si
-    // no queda nada, va la del siguiente dato pendiente; si no hay ninguno, no se responde.
-    let parts = output.replies;
-    const repeat = output.asks_field !== null && obtained.has(output.asks_field);
-    if (repeat) {
-      parts = withoutQuestions(parts);
-      if (parts.length === 0) {
-        const next = nextFieldQuestion(input, output.language);
-        if (!next) return { decision: { kind: 'none' }, triggers };
-        parts = [next];
-      }
+    // Si se sacó una repregunta y no quedó nada, va la del siguiente dato pendiente (sin el del turno
+    // anterior); si no hay ninguno o no corresponde calificar, no se responde.
+    let parts = replies;
+    if (repeat && parts.length === 0) {
+      const lastAsked = fieldAsks.lastAsked
+        ? [fieldAsks.lastAsked, output.asks_field!]
+        : [output.asks_field!];
+      const next = nextFieldQuestion(input, new Set([...skip, ...lastAsked]), output.language);
+      if (!next) return { decision: { kind: 'none' }, triggers };
+      parts = [next];
     }
     const checked = checkReplies(parts, input.checks);
     if (!checked.ok) return { decision: handoff(`blocked:${checked.control}`, checked.control), triggers };

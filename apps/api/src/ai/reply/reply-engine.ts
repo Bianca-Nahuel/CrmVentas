@@ -152,6 +152,7 @@ export function evaluateTurn(
     triggersCode: prepared.triggersCode,
     counters: { ...state.counters, afterFieldsAsks },
     isOpen: prepared.isOpen,
+    ...(state.fieldAsks ? { fieldAsks: state.fieldAsks } : {}),
     checks: { ...buildCheckContext(config), ...catalogChecks(input, prepared) },
   });
 

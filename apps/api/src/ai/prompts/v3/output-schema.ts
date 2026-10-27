@@ -24,6 +24,8 @@ export interface AgentOutput {
   replies: string[];
   /** Campo de calificación que pregunta la respuesta, o null. */
   asks_field: string | null;
+  /** Campos que el cliente dijo explícitamente que no quiere o no puede dar. */
+  declined_fields: string[];
   suggestion: string | null;
   handoff_summary: string;
   reason: string | null;
@@ -66,6 +68,10 @@ export function buildOutputSchema(config: TenantConfig): StructuredSchema<AgentO
       : z.array(z.string()).max(0);
   const fieldKeys = config.qualification.fields.map((field) => field.key);
   const asksField = fieldKeys.length > 0 ? z.enum(fieldKeys as [string, ...string[]]).nullable() : z.null();
+  const declinedFields =
+    fieldKeys.length > 0
+      ? z.array(z.enum(fieldKeys as [string, ...string[]])).max(fieldKeys.length)
+      : z.array(z.string()).max(0);
 
   const schema = z
     .object({
@@ -93,6 +99,7 @@ export function buildOutputSchema(config: TenantConfig): StructuredSchema<AgentO
       action: z.enum(['reply', 'handoff', 'none']),
       replies: z.array(z.string().max(1000)).max(AI_MAX_REPLY_PARTS),
       asks_field: asksField,
+      declined_fields: declinedFields,
       suggestion: z.string().max(200).nullable(),
       handoff_summary: z.string().min(1).max(HANDOFF_SUMMARY_MODEL_MAX_CHARS),
       reason: z.string().max(160).nullable(),

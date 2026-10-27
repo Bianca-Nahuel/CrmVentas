@@ -14,7 +14,8 @@
       "accion": "responder",
       "sin_pregunta": true,
       "max_partes": 1,
-      "no_pregunta": ["ambiente", "m2|m²|metros", "cu[aá]ndo", "nombre", "retir|env[ií]o"]
+      "no_pregunta": ["ambiente", "m2|m²|metros", "cu[aá]ndo", "nombre", "retir|env[ií]o"],
+      "max_preguntas": 1
     }
   },
   {
@@ -32,7 +33,8 @@
       "accion": "responder",
       "debe_contener": ["8[:.]?30", "13"],
       "sin_pregunta": true,
-      "max_partes": 1
+      "max_partes": 1,
+      "max_preguntas": 1
     }
   },
   {
@@ -87,7 +89,8 @@
     "esperado": {
       "accion": ["derivar", "responder"],
       "disparadores": ["availability"],
-      "no_debe_contener": ["\\b(hay|tenemos) stock\\b"]
+      "no_debe_contener": ["\\b(hay|tenemos) stock\\b"],
+      "max_preguntas": 1
     }
   },
   {
@@ -210,6 +213,116 @@
       "accion": "responder",
       "max_preguntas": 1,
       "no_pregunta": ["retir|env[ií]o|zona", "nombre", "cuit"]
+    }
+  },
+  {
+    "id": "CV12",
+    "tenant_config": "ceramicos",
+    "tipo": "conversacion",
+    "titulo": "Respuesta con un dato y una pregunta aparte: dos mensajes",
+    "conversacion": [
+      {
+        "de": "cliente",
+        "texto": "Hola, ¿hacen envíos a Batán? Estoy por renovar todo el piso de la casa, unos 80 m2, y quiero arrancar este mes"
+      }
+    ],
+    "esperado": {
+      "accion": ["responder", "derivar"],
+      "min_partes": 2,
+      "max_partes": 2,
+      "max_preguntas": 1,
+      "no_pregunta": ["cu[aá]ntos (m2|m²|metros)", "cu[aá]ndo"]
+    }
+  },
+  {
+    "id": "CV13",
+    "tenant_config": "ceramicos-catalogo",
+    "tipo": "conversacion",
+    "titulo": "Con catálogo: da ambiente y medidas y pregunta un color, no los repregunta",
+    "catalogo": "ceramicos",
+    "conversacion": [
+      {
+        "de": "cliente",
+        "texto": "Busco porcelanato para el living, 4 por 5 metros. ¿Tienen en gris?"
+      }
+    ],
+    "esperado": {
+      "accion": ["responder", "derivar"],
+      "herramientas": ["buscar_productos"],
+      "no_pregunta": ["ambiente", "cu[aá]ntos (m2|m²|metros)"],
+      "max_preguntas": 1,
+      "no_debe_contener": ["\\bhay stock\\b"]
+    }
+  },
+  {
+    "id": "CV14",
+    "tenant_config": "ceramicos",
+    "tipo": "conversacion",
+    "titulo": "Dato ya preguntado dos veces: no insiste",
+    "estado": {
+      "extracted": {
+        "producto_ambiente": "baño"
+      },
+      "qualification_turns": 3,
+      "field_asks": {
+        "asked": {
+          "m2": 2
+        },
+        "last_asked": "m2"
+      }
+    },
+    "conversacion": [
+      {
+        "de": "cliente",
+        "texto": "Busco cerámica para el baño"
+      },
+      {
+        "de": "ia",
+        "texto": "¡Buenísimo! ¿Cuántos m² necesitás, más o menos?"
+      },
+      {
+        "de": "cliente",
+        "texto": "¿Qué colores tienen?"
+      },
+      {
+        "de": "ia",
+        "texto": "Tenemos blancos, grises y símil madera. ¿Y más o menos cuántos metros serían?"
+      },
+      {
+        "de": "cliente",
+        "texto": "¿Y el símil madera es para pared también?"
+      }
+    ],
+    "esperado": {
+      "accion": ["responder", "derivar"],
+      "no_pregunta": ["cu[aá]ntos (m2|m²|metros)", "metros"],
+      "max_preguntas": 1
+    }
+  },
+  {
+    "id": "CV15",
+    "tenant_config": "ceramicos",
+    "tipo": "conversacion",
+    "titulo": "No sabe los metros: no se los vuelve a pedir y le explica cómo calcularlos",
+    "conversacion": [
+      {
+        "de": "cliente",
+        "texto": "Quiero cerámica para la cocina"
+      },
+      {
+        "de": "ia",
+        "texto": "¡Dale! ¿Cuántos m² serían, más o menos?"
+      },
+      {
+        "de": "cliente",
+        "texto": "Ni idea, no lo medí todavía"
+      }
+    ],
+    "esperado": {
+      "accion": ["responder", "derivar"],
+      "no_pregunta": ["cu[aá]ntos (m2|m²|metros)"],
+      "debe_contener_alguno": ["largo|ancho|med[ií]"],
+      "max_preguntas": 1
     }
   }
 ]

@@ -294,8 +294,9 @@ export function checkReply(reply: string, context: CheckContext): CheckResult {
 export type CheckPartsResult = { ok: true; parts: SafeReply[] } | { ok: false; control: OutputControl };
 
 /**
- * Respuesta en varios mensajes (tarea 010): cada parte pasa por checkReply y los topes de largo valen para
- * el total (sin marcas y con los valores puestos). Una parte que falla bloquea todas.
+ * Respuesta en varios mensajes (tarea 010): los controles corren sobre el texto unido (una frase partida
+ * entre dos mensajes, "te lo" + "reservo", se lee entera en el chat) y sobre cada parte; los topes de largo
+ * valen para el total. Una parte que falla bloquea todas.
  */
 export function checkReplies(parts: string[], context: CheckContext): CheckPartsResult {
   const nonEmpty = parts.map((part) => part.trim()).filter((part) => part !== '');
@@ -312,6 +313,12 @@ export function checkReplies(parts: string[], context: CheckContext): CheckParts
     if (cited) cited.length = citedBefore;
     return { ok: false, control };
   };
+  // Sobre todo junto (las citas que registra este paso se descartan: las registran las partes).
+  if (nonEmpty.length > 1) {
+    const joined = checkReply(nonEmpty.join(' '), context);
+    if (cited) cited.length = citedBefore;
+    if (!joined.ok) return fail(joined.control);
+  }
   const checked: SafeReply[] = [];
   for (const part of nonEmpty) {
     const result = checkReply(part, context);

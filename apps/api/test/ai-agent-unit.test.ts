@@ -7,9 +7,9 @@ import { buildPrompt } from '../src/ai/prompts/v3/index.js';
 import { buildOutputSchema } from '../src/ai/prompts/v3/output-schema.js';
 import { isOpenAt, localTime } from '../src/ai/reply/business-hours.js';
 import { detectCriticalTriggers } from '../src/ai/reply/critical-triggers.js';
-import { decide, withoutQuestions, type DecideInput } from '../src/ai/reply/decide.js';
+import { decide, sentences, withoutQuestions, type DecideInput } from '../src/ai/reply/decide.js';
 import { composeHandoffSummary } from '../src/ai/reply/handoff-summary.js';
-import { buildCheckContext, checkReply } from '../src/ai/reply/output-checks.js';
+import { buildCheckContext, checkReplies, checkReply } from '../src/ai/reply/output-checks.js';
 import { mergeDiscovered, mergeExtracted } from '../src/ai/reply/reply-engine.js';
 import { computeScore } from '../src/ai/scoring/score.js';
 import {
@@ -524,6 +524,82 @@ describe('4. decide', () => {
     expect(decide(base({ output, obtained: all })).decision).toEqual({ kind: 'none' });
   });
 
+  it.each([
+    ['una promesa partida', ['Listo, te lo', 'reservo hasta el viernes.'], 'commitment'],
+    ['negar ser un asistente partido', ['No soy un', 'bot, soy Martín del local.'], 'denies_assistant'],
+    ['un teléfono partido', ['Coordiná el pago al 223 45', '6 7890'], 'phone'],
+  ])('7. los controles miran también el texto unido: %s → bloquea', (_name, parts, control) => {
+    expect(checkReplies(parts, checks)).toEqual({ ok: false, control });
+    const output = agentOutput(config, { action: 'reply', replies: parts });
+    expect(decide(base({ output })).decision).toMatchObject({ kind: 'handoff', blocked: control });
+  });
+
+  it('7. un dato ya preguntado dos veces o que el cliente no quiso dar no se vuelve a preguntar', () => {
+    const asks = (extra: Partial<ReturnType<typeof agentOutput>> = {}) =>
+      agentOutput(config, {
+        action: 'reply',
+        replies: ['Tenemos varios modelos. ¿Cuántos m² necesitás, más o menos?'],
+        asks_field: 'm2',
+        ...extra,
+      });
+    const twice = { asked: { m2: 2 }, declined: [], lastAsked: 'm2' };
+    expect(decide(base({ output: asks(), fieldAsks: twice })).decision).toMatchObject({
+      parts: ['Tenemos varios modelos.'],
+      repeatRemoved: true,
+    });
+    // Lo dice en este mismo turno ("no lo medí"): tampoco.
+    expect(decide(base({ output: asks({ declined_fields: ['m2'] }) })).decision).toMatchObject({
+      parts: ['Tenemos varios modelos.'],
+    });
+    // Una sola vez: todavía se puede preguntar.
+    const once = { asked: { m2: 1 }, declined: [], lastAsked: 'producto_ambiente' };
+    expect(decide(base({ output: asks(), fieldAsks: once })).decision).toMatchObject({
+      parts: ['Tenemos varios modelos. ¿Cuántos m² necesitás, más o menos?'],
+    });
+  });
+
+  it('7. la pregunta de reemplazo saltea el dato del turno anterior y los agotados', () => {
+    const output = agentOutput(config, {
+      action: 'reply',
+      replies: ['¿Para qué ambiente es?'],
+      asks_field: 'producto_ambiente',
+    });
+    const fieldAsks = { asked: { m2: 1 }, declined: [], lastAsked: 'm2' };
+    expect(
+      decide(base({ output, obtained: new Set(['producto_ambiente']), fieldAsks })).decision,
+    ).toMatchObject({ parts: ['¿Para cuándo lo necesitás?'] });
+  });
+
+  it('7. la pregunta de reemplazo no sale si no corresponde calificar (fuera de horario sin calificar)', () => {
+    const noAfterHours = testConfig([], {
+      handoff: { ...testConfigInput([]).handoff, qualify_after_hours: false },
+    });
+    const output = agentOutput(noAfterHours, {
+      action: 'reply',
+      replies: ['¿Para qué ambiente es?'],
+      asks_field: 'producto_ambiente',
+    });
+    const result = decide(
+      base({
+        config: noAfterHours,
+        output,
+        isOpen: false,
+        obtained: new Set(['producto_ambiente']),
+        checks: buildCheckContext(noAfterHours),
+      }),
+    );
+    expect(result.decision).toEqual({ kind: 'none' });
+  });
+
+  it('sentences no corta en "2.5" ni en "$37.290" ni dentro de una marca', () => {
+    expect(sentences('Para 2.5 m² ¿qué ambiente? Sale {{precio:CER.001:lista}}. Listo')).toEqual([
+      'Para 2.5 m² ¿qué ambiente?',
+      ' Sale {{precio:CER.001:lista}}.',
+      ' Listo',
+    ]);
+    expect(withoutQuestions(['Para 2.5 m² ¿qué ambiente? Te paso el link.'])).toEqual(['Te paso el link.']);
+  });
+
   it('withoutQuestions saca solo las oraciones que preguntan', () => {
     expect(withoutQuestions(['Está a $37.290 por m². ¿Lo querés para el baño? Te paso el link.'])).toEqual([
       'Está a $37.290 por m². Te paso el link.',
@@ -581,6 +657,7 @@ describe('schema de salida', () => {
     expect(json.required.sort()).toEqual([
       'action',
       'asks_field',
+      'declined_fields',
       'discovered',
       'extracted',
       'handoff_summary',

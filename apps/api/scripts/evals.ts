@@ -69,6 +69,8 @@ interface EvalCase {
     suggestions_count?: number;
     after_fields_asks?: number;
     last_score?: number | null;
+    /** Lo ya preguntado (tarea 010): veces por campo, rechazados y el último preguntado. */
+    field_asks?: { asked?: Record<string, number>; declined?: string[]; last_asked?: string | null };
   };
   conversacion: { de: 'cliente' | 'ia' | 'vendedor'; texto: string | null; tipo?: string }[];
   esperado: {
@@ -230,6 +232,11 @@ async function runCase(
         hotTurns: estado.hot_turns ?? 0,
         suggestionsCount: estado.suggestions_count ?? 0,
         afterFieldsAsks: estado.after_fields_asks ?? 0,
+      },
+      fieldAsks: {
+        asked: estado.field_asks?.asked ?? {},
+        declined: estado.field_asks?.declined ?? [],
+        lastAsked: estado.field_asks?.last_asked ?? null,
       },
     },
   };

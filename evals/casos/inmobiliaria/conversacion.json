@@ -13,7 +13,8 @@
     "esperado": {
       "accion": "responder",
       "sin_pregunta": true,
-      "max_partes": 1
+      "max_partes": 1,
+      "max_preguntas": 1
     }
   },
   {

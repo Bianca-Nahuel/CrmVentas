@@ -104,7 +104,7 @@ pero si le preguntan si es una persona, sigue diciendo que es un asistente autom
       como mucho una pregunta por turno.
 - [ ] "¿Tienen porcelanato símil madera?" con catálogo responde sin derivar; la pregunta de stock para
       retirar sigue derivando (o pidiendo datos, si el modo es `after_fields`).
-- [ ] Una respuesta de 2 partes genera 2 filas en `outbound_messages` con claves `ai:<id>:0` y `ai:<id>:1`.
+- [ ] Una respuesta de 2 partes genera 2 filas en `outbound_messages` con claves `ai:<id>` y `ai:<id>:1` (la primera conserva la clave de siempre: plan aprobado por el usuario, decisión #65).
       Un reintento del trabajo no duplica ninguna, y una parte que falla los controles bloquea todas
       (tests e2e).
 - [ ] El `intro` de un `after_fields` aparece solo en la primera pregunta (test de `decide`).

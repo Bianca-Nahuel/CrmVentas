@@ -38,6 +38,8 @@ export const SAME_CHAT_GAP_MS = { minMs: 30_000, maxMs: 60_000 } as const;
  */
 export const NEXT_PART_START_AFTER_SECONDS = 1;
 export const NEXT_PART_RECHECK_MS = 2_000;
+/** Si la anterior no salió en este plazo desde que se armó la respuesta, la siguiente ya no va. */
+export const NEXT_PART_MAX_WAIT_MS = 10 * 60_000;
 
 /** Un envío en 'sending' más viejo que esto se da por trabado (unknown_outcome); nunca se reenvía. */
 export const STUCK_SENDING_AFTER_MS = 120_000;

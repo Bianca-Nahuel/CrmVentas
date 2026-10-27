@@ -26,7 +26,7 @@ import { CatalogRefreshWorker } from '../../catalog/catalog-refresh.worker.js';
 import { CatalogService } from '../../catalog/catalog.service.js';
 import { PROMPT_VERSION, type HistoryAuthor, type HistoryMessage } from '../prompts/v3/index.js';
 import type { AgentOutput, DiscoveredNote, ExtractedValue } from '../prompts/v3/output-schema.js';
-import type { TenantLayerState } from '../prompts/v3/tenant-layer.js';
+import type { FieldAsks, TenantLayerState } from '../prompts/v3/tenant-layer.js';
 import { tierFor } from '../scoring/score.js';
 import type { AiReplyJob } from './ai-reply.job.js';
 import { isOpenAt, localTime } from './business-hours.js';
@@ -156,7 +156,7 @@ export class AiReplyService {
         now,
         history,
         burstTexts: burstTexts(history),
-        state: stateOf(snapshot),
+        state: { ...stateOf(snapshot), fieldAsks: await this.loadFieldAsks(tx, job.conversationId) },
       };
       return { kind: 'call' as const, input, configVersion: configVersion! };
     });
@@ -286,7 +286,7 @@ export class AiReplyService {
         return { decision, runId, costUsd: charged?.costUsd };
       }
 
-      const state = stateOf(snapshot!);
+      const state = { ...stateOf(snapshot!), fieldAsks: await this.loadFieldAsks(tx, job.conversationId) };
       const afterFieldsAsks = await this.countRuns(tx, job.conversationId, 'asked_fields');
       const output = call.kind === 'ok' ? call.result.parsed : null;
       const evaluation = evaluateTurn({ ...input, state }, prepared, output, afterFieldsAsks);
@@ -671,6 +671,31 @@ export class AiReplyService {
         AND trigger_message_id = ${job.messageId} AND ${FINAL_DECISION} LIMIT 1
     `);
     return result.rows.length > 0;
+  }
+
+  /**
+   * Lo ya preguntado en la conversación, de las salidas guardadas en ai_runs (tarea 010): cuántas veces se
+   * envió una respuesta que preguntaba cada campo, los que el cliente no quiso dar y el último preguntado.
+   */
+  private async loadFieldAsks(tx: AppTx, conversationId: string): Promise<FieldAsks> {
+    const result = await tx.execute<{ asked: string | null; declined: unknown; replied: boolean }>(sql`
+      SELECT output->>'asks_field' AS asked, output->'declined_fields' AS declined,
+             decision = 'replied' AS replied
+      FROM ai_runs WHERE conversation_id = ${conversationId} AND output IS NOT NULL
+      ORDER BY created_at, id
+    `);
+    const asked: Record<string, number> = {};
+    const declined = new Set<string>();
+    let lastAsked: string | null = null;
+    for (const row of result.rows) {
+      if (Array.isArray(row.declined)) {
+        for (const key of row.declined) if (typeof key === 'string') declined.add(key);
+      }
+      if (!row.replied) continue;
+      lastAsked = row.asked;
+      if (row.asked) asked[row.asked] = (asked[row.asked] ?? 0) + 1;
+    }
+    return { asked, declined: [...declined], lastAsked };
   }
 
   private async countRuns(tx: AppTx, conversationId: string, decision: string): Promise<number> {
