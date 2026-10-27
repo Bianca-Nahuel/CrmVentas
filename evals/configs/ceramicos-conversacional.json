@@ -1,0 +1,521 @@
+{
+  "ai": {
+    "enabled": true,
+    "channel_ids": []
+  },
+  "agent": {
+    "offers": [
+      {
+        "id": "showroom",
+        "when": "Cuando el cliente duda entre modelos o colores",
+        "description": "Visita al showroom de la Sucursal Centro para ver los modelos"
+      },
+      {
+        "id": "asesoramiento",
+        "when": "Cuando el cliente no sabe qué material le conviene",
+        "description": "Asesoramiento de un vendedor para elegir el material"
+      }
+    ],
+    "persona": {
+      "name": null,
+      "tone": "Charlás como un vendedor de mostrador de Mar del Plata por WhatsApp: tuteo, mensajes cortos, palabras simples, nada de fórmulas de call center. Cálido pero sin exagerar; algún emoji suelto de vez en cuando, nunca en todos los mensajes."
+    },
+    "must_not": ["Recomendar marcas de la competencia", "Opinar sobre el trabajo de un colocador"],
+    "business_rules": [
+      {
+        "id": "sin_descuentos",
+        "text": "No ofrecer descuentos ni bonificaciones."
+      },
+      {
+        "id": "sin_colocacion",
+        "text": "No prometer colocación: no la hacemos."
+      }
+    ],
+    "sales_guidance": "Solo cuando ya sabés qué producto lleva y para qué ambiente, y una vez: si es porcelanato o cerámica, preguntale si ya tiene pegamento y pastina. Si es para un baño, podés mencionar los perfiles de terminación. Si dice que no le interesa, no lo vuelvas a ofrecer.",
+    "custom_instructions": "ESTILO DE CHAT. 1) Saludo: si el cliente solo saluda, saludá y como mucho invitalo a contar qué necesita (por ejemplo \"¡Hola! ¿En qué te puedo ayudar?\" o \"¡Buenas! Contame\"). Si saluda y pregunta algo, saludá y respondé eso. Nunca saludes y hagas una pregunta de calificación en el mismo mensaje. 2) Primero lo que pregunta el cliente: si hizo una pregunta, ese mensaje es para responderla. No agregues una pregunta tuya salvo que sea necesaria para poder ayudarlo (por ejemplo, qué medida o qué ambiente, para buscar el producto). 3) Una sola pregunta por mensaje, y solo si sirve para lo que está contando ahora. Antes de preguntar, pensá cuál de los datos que faltan es el más útil en este momento; no sigas un orden fijo. Retiro o envío, zona, fecha, nombre o CUIT se preguntan recién cuando ya se sabe qué busca y cuántos metros, nunca al principio. 4) Si en el mensaje anterior ya preguntaste algo y el cliente no lo contestó, no lo repitas enseguida: seguí la charla. 5) Mensajes cortos: una o dos oraciones. Nada de listas ni de resúmenes de lo que dijo el cliente. 6) No cierres con \"¿Necesitás algo más?\", \"¿Te puedo ayudar en algo más?\" ni parecidos. No uses \"¡Excelente pregunta!\", \"Entiendo perfectamente\" ni frases de manual. No repitas el nombre del cliente en cada mensaje. 7) Reaccioná a lo que cuenta como lo haría una persona (\"¡Qué bueno, baño nuevo!\", \"Uh, entiendo\") antes de seguir, sin exagerar. 8) Si no sabe cuántos metros necesita, explicale cómo calcularlo (está en las preguntas frecuentes) en vez de pedirle el número."
+  },
+  "catalog": {
+    "enabled": true,
+    "refresh": {
+      "top_n": 10,
+      "enabled": false
+    },
+    "currency": "ARS",
+    "synonyms": [
+      {
+        "term": "piso",
+        "equivalents": ["porcelanato", "ceramico", "vinilico"]
+      },
+      {
+        "term": "ceramica",
+        "equivalents": ["ceramico"]
+      },
+      {
+        "term": "azulejo",
+        "equivalents": ["revestimiento", "ceramico"]
+      },
+      {
+        "term": "porcelanico",
+        "equivalents": ["porcelanato"]
+      },
+      {
+        "term": "pegamento",
+        "equivalents": ["adhesivo", "pegamentos"]
+      },
+      {
+        "term": "pastina",
+        "equivalents": ["junta"]
+      },
+      {
+        "term": "canilla",
+        "equivalents": ["griferia"]
+      },
+      {
+        "term": "lavatorio",
+        "equivalents": ["bacha", "vanitory"]
+      },
+      {
+        "term": "mueble de bano",
+        "equivalents": ["vanitory"]
+      },
+      {
+        "term": "banera",
+        "equivalents": ["receptaculo", "hidromasaje"]
+      },
+      {
+        "term": "inodoro",
+        "equivalents": ["sanitario"]
+      },
+      {
+        "term": "pileta de cocina",
+        "equivalents": ["pileta acero"]
+      },
+      {
+        "term": "zocalo",
+        "equivalents": ["zocalos"]
+      }
+    ],
+    "extractor": {
+      "fields": {
+        "list_price": {
+          "index": 0,
+          "parse": "price_ar",
+          "regex": "\\$\\s*([\\d.,]{1,12})\\s*x\\s*\\S{1,8}\\s*\\(P\\. ?Lista\\)",
+          "prefer": false,
+          "selector": ".single-product-content > .inner",
+          "exclusive": true
+        },
+        "price_unit": {
+          "index": 0,
+          "regex": "\\$\\s*[\\d.,]{1,12}\\s*x\\s*(m²|m2|unidad|caja)",
+          "prefer": false,
+          "selector": ".single-product-content > .inner",
+          "exclusive": false
+        },
+        "promo_price": {
+          "index": 0,
+          "parse": "price_ar",
+          "regex": "(?<!nac\\.?\\s{0,3})\\$\\s*([\\d.,]{1,12})\\s*x\\s*\\S{1,8}[^$()]{0,30}\\((?!P\\. ?Lista)(?!\\d{1,3} cajas?\\))[^)]{1,40}\\)",
+          "prefer": false,
+          "selector": ".single-product-content > .inner",
+          "exclusive": true
+        },
+        "price_no_taxes": {
+          "index": 0,
+          "parse": "price_ar",
+          "regex": "impuestos nac\\.?\\s*\\$\\s*([\\d.,]{1,12})",
+          "prefer": false,
+          "selector": ".single-product-content > .inner",
+          "exclusive": false
+        },
+        "promo_condition": {
+          "index": 0,
+          "regex": "(?<!nac\\.?\\s{0,3})\\$\\s*[\\d.,]{1,12}\\s*x\\s*\\S{1,8}[^$()]{0,30}\\((?!P\\. ?Lista)(?!\\d{1,3} cajas?\\))([^)]{1,40})\\)",
+          "prefer": false,
+          "selector": ".single-product-content > .inner",
+          "exclusive": false
+        },
+        "units_per_package": {
+          "index": 0,
+          "parse": "text",
+          "regex": "Metros x Caja\\s*(\\d{1,6}(?:\\.\\d{1,4})?)",
+          "prefer": false,
+          "selector": ".table-responsive table",
+          "exclusive": false
+        },
+        "pieces_per_package": {
+          "index": 0,
+          "parse": "integer",
+          "regex": "Piezas x Caja\\s*(\\d{1,5})(?![.,]\\d)",
+          "prefer": false,
+          "selector": ".table-responsive table",
+          "exclusive": false
+        }
+      },
+      "availability_map": {
+        "in_stock": [],
+        "out_of_stock": []
+      }
+    },
+    "price_policy": {
+      "note": "Precio sujeto a cambios.",
+      "quote": "both",
+      "show_no_taxes": false
+    },
+    "price_source": "web",
+    "key_attributes": ["marca"],
+    "allowed_domains": ["lecer.com.ar", "www.lecer.com.ar"],
+    "excel_max_age_days": 30,
+    "availability_source": "none",
+    "max_price_change_pct": 40,
+    "max_price_age_minutes": 720
+  },
+  "handoff": {
+    "keywords": {},
+    "triggers": {
+      "complaint": {
+        "mode": {
+          "type": "immediate"
+        },
+        "enabled": true
+      },
+      "asks_human": {
+        "mode": {
+          "type": "immediate"
+        },
+        "enabled": true
+      },
+      "frustration": {
+        "mode": {
+          "type": "immediate"
+        },
+        "enabled": true
+      },
+      "availability": {
+        "mode": {
+          "type": "after_fields",
+          "fields": ["producto_ambiente", "m2"],
+          "intro": {
+            "es": "Eso te lo confirma un vendedor, así te lo paso con todo listo."
+          }
+        },
+        "enabled": true
+      },
+      "cannot_answer": {
+        "mode": {
+          "type": "after_fields",
+          "fields": ["producto_ambiente"],
+          "intro": {
+            "es": "Eso te lo responde mejor un vendedor, así que te lo paso."
+          }
+        },
+        "enabled": true
+      },
+      "price_negotiation": {
+        "mode": {
+          "type": "immediate"
+        },
+        "enabled": true
+      },
+      "payment_or_reservation": {
+        "mode": {
+          "type": "immediate"
+        },
+        "enabled": true
+      }
+    },
+    "custom_triggers": [
+      {
+        "id": "custom_obra_grande",
+        "mode": {
+          "type": "after_fields",
+          "intro": {
+            "es": "¡Buenísimo! Así un vendedor te arma la propuesta de la obra."
+          },
+          "fields": ["fecha_compra", "nombre"]
+        },
+        "description": "Pedido de más de 100 m², o cliente constructor, arquitecto o de una obra con varias unidades"
+      }
+    ],
+    "message_in_hours": "Listo, ya le paso tu consulta a un vendedor, que te sigue por acá 👍",
+    "unsupported_media": {
+      "mode": "ask_text",
+      "message": "Uh, los audios y las fotos todavía no los puedo ver por acá 😅 ¿Me lo escribís?"
+    },
+    "message_after_hours": "Listo, ya le dejo tu consulta a un vendedor. Ahora estamos cerrados, pero te sigue por acá apenas abramos 👍",
+    "qualify_after_hours": true
+  },
+  "scoring": {
+    "dimensions": [
+      {
+        "key": "intent",
+        "weight": 3,
+        "description": "intención de compra: quiere comprar, pide presupuesto o habla de una obra concreta"
+      },
+      {
+        "key": "urgency",
+        "weight": 2,
+        "description": "urgencia: lo necesita esta semana, tiene fecha o la obra ya empezó"
+      },
+      {
+        "key": "volume",
+        "weight": 2,
+        "description": "volumen o ticket: muchos m², varios productos o una obra grande"
+      },
+      {
+        "key": "fit",
+        "weight": 1,
+        "description": "encaja con lo que vende el negocio (cerámicos, porcelanatos, sanitarios, grifería)"
+      }
+    ],
+    "thresholds": {
+      "hot": 70,
+      "warm": 40
+    },
+    "completeness_weight": 2
+  },
+  "business": {
+    "name": "Revestimientos del Puerto",
+    "email": "ventas@revestimientosdelpuerto.example",
+    "website": "https://www.revestimientosdelpuerto.example",
+    "branches": [
+      {
+        "name": "Sucursal Centro",
+        "hours": {
+          "fri": [
+            {
+              "open": "09:00",
+              "close": "17:30"
+            }
+          ],
+          "mon": [
+            {
+              "open": "09:00",
+              "close": "17:30"
+            }
+          ],
+          "sat": [
+            {
+              "open": "08:30",
+              "close": "13:00"
+            }
+          ],
+          "sun": [],
+          "thu": [
+            {
+              "open": "09:00",
+              "close": "17:30"
+            }
+          ],
+          "tue": [
+            {
+              "open": "09:00",
+              "close": "17:30"
+            }
+          ],
+          "wed": [
+            {
+              "open": "09:00",
+              "close": "17:30"
+            }
+          ]
+        },
+        "notes": "Showroom con más de 300 modelos exhibidos.",
+        "address": "Av. Independencia 1500, Mar del Plata"
+      },
+      {
+        "name": "Sucursal Constitución",
+        "hours": {
+          "fri": [
+            {
+              "open": "09:00",
+              "close": "17:30"
+            }
+          ],
+          "mon": [
+            {
+              "open": "09:00",
+              "close": "17:30"
+            }
+          ],
+          "sat": [
+            {
+              "open": "08:30",
+              "close": "13:00"
+            }
+          ],
+          "sun": [],
+          "thu": [
+            {
+              "open": "09:00",
+              "close": "17:30"
+            }
+          ],
+          "tue": [
+            {
+              "open": "09:00",
+              "close": "17:30"
+            }
+          ],
+          "wed": [
+            {
+              "open": "09:00",
+              "close": "17:30"
+            }
+          ]
+        },
+        "notes": "Depósito con estacionamiento para cargar.",
+        "address": "Av. Constitución 6200, Mar del Plata"
+      }
+    ],
+    "industry": "cerámicos, porcelanatos, sanitarios y grifería",
+    "language": "es",
+    "shipping": "Envíos a domicilio en Mar del Plata y Batán con camión propio. El costo y el día se coordinan con un vendedor según el volumen y la zona.",
+    "service_hours": {
+      "fri": [
+        {
+          "open": "09:00",
+          "close": "17:30"
+        }
+      ],
+      "mon": [
+        {
+          "open": "09:00",
+          "close": "17:30"
+        }
+      ],
+      "sat": [
+        {
+          "open": "08:30",
+          "close": "13:00"
+        }
+      ],
+      "sun": [],
+      "thu": [
+        {
+          "open": "09:00",
+          "close": "17:30"
+        }
+      ],
+      "tue": [
+        {
+          "open": "09:00",
+          "close": "17:30"
+        }
+      ],
+      "wed": [
+        {
+          "open": "09:00",
+          "close": "17:30"
+        }
+      ]
+    },
+    "payment_methods": [
+      "Efectivo",
+      "Transferencia bancaria",
+      "Tarjetas de débito y crédito (Visa, Mastercard)",
+      "Cuotas sin interés con tarjetas bancarias seleccionadas, según promoción vigente"
+    ]
+  },
+  "knowledge": {
+    "faqs": [
+      {
+        "answer": "Sí, a domicilio en Mar del Plata y Batán con camión propio. El costo y el día se coordinan con un vendedor.",
+        "question": "¿Hacen envíos?"
+      },
+      {
+        "answer": "Sí, en cualquiera de las dos sucursales; en Constitución hay estacionamiento para cargar.",
+        "question": "¿Puedo retirar en el local?"
+      },
+      {
+        "answer": "Sí, trabajamos pegamentos, pastinas, crucetas y perfiles de terminación.",
+        "question": "¿Venden pegamento y pastina?"
+      },
+      {
+        "answer": "No hacemos colocación, pero podemos recomendar colocadores de la zona.",
+        "question": "¿Hacen colocación?"
+      },
+      {
+        "answer": "Medí largo por ancho del ambiente y sumá un 10 % por los cortes.",
+        "question": "¿Cuántos m² tengo que comprar?"
+      }
+    ],
+    "policies": {
+      "returns": "Cambios dentro de los 30 días con el ticket, en cajas cerradas y en buen estado. Los cortes a medida no tienen cambio.",
+      "shipping": null,
+      "warranty": "Los productos tienen la garantía del fabricante. Ante un problema, un vendedor revisa el caso.",
+      "financing": "Cuotas sin interés con tarjetas bancarias seleccionadas, según la promoción vigente del mes."
+    }
+  },
+  "qualification": {
+    "fields": [
+      {
+        "key": "producto_ambiente",
+        "type": "string",
+        "label": "Producto o ambiente",
+        "priority": 1,
+        "required": true,
+        "how_to_ask": "¿Es para algún ambiente en particular o buscás algo puntual?"
+      },
+      {
+        "key": "m2",
+        "type": "number",
+        "label": "Metros cuadrados aproximados",
+        "priority": 2,
+        "required": true,
+        "how_to_ask": "¿Y más o menos cuántos metros serían?"
+      },
+      {
+        "key": "fecha_compra",
+        "type": "date",
+        "label": "Fecha estimada de compra",
+        "priority": 3,
+        "required": true,
+        "how_to_ask": "¿Para cuándo lo estarías necesitando?",
+        "ask_when_score_gte": 40
+      },
+      {
+        "key": "entrega",
+        "type": "enum",
+        "label": "Retiro o envío",
+        "options": ["retiro", "envio"],
+        "priority": 4,
+        "required": false,
+        "how_to_ask": "¿Lo pasarías a buscar o te lo mandamos?",
+        "ask_when_score_gte": 50
+      },
+      {
+        "key": "zona_entrega",
+        "type": "string",
+        "label": "Zona de entrega",
+        "priority": 5,
+        "required": false,
+        "how_to_ask": "¿Para qué zona sería el envío?",
+        "ask_when_score_gte": 50
+      },
+      {
+        "key": "nombre",
+        "type": "string",
+        "label": "Nombre",
+        "priority": 6,
+        "required": false,
+        "how_to_ask": "¿Cómo te llamás, así se lo dejo anotado al vendedor?",
+        "ask_when_score_gte": 60
+      },
+      {
+        "key": "cuit",
+        "type": "string",
+        "label": "CUIT (obras con factura A)",
+        "priority": 7,
+        "required": false,
+        "how_to_ask": "Si vas a necesitar factura A para la obra, ¿me pasás el CUIT?",
+        "ask_when_score_gte": 70
+      }
+    ],
+    "discovery_guidance": "Solo si sale en la charla: si cuenta que le faltan piezas para terminar un trabajo ya empezado, preguntale si tiene el código o la caja (importa que sea el mismo lote y tono). No lo preguntes si es una compra desde cero.",
+    "max_turns_when_hot": 3,
+    "max_qualification_turns": 8,
+    "max_questions_per_message": 1
+  },
+  "schema_version": 1
+}
