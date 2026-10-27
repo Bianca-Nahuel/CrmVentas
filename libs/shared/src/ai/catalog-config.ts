@@ -74,6 +74,10 @@ const extractorRuleSchema = z
     parse: z.enum(EXTRACTOR_PARSERS).optional(),
     // true: le gana a JSON-LD, microdatos y metaetiquetas para este campo.
     prefer: z.boolean().default(false),
+    // true: el campo sale solo de esta regla. Si no da un valor queda vacío, aunque lo traigan JSON-LD,
+    // microdatos o metaetiquetas (por ejemplo, un JSON-LD que publica el precio promocional como único precio).
+    // Con exclusive, prefer no hace falta (no hay otra fuente a la que ganarle).
+    exclusive: z.boolean().default(false),
   })
   .strict();
 export type ExtractorRule = z.infer<typeof extractorRuleSchema>;

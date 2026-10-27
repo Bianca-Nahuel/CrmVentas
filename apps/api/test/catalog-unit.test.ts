@@ -206,6 +206,24 @@ describe('extractor con HTML de prueba inventado', () => {
     expect(extraction.sources.list_price).toBe('extractor');
   });
 
+  it('exclusive: si la regla no da un valor, el campo queda vacío aunque esté en el JSON-LD', () => {
+    const rule = (selector: string) => ({ selector, parse: 'price_ar' as const, exclusive: true });
+    const matching = catalogConfig({
+      extractor: { fields: { ...TEST_EXTRACTOR.fields, list_price: rule('.price--list') } },
+    });
+    const found = extractProduct(html('producto-ceramicos-jsonld.html'), matching.extractor);
+    expect(found.fields.list_price).toBe('37290');
+    expect(found.sources.list_price).toBe('extractor');
+
+    const missing = catalogConfig({
+      extractor: { fields: { ...TEST_EXTRACTOR.fields, list_price: rule('.no-existe') } },
+    });
+    const empty = extractProduct(html('producto-ceramicos-jsonld.html'), missing.extractor);
+    expect(empty.fields.list_price).toBeUndefined();
+    expect(empty.sources.list_price).toBeUndefined();
+    expect(empty.fields.currency).toBe('ARS');
+  });
+
   it('microdatos y metaetiquetas', () => {
     const page = `<html><head><meta property="product:price:amount" content="1500.50"><meta property="product:availability" content="out of stock"></head>
       <body><div itemscope itemtype="https://schema.org/Product"><span itemprop="price" content="1200">$1.200</span>
@@ -542,6 +560,26 @@ describe('marcas y controles de salida', () => {
     ]);
   });
 
+  it('la unidad que el modelo repite después de un precio se saca (no queda "por m² por m²")', async () => {
+    const s = await turn();
+    const result = checkReply(
+      'Está a {{precio:CER-001:lista}} por m² y con promo a {{precio:CER-001:promo}} x m2. ¿Cuántos m² necesitás?',
+      checks(s),
+    );
+    expect(result).toEqual({
+      ok: true,
+      reply:
+        'Está a $37.290 por m² y con promo a $26.103 por m² (30% OFF, 1 cuota MP). ¿Cuántos m² necesitás? Precio sujeto a cambios.',
+    });
+    // Lo que no es la unidad repetida queda: otra línea, otra palabra.
+    expect(
+      checkReply('Está a {{precio:CER-001:lista}}\npor m² se calculan las cajas.', checks(s)),
+    ).toMatchObject({ reply: 'Está a $37.290 por m²\npor m² se calculan las cajas. Precio sujeto a cambios.' });
+    expect(checkReply('Está a {{precio:CER-001:lista}} por metro de pared.', checks(s))).toMatchObject({
+      reply: 'Está a $37.290 por m² por metro de pared. Precio sujeto a cambios.',
+    });
+  });
+
   it('precio sin impuestos, si la empresa lo pide', async () => {
     const s = await turn(catalogConfig({ price_policy: { quote: 'list', show_no_taxes: true, note: '' } }));
     expect(checkReply('Está a {{precio:CER-001:lista}}.', checks(s))).toEqual({
@@ -684,14 +722,15 @@ describe('disponibilidad y decide', () => {
 describe('ruteo de modelos (plan B)', () => {
   const deepseek = findAllowedModel('deepseek/deepseek-v4.1-flash')!;
   const haiku = findAllowedModel('anthropic/claude-haiku-5.5')!;
+  const luna = findAllowedModel('openai/gpt-6-luna')!;
 
   it('sin catálogo: el modelo de la empresa, sin cambios', () => {
     expect(routeModel(deepseek, false)).toEqual({ model: deepseek });
   });
 
   it('con catálogo y un modelo que no maneja herramientas con salida estructurada → Haiku', () => {
-    expect(deepseek.catalogTools).toBe('unsupported');
-    expect(routeModel(deepseek, true)).toEqual({
+    expect(luna.catalogTools).toBe('unsupported');
+    expect(routeModel(luna, true)).toEqual({
       model: haiku,
       toolOutputMode: 'response_format',
       routed: 'catalog_fallback',
@@ -700,6 +739,7 @@ describe('ruteo de modelos (plan B)', () => {
 
   it('con catálogo y un modelo que sí: se queda con el suyo', () => {
     expect(routeModel(haiku, true)).toEqual({ model: haiku, toolOutputMode: 'response_format' });
+    expect(routeModel(deepseek, true)).toEqual({ model: deepseek, toolOutputMode: 'final_tool' });
     expect(ALLOWED_MODELS.every((model) => model.catalogTools)).toBe(true);
   });
 });

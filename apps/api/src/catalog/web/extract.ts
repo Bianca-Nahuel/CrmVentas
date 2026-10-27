@@ -1,7 +1,8 @@
 // Extracción de los datos de un producto desde el HTML de su página (tarea 007). Por campo, el primero
 // que da un valor válido, en este orden: JSON-LD (Product/Offer), microdatos, metaetiquetas y el extractor
 // configurado por la empresa (selectores CSS y expresiones regulares). Una regla con prefer le gana a los
-// datos estructurados. El HTML nunca sale de acá: solo los campos ya parseados.
+// datos estructurados; una con exclusive es la única fuente del campo (si no da un valor, queda vacío). El
+// HTML nunca sale de acá: solo los campos ya parseados.
 import {
   normalizeText,
   type CatalogUnit,
@@ -252,7 +253,12 @@ function fromExtractor(doc: AnyNode[], extractor: ExtractorConfig | null) {
   const matched: Partial<Record<ExtractorField, string>> = {};
   const issues: string[] = [];
   const preferred = new Set<FieldKey>();
-  if (!extractor) return { fields, matched, issues, preferred };
+  // Se cuenta aunque la regla no dé un valor: justamente ahí no tiene que entrar otra fuente.
+  const exclusive = new Set<FieldKey>();
+  if (!extractor) return { fields, matched, issues, preferred, exclusive };
+  for (const [field, rule] of Object.entries(extractor.fields)) {
+    if (rule?.exclusive) exclusive.add(field as FieldKey);
+  }
   for (const [field, rule] of Object.entries(extractor.fields) as [
     ExtractorField,
     NonNullable<ExtractorConfig['fields'][ExtractorField]>,
@@ -289,7 +295,7 @@ function fromExtractor(doc: AnyNode[], extractor: ExtractorConfig | null) {
     (fields as Record<string, unknown>)[field] = value;
     if (rule.prefer) preferred.add(field);
   }
-  return { fields, matched, issues, preferred };
+  return { fields, matched, issues, preferred, exclusive };
 }
 
 export function extractProduct(html: string, extractor: ExtractorConfig | null): Extraction {
@@ -312,9 +318,11 @@ export function extractProduct(html: string, extractor: ExtractorConfig | null):
     ...(Object.keys(custom.fields) as FieldKey[]),
   ]);
   for (const key of keys) {
-    const order: [FieldSource, Partial<ExtractedFields>][] = custom.preferred.has(key)
-      ? [['extractor', custom.fields], ...layers]
-      : [...layers, ['extractor', custom.fields]];
+    const order: [FieldSource, Partial<ExtractedFields>][] = custom.exclusive.has(key)
+      ? [['extractor', custom.fields]]
+      : custom.preferred.has(key)
+        ? [['extractor', custom.fields], ...layers]
+        : [...layers, ['extractor', custom.fields]];
     for (const [source, layer] of order) {
       if (layer[key] !== undefined) {
         (fields as Record<string, unknown>)[key] = layer[key];

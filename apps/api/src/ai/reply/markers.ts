@@ -67,7 +67,21 @@ const UNIT_SHORT: Record<string, string> = {
   l: 'l',
 };
 
-type Rendered = { ok: true; value: string } | { ok: false };
+// La unidad que el modelo repite después de una marca de precio que ya la trae ("{{precio:X:lista}} por m²"):
+// se saca para que no quede "$37.290 por m² por m²". Solo en la misma línea, y la preposición separada de la
+// unidad por un espacio (salvo "/"), para no comerse palabras como "xl".
+const repeatedUnit = (prepositions: string, units: string) =>
+  new RegExp(`^[ \\t]*(?:(?:${prepositions})[ \\t]+|\\/[ \\t]*)(?:${units})(?![\\p{L}\\d])`, 'iu');
+const REPEATED_UNIT: Record<string, RegExp> = {
+  m2: repeatedUnit('por|x|el|al|cada', 'm²|m2|mt2|mts2|metros? cuadrados?'),
+  ml: repeatedUnit('por|x|el|al|cada', 'ml|metros? lineal(?:es)?|metros?|m'),
+  unit: /^[ \t]*(?:(?:por|x|la|cada)[ \t]+(?:unidad(?:es)?|u)|c\/u)(?![\p{L}\d])/iu,
+  box: repeatedUnit('por|x|la|cada', 'cajas?'),
+  kg: repeatedUnit('por|x|el|al|cada', 'kg|kilos?|kilogramos?'),
+  l: repeatedUnit('por|x|el|al|cada', 'l|litros?'),
+};
+
+type Rendered = { ok: true; value: string; priceUnit?: string } | { ok: false };
 
 /** Valida y renderiza una marca. No registra nada (eso lo hace renderMarkers con el texto final). */
 function renderOne(
@@ -102,6 +116,7 @@ function renderOne(
       return {
         ok: true,
         value,
+        ...(unit ? { priceUnit: snapshot.priceUnit! } : {}),
         citation: {
           kind: 'precio',
           sku: product.sku,
@@ -207,6 +222,9 @@ export function renderMarkers(
     if (marker.kind === 'precio') priced = true;
     out += text.slice(last, marker.start) + rendered.value;
     last = marker.end;
+    const repeated = rendered.priceUnit ? REPEATED_UNIT[rendered.priceUnit] : undefined;
+    const match = repeated?.exec(text.slice(last));
+    if (match) last += match[0].length;
   }
   out += text.slice(last);
   const note = context.catalog.price_policy.note;

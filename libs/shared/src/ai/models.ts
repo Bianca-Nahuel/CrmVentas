@@ -42,7 +42,8 @@ export const ALLOWED_MODELS: readonly AllowedModel[] = [
     id: 'deepseek/deepseek-v4.1-flash',
     structuredOutputs: true,
     tools: true,
-    catalogTools: 'unsupported',
+    // --tools-probe (2026-10-26): response_format 0/3 (inventó), final_tool 3/3.
+    catalogTools: 'final_tool',
     reasoningEffort: 'low',
     inputUsdPerMTok: '0.02',
     outputUsdPerMTok: '1.00',
