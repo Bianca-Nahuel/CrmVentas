@@ -12,6 +12,14 @@ export interface AllowedModel {
   structuredOutputs: boolean;
   tools: boolean;
   /**
+   * Cómo devuelve la salida estructurada en un turno con herramientas (catálogo, tarea 007):
+   * - response_format: herramientas y response_format en la misma llamada (pasó --tools-probe);
+   * - final_tool: sin response_format; la salida es una herramienta final forzada (plan B);
+   * - unsupported: ninguna de las dos anduvo o no se probó: los turnos con catálogo van a
+   *   CATALOG_FALLBACK_MODEL_ID (regla de ruteo de LlmClientFactory).
+   */
+  catalogTools: 'response_format' | 'final_tool' | 'unsupported';
+  /**
    * Esfuerzo de razonamiento que se pide. Estos modelos razonan por defecto (DeepSeek en high, Haiku y
    * GPT-6 Luna en medium) y esos tokens cuentan contra el tope de salida.
    */
@@ -34,6 +42,8 @@ export const ALLOWED_MODELS: readonly AllowedModel[] = [
     id: 'deepseek/deepseek-v4.1-flash',
     structuredOutputs: true,
     tools: true,
+    // --tools-probe (2026-10-26): response_format 0/3 (inventó), final_tool 3/3.
+    catalogTools: 'final_tool',
     reasoningEffort: 'low',
     inputUsdPerMTok: '0.02',
     outputUsdPerMTok: '1.00',
@@ -45,6 +55,7 @@ export const ALLOWED_MODELS: readonly AllowedModel[] = [
     id: 'anthropic/claude-haiku-5.5',
     structuredOutputs: true,
     tools: true,
+    catalogTools: 'response_format',
     reasoningEffort: 'low',
     inputUsdPerMTok: '0.10',
     outputUsdPerMTok: '0.50',
@@ -56,6 +67,7 @@ export const ALLOWED_MODELS: readonly AllowedModel[] = [
     id: 'openai/gpt-6-luna',
     structuredOutputs: true,
     tools: true,
+    catalogTools: 'unsupported',
     reasoningEffort: 'low',
     inputUsdPerMTok: '0.10',
     outputUsdPerMTok: '0.50',
@@ -75,6 +87,7 @@ export const CANDIDATE_MODELS: readonly AllowedModel[] = [
     id: 'google/gemini-3.8-flash',
     structuredOutputs: true,
     tools: true,
+    catalogTools: 'unsupported',
     reasoningEffort: 'low',
     inputUsdPerMTok: '0.825',
     outputUsdPerMTok: '4.125',
@@ -82,6 +95,12 @@ export const CANDIDATE_MODELS: readonly AllowedModel[] = [
     priceDate: '2026-10-26',
   },
 ];
+
+/**
+ * Modelo de los turnos con catálogo cuando el de la empresa no maneja herramientas con salida estructurada
+ * (catalogTools = unsupported). Haiku pasó --tools-probe con response_format (2026-10-26).
+ */
+export const CATALOG_FALLBACK_MODEL_ID = 'anthropic/claude-haiku-5.5';
 
 export function findAllowedModel(
   id: string,

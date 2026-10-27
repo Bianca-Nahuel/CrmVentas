@@ -75,6 +75,9 @@ export const aiRuns = pgTable(
     output: jsonb('output'),
     // Solo nombres y resultado de las herramientas, nunca argumentos ni respuestas.
     toolCalls: jsonb('tool_calls'),
+    // Marcas del catálogo que se renderizaron en la respuesta (tarea 007): tipo, SKU, snapshot y de dónde
+    // salió el valor (web o excel). Sin texto del cliente.
+    catalogCitations: jsonb('catalog_citations'),
     outboundMessageId: uuid('outbound_message_id'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },

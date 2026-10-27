@@ -1,8 +1,16 @@
 # Estado del proyecto
 
-_Última actualización: 2026-10-26_
+_Última actualización: 2026-10-26 (tarea 007, prueba local y real)_
 
 ## Hecho
+
+- Tarea 007 (catálogo Excel y web): implementada en la nube (rama `claude/vibrant-dirac-ujisy4`) y probada en local el 2026-10-26. Ver el "Resultado" en `docs/tareas/hechas/007-catalogo-excel-y-web.md` y las decisiones #48–#62.
+  - Migraciones 0011–0013: `catalog_products` (búsqueda con unaccent + trigramas), `catalog_imports`, `catalog_import_rows`, `product_snapshots`, `ai_runs.catalog_citations`, cola `catalog-refresh`.
+  - `npm run dev:import-catalog` (vista previa, `--apply`, `--revert`) y `npm run dev:test-extractor` (un pedido, con las protecciones SSRF).
+  - Herramientas `buscar_productos`, `ver_producto` y `calcular_cantidad`; marcas que escribe el código; prompt v2.
+  - En la sesión local: DeepSeek pasó a `catalogTools: 'final_tool'` (probe 0/3 y 3/3); opción `exclusive` en el extractor (el JSON-LD de la web real trae la promo como único precio); el render saca la unidad repetida ("por m² por m²").
+  - Evals: catálogo 22/26 con DeepSeek `final_tool` (Haiku 17/26); regresión de la 006 77/80. 579 tests. Prueba real por WhatsApp OK (precio de la web con promo y link, 45 m² → 23 cajas, stock → deriva). Los dos revisores aprobaron (solo menores, aplicados).
+  - Empresa de prueba (`Cerámicos Demo`): config v4 con `catalog` y el extractor para lecer.com.ar; catálogo real importado (4659 productos). Commiteada en la rama.
 
 - Tarea 006 (reemplazó a "primera respuesta de la IA"): agente configurable con puntaje de lead y calificación antes de derivar.
   - Config del agente versionada en `tenant_configs`, validada con zod en `libs/shared`, cargada con `npm run dev:set-config`. Fixtures de cerámicos e inmobiliaria.
@@ -28,11 +36,14 @@ _Última actualización: 2026-10-26_
 ## Siguiente
 
 - `.claude/settings.json` quedó afuera del commit de la 006 (cambio del usuario): el revisor de seguridad sugirió volver a "preguntar" `node *`, `docker compose *` y `npm run db:*`.
-- Tarea 007 (catálogo Excel y web): el ciclo de herramientas de `OpenRouterClient` ya está y `--tools-probe` dio OK con Haiku y Sonnet. **Con DeepSeek (el modelo por defecto), herramientas + `response_format` en la misma llamada no funciona: 0 de 3 pruebas llamó a la herramienta y siempre inventó el dato** (2026-10-26). Antes del catálogo, probar con evals: (1) dos fases (vueltas con herramientas sin `response_format` y una llamada final con la salida estructurada) o (2) la salida final como herramienta forzada; si ninguna anda con DeepSeek, usar Haiku en los turnos con catálogo. La interfaz `LlmClient` no cambia. Los controles de salida tienen `parseMarkers`/`render` listos para `{{precio:SKU}}`. Hoy un precio marca `cannot_answer`.
+- Tarea 007: commiteada y pusheada en `claude/vibrant-dirac-ujisy4`; falta mergearla a `main`. `package-lock.json` quedó modificado solo por `npm install` (saca `"dev": true` de los binarios de esbuild): no va en el commit.
+- Seguimientos de la 007 (ver "Deuda pendiente (tarea 007)" en `docs/decisiones.md`): error de OpenRouter que deja al cliente sin respuesta y sin detalle registrado; lead caliente al que se le responde (CAT24, C16); 45 m² sin calcular en el primer turno (CAT05); parser `number_dot`.
+- Empresa de prueba: actualizar o desactivar el disparador `custom_recomendacion` ("todavía no hay catálogo"); evaluar `availability_source: web` (la web muestra "PRODUCTO SIN STOCK"). El Excel real trae filas partidas y "�" en lugar de "á": pedirle a la empresa un archivo limpio.
+- Proponer al usuario actualizar la línea de disponibilidad de `CLAUDE.md` (decisión #56).
 - Tarea 008 (créditos): reemplazar `NoopBudgetGuard`; ver la deuda de la 006 (doble llamada si falla la T2, tope de corridas por conversación, límite de gasto en la clave de OpenRouter).
 - Tarea 014: volver a activar la IA en una conversación derivada (hoy se cierra a mano en la base para probar) y mostrar el resumen como "automático, no verificado".
 - Antes de `npm run test`, bajar `npm run dev:api` (comparten la cola de pg-boss).
-- Evals: siempre con `--max-usd`. Una corrida completa con DeepSeek cuesta ~USD 0,07. Quedan ~USD 0,60 del presupuesto de pruebas que separó el usuario.
+- Evals: siempre con `--max-usd`. Una corrida completa de la 006 con DeepSeek cuesta ~USD 0,07 y los 26 de catálogo ~USD 0,06. Correr sin `--rubro` ni `--case` también incluye los de catálogo. En Windows, TaskStop corta el shell pero no el proceso node: terminarlo por PID (para `dev:api`, el que escucha en el 3000) y esperar a que venza su registro en `pgboss.instance` antes de `npm run test`.
 - Tarea de endurecimiento de seguridad: ver las secciones de "Deuda" en `docs/decisiones.md`.
 
 ## Bloqueos / pendientes externos

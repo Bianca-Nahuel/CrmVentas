@@ -16,6 +16,7 @@ if (process.env.NODE_ENV === 'production') {
 }
 loadLocalEnv();
 
+const { catalogConfigWarnings, tenantConfigSchema } = await import('@ventas/shared');
 const { parseEnv } = await import('../src/config/env.js');
 const { createAppDatabase } = await import('../src/db/pools.js');
 const { withTenantTransaction } = await import('../src/db/tenant-context.js');
@@ -69,6 +70,10 @@ try {
     return new TenantConfigService().insertVersion(tx, input);
   });
   console.log(`Configuración cargada: versión ${version} de la empresa ${tenantId}.`);
+  const parsed = tenantConfigSchema.safeParse(input);
+  for (const warning of parsed.success ? catalogConfigWarnings(parsed.data.catalog) : []) {
+    console.warn(`Aviso: ${warning}`);
+  }
 } catch (error) {
   if (error instanceof InvalidTenantConfigError) {
     console.error(error.message);

@@ -1,3 +1,4 @@
+export * from './ai/catalog-config.js';
 export * from './ai/models.js';
 export * from './ai/tenant-config.js';
 export * from './ai/text.js';

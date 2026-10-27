@@ -18,6 +18,16 @@ import {
 import { addUsd, tokensCostUsd, usdFromNumber } from '../../money.js';
 
 const DEFAULT_BASE_URL = 'https://openrouter.ai/api/v1';
+/** Herramienta de la salida final en el modo final_tool (plan B de la tarea 007). */
+export const FINAL_TOOL = 'entregar_turno';
+const FINAL_TOOL_DESCRIPTION =
+  'Entrega el resultado final del turno. Llamala una sola vez, al final, cuando ya no necesites otras herramientas.';
+const FINAL_TOOL_NOTE = `Cuando tengas todo lo que necesitás, terminá llamando a la herramienta ${FINAL_TOOL} con la salida completa. No escribas texto fuera de las herramientas.`;
+
+/** Resultado de una herramienta: dato no confiable, escapado y delimitado como la conversación. */
+function wrapToolResult(result: unknown): string {
+  return `<resultado_herramienta>${jsonForPrompt(result)}</resultado_herramienta>`;
+}
 const MAX_RETRY_WAIT_MS = 5_000;
 
 export interface OpenRouterOptions {
@@ -98,7 +108,28 @@ export class OpenRouterClient implements LlmClient {
       throw new LlmError(kind, false, costs.length > 0 ? charged() : undefined, detail);
     };
 
-    for (;;) {
+    // Plan B (tarea 007): sin response_format; la salida es la herramienta FINAL_TOOL, forzada. Mientras
+    // quedan llamadas, tool_choice 'required' (nunca texto suelto); al agotarlas, se fuerza FINAL_TOOL.
+    const finalTool = tools.length > 0 && request.toolOutputMode === 'final_tool';
+    if (finalTool) messages[0] = { role: 'system', content: `${request.system}\n\n${FINAL_TOOL_NOTE}` };
+    const declaredTools = tools.map((tool) => ({
+      type: 'function',
+      function: { name: tool.name, description: tool.description, parameters: tool.parameters },
+    }));
+    if (finalTool) {
+      declaredTools.push({
+        type: 'function',
+        function: {
+          name: FINAL_TOOL,
+          description: FINAL_TOOL_DESCRIPTION,
+          parameters: request.schema.jsonSchema,
+        },
+      });
+    }
+
+    for (let round = 0; ; round++) {
+      // Corte de seguridad: un modelo que insiste en herramientas después del límite.
+      if (round > maxToolCalls + 2) fail('invalid_output', 'demasiadas vueltas');
       const toolsExhausted = toolCalls.length >= maxToolCalls;
       const body = {
         model: request.model,
@@ -106,18 +137,25 @@ export class OpenRouterClient implements LlmClient {
         max_tokens: request.maxOutputTokens,
         // exclude: el razonamiento no vuelve en la respuesta (no se usa y es más texto del cliente dando vueltas).
         ...(request.reasoningEffort ? { reasoning: { effort: request.reasoningEffort, exclude: true } } : {}),
-        response_format: {
-          type: 'json_schema',
-          json_schema: { name: request.schema.name, strict: true, schema: request.schema.jsonSchema },
-        },
+        ...(finalTool
+          ? {}
+          : {
+              response_format: {
+                type: 'json_schema',
+                json_schema: { name: request.schema.name, strict: true, schema: request.schema.jsonSchema },
+              },
+            }),
         provider: PROVIDER_PREFERENCES,
         ...(tools.length > 0
           ? {
-              tools: tools.map((tool) => ({
-                type: 'function',
-                function: { name: tool.name, description: tool.description, parameters: tool.parameters },
-              })),
-              tool_choice: toolsExhausted ? 'none' : 'auto',
+              tools: declaredTools,
+              tool_choice: finalTool
+                ? toolsExhausted
+                  ? { type: 'function', function: { name: FINAL_TOOL } }
+                  : 'required'
+                : toolsExhausted
+                  ? 'none'
+                  : 'auto',
             }
           : {}),
       };
@@ -144,27 +182,50 @@ export class OpenRouterClient implements LlmClient {
       const finish = choice!.finish_reason;
       const calls = choice!.message?.tool_calls ?? [];
 
-      if (finish === 'tool_calls' || calls.length > 0) {
-        if (tools.length === 0 || toolsExhausted || calls.length === 0) fail('invalid_output');
+      if (finish === 'length') fail('truncated');
+      const finalCall = finalTool ? calls.find((call) => call.function.name === FINAL_TOOL) : undefined;
+      const otherCalls = calls.filter((call) => call.function.name !== FINAL_TOOL);
+      if (otherCalls.length > 0) {
+        if (tools.length === 0 || (!finalTool && toolsExhausted)) fail('invalid_output');
+        // Si vino la salida final junto con otras herramientas, se descarta: se escribió sin ver los
+        // resultados. Igual hay que contestar cada tool_call (la API lo exige).
         messages.push({ role: 'assistant', content: choice!.message?.content ?? null, tool_calls: calls });
         for (const call of calls) {
+          if (call.function.name === FINAL_TOOL) {
+            messages.push({
+              role: 'tool',
+              tool_call_id: call.id,
+              content: wrapToolResult({ error: 'primero_las_herramientas' }),
+            });
+            continue;
+          }
           const outcome = await this.runTool(tools, call, toolCalls.length >= maxToolCalls);
           toolCalls.push(outcome.record);
           messages.push({ role: 'tool', tool_call_id: call.id, content: outcome.content });
         }
         continue;
       }
-      if (finish === 'length') fail('truncated');
+      if (!finalCall && (finish === 'tool_calls' || calls.length > 0)) fail('invalid_output');
       if (finish === 'content_filter') fail('moderated');
-      if (finish !== 'stop' && finish !== null && finish !== undefined) fail('unavailable');
+      if (finish !== 'stop' && finish !== 'tool_calls' && finish !== null && finish !== undefined)
+        fail('unavailable');
 
-      const content = choice!.message?.content;
-      if (typeof content !== 'string') fail('invalid_output', 'sin contenido');
       let raw: unknown;
-      try {
-        raw = JSON.parse(content!);
-      } catch {
-        fail('invalid_output', 'json roto');
+      if (finalTool) {
+        if (!finalCall) fail('invalid_output', 'sin herramienta final');
+        try {
+          raw = JSON.parse(finalCall!.function.arguments || '');
+        } catch {
+          fail('invalid_output', 'json roto');
+        }
+      } else {
+        const content = choice!.message?.content;
+        if (typeof content !== 'string') fail('invalid_output', 'sin contenido');
+        try {
+          raw = JSON.parse(content!);
+        } catch {
+          fail('invalid_output', 'json roto');
+        }
       }
       const parsed = request.schema.zod.safeParse(raw);
       if (!parsed.success) {
@@ -196,7 +257,7 @@ export class OpenRouterClient implements LlmClient {
     const tool = tools.find((candidate) => candidate.name === call.function.name);
     const done = (ok: boolean, result: unknown) => ({
       record: { name: tool ? tool.name : 'unknown', ok, latencyMs: Date.now() - started },
-      content: jsonForPrompt(result),
+      content: wrapToolResult(result),
     });
     if (!tool) return done(false, { error: 'unknown_tool' });
     if (overLimit) return done(false, { error: 'tool_call_limit' });

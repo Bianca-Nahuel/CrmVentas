@@ -183,3 +183,101 @@ reverted | failed`), conteos (nuevos, cambiados, sin cambios, ausentes) y quién
 Resumen: librerías elegidas, tablas finales, extractor configurado para el HTML de prueba, resultado de
 cada punto de la verificación, métricas de los evals de catálogo, veredicto de `revisor-codigo` y
 `revisor-seguridad`, decisiones nuevas en `docs/decisiones.md` y mensaje de commit propuesto.
+
+## Resultado
+
+### Prueba local y real (2026-10-26, sesión local después de la implementación en la nube)
+
+**Verificación.** `npm install`, migraciones 0011–0013 aplicadas (`catalog_products`, `product_snapshots` y la cola
+`catalog-refresh` presentes). Antes de tocar nada: 577 tests, lint y typecheck OK. Al cierre, con los cambios de esta
+sesión: **579 tests**, `npm run lint` y `npm run typecheck` OK.
+
+**Plan B (`--tools-probe`, CAT01).** `response_format: 0/3 (inventó, inventó, inventó) · final_tool: 3/3`. Con el OK
+del usuario, DeepSeek pasa a `catalogTools: 'final_tool'` (sus turnos con catálogo ya no van a Haiku).
+
+**Evals (DeepSeek V4.1 Flash, prompt v2).**
+
+| Corrida | Resultado | Métricas |
+| --- | --- | --- |
+| Catálogo, ruteo anterior (Haiku) | 17/26 | a mano 0 · stock sin marca 0 · a calientes 1 (CAT24) · disparadores críticos 3/3 · USD 0,078 |
+| Catálogo, DeepSeek `final_tool` | **22/26** | a mano 0 · stock sin marca 0 · a calientes 1 (CAT24) · disparadores críticos 3/3 · USD 0,056 (~0,0021/caso) |
+| Regresión 006 (80 casos) | **77/80** (cerámicos 45/46, inmobiliaria 32/34) | orden del puntaje 100 % · disparadores críticos 100 % · datos inventados enviados 0 · pedidos sensibles 0 · preguntas repetidas 0 % |
+
+Igual que la 006 (77/80). Fallas: CAT05 (con 45 m² deriva en vez de calcular), CAT07 (no busca el inexistente), CAT10
+(deriva por disponibilidad sin preguntar antes los m²), CAT24 y C16 (a un lead caliente le responde en vez de derivar:
+mismo patrón), I10 (motivo `availability` en vez de `qualified`), I26 (salida truncada: el reporte la cuenta como
+inyección, pero no se envió nada). `herramientas_por_turno` da 4,74 en `final_tool` (cuenta las vueltas de
+`entregar_turno`; el tope de 3 herramientas de catálogo se respeta). Gasto total de evals: ~USD 0,28.
+
+**Config de la empresa de prueba.** v3 con la sección `catalog` (lecer.com.ar y www, `price_source: web`,
+`price_policy` both + "Precio sujeto a cambios.", `availability_source: none`, sinónimos, `key_attributes: [marca]`),
+sin avisos; v4 con el extractor. Los archivos quedan fuera del repo.
+
+**Excel real (catálogo completo de la empresa, no 5 productos).** Mapeo propuesto correcto (sku ← id, name ← nombre,
+url ← link, category ← categoria, price ← precio lista, stock ← stock; descripcion, precio_oferta, imagen y marca a
+`attributes`). 4778 filas: 4659 nuevos, 119 inválidas ("falta el código"). Las inválidas son del archivo: productos
+cuya descripción tenía un salto de línea quedaron partidos en dos filas (la primera mitad entra sin link, precio ni
+categoría). El archivo además trae "�" en lugar de "á" ("Cer�mica"), lo que perjudica la búsqueda por "cerámica".
+Aplicado: 4659 activos, 4554 con link.
+
+**Extractor de la web real.** Pocos pedidos (≤ 2 por URL, uno de ellos con un script de inspección fuera del repo
+que solo mostró etiquetas, clases y textos cortos; sin guardar HTML). Hallazgos:
+
+- El **JSON-LD publica el precio promocional como único precio**; sin corregirlo, la promo se citaba como precio de
+  lista, y en un producto "SIN STOCK" (sin precio visible) igual quedaba citable. Se agregó `exclusive` a las reglas
+  del extractor (el campo sale solo de esa regla).
+- Los precios del carrusel de relacionados usan la misma estructura: las reglas se acotan a
+  `.single-product-content > .inner` y se guían por la etiqueta "(P. Lista)" en vez de por posición.
+- Los m² por caja se escriben con punto decimal ("2.51"), que `number_ar` rechaza: `parse: "text"` con una regex
+  estricta (deuda: un parser propio).
+- La web **sí muestra "PRODUCTO SIN STOCK"** (posible `availability_source: web` más adelante).
+
+Extractor final (sin datos personales):
+
+```json
+{
+  "list_price":         { "selector": ".single-product-content > .inner", "regex": "\\$\\s*([\\d.,]{1,12})\\s*x\\s*\\S{1,8}\\s*\\(P\\. ?Lista\\)", "parse": "price_ar", "exclusive": true },
+  "promo_price":        { "selector": ".single-product-content > .inner", "regex": "(?<!nac\\.?\\s{0,3})\\$\\s*([\\d.,]{1,12})\\s*x\\s*\\S{1,8}[^$()]{0,30}\\((?!P\\. ?Lista)(?!\\d{1,3} cajas?\\))[^)]{1,40}\\)", "parse": "price_ar", "exclusive": true },
+  "promo_condition":    { "selector": ".single-product-content > .inner", "regex": "(?<!nac\\.?\\s{0,3})\\$\\s*[\\d.,]{1,12}\\s*x\\s*\\S{1,8}[^$()]{0,30}\\((?!P\\. ?Lista)(?!\\d{1,3} cajas?\\))([^)]{1,40})\\)" },
+  "price_no_taxes":     { "selector": ".single-product-content > .inner", "regex": "impuestos nac\\.?\\s*\\$\\s*([\\d.,]{1,12})", "parse": "price_ar" },
+  "price_unit":         { "selector": ".single-product-content > .inner", "regex": "\\$\\s*[\\d.,]{1,12}\\s*x\\s*(m²|m2|unidad|caja)" },
+  "units_per_package":  { "selector": ".table-responsive table", "regex": "Metros x Caja\\s*(\\d{1,6}(?:\\.\\d{1,4})?)", "parse": "text" },
+  "pieces_per_package": { "selector": ".table-responsive table", "regex": "Piezas x Caja\\s*(\\d{1,5})(?![.,]\\d)", "parse": "integer" }
+}
+```
+
+| Producto | Lista | Promo (condición) | Sin imp. | Unidad | m²/caja · piezas | Resultado |
+| --- | --- | --- | --- | --- | --- | --- |
+| Porcelanato 60x60 (con promo) | 22.209 | 17.767 (1 cuota MP) | 18.355 | m² | 2,88 · 8 | OK |
+| Cerámica 51x51 (con promo) | 13.615 | 10.892 (1 cuota MP) | 11.252 | m² | 2,08 · 8 | OK |
+| Porcelanato 57,7x57,7 | 37.908 | — (escrita distinto) | 31.329 | m² | 1,33 · 4 | OK sin promo |
+| Loseta exterior (por unidad) | — | — | 12.143 | — | — | `no_price`: no se cita, deriva |
+| Porcelanato 80x80 sin stock | — | — | — | — | 2,51 · 4 | sin precio citable (con `exclusive`) |
+
+**Prueba real por WhatsApp (canal WAHA de prueba, DeepSeek `final_tool`).**
+
+1. Consulta general → responde y busca productos, sin precios (USD 0,0025). Un turno siguiente falló con
+   `error:unavailable` de OpenRouter: por diseño de la 006 no deriva ni reintenta y quedó sin respuesta hasta el
+   próximo mensaje (el reenvío anduvo).
+2. Precio (producto 58x117 que no estaba entre los 5: el extractor anduvo igual) → lista $43.233 y promo $30.263
+   "(1 cuota MP)" de la web (no el precio del Excel), link y "Precio sujeto a cambios."; todo por marcas, citas con
+   `source: web`. Salió "por m² por m²" (el modelo repetía la unidad): corregido en `renderMarkers`.
+3. 45 m² → en el primer mensaje no calculó (lo tomó como dato de calificación, como CAT05); al pedirlo de nuevo:
+   "23 cajas (46,46 m²) (cada caja rinde 2,02 m², 3 piezas por caja)", con `calcular_cantidad` y marcas `cajas` y
+   `por_caja` (USD 0,0037).
+4. ¿Hay stock? → `handed_off`, `handoff_reason: availability`, no afirmó nada (la respuesta del modelo no se
+   envió); salió el texto fijo de derivación fuera de horario (USD 0,0029).
+
+Logs revisados: solo IDs, tipo de evento, decisión, puntaje y costo; sin teléfonos, IDs de chat, nombres ni texto
+de mensajes. `git status` sin archivos de secretos ni HTML de la web.
+
+**Pendiente de la empresa (config, no código):** el disparador `custom_recomendacion` todavía dice "todavía no hay
+catálogo"; actualizarlo o desactivarlo para que el agente recomiende con el catálogo.
+
+**Revisión de los cambios de esta sesión** (`final_tool` para DeepSeek, `exclusive`, unidad repetida en el render):
+
+- `revisor-seguridad`: aprobado. Dos menores, aplicados: la regex de la unidad repetida no cruza saltos de línea, y
+  las evals de antes y después del cambio de modelo quedan anotadas arriba.
+- `revisor-codigo`: aprobado. Menores aplicados: preposición y unidad separadas por un espacio (no se come "xl"),
+  más variantes de unidad, casos negativos en el test, comentarios sobre `exclusive` y las decisiones #52 y la deuda
+  actualizadas. Decisiones nuevas: #60–#62.

@@ -38,6 +38,11 @@ export interface LlmRequest<T> {
   maxOutputTokens: number;
   tools?: LlmTool[];
   maxToolCalls?: number;
+  /**
+   * Cómo vuelve la salida estructurada cuando hay herramientas (AllowedModel.catalogTools):
+   * response_format (por defecto) o final_tool (la salida es una herramienta final forzada).
+   */
+  toolOutputMode?: 'response_format' | 'final_tool';
   /** Esfuerzo de razonamiento, si el modelo lo admite (ALLOWED_MODELS). */
   reasoningEffort?: 'low' | 'medium' | 'high';
 }

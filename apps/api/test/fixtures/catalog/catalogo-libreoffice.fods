@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<office:document xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0" xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0" xmlns:style="urn:oasis:names:tc:opendocument:xmlns:style:1.0" xmlns:number="urn:oasis:names:tc:opendocument:xmlns:datastyle:1.0" xmlns:fo="urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0" office:version="1.3" office:mimetype="application/vnd.oasis.opendocument.spreadsheet">
+ <office:automatic-styles>
+  <number:date-style style:name="N37"><number:day number:style="long"/><number:text>/</number:text><number:month number:style="long"/><number:text>/</number:text><number:year number:style="long"/></number:date-style>
+  <number:currency-style style:name="N120"><number:currency-symbol>$</number:currency-symbol><number:text> </number:text><number:number number:decimal-places="0" number:min-integer-digits="1" number:grouping="true"/></number:currency-style>
+  <style:style style:name="cdate" style:family="table-cell" style:data-style-name="N37"/>
+  <style:style style:name="cmoney" style:family="table-cell" style:data-style-name="N120"/>
+ </office:automatic-styles>
+ <office:body>
+  <office:spreadsheet>
+   <table:table table:name="Productos">
+    <table:table-row><table:table-cell table:number-columns-spanned="4" office:value-type="string"><text:p>Lista de precios (inventada)</text:p></table:table-cell><table:covered-table-cell table:number-columns-repeated="3"/></table:table-row>
+    <table:table-row><table:table-cell/></table:table-row>
+    <table:table-row>
+     <table:table-cell office:value-type="string"><text:p>Código</text:p></table:table-cell>
+     <table:table-cell office:value-type="string"><text:p>Descripción</text:p></table:table-cell>
+     <table:table-cell office:value-type="string"><text:p>Rubro</text:p></table:table-cell>
+     <table:table-cell office:value-type="string"><text:p>Unidad</text:p></table:table-cell>
+     <table:table-cell office:value-type="string"><text:p>M2 x caja</text:p></table:table-cell>
+     <table:table-cell office:value-type="string"><text:p>Piezas x caja</text:p></table:table-cell>
+     <table:table-cell office:value-type="string"><text:p>Precio</text:p></table:table-cell>
+     <table:table-cell office:value-type="string"><text:p>Link</text:p></table:table-cell>
+     <table:table-cell office:value-type="string"><text:p>Fecha alta</text:p></table:table-cell>
+     <table:table-cell office:value-type="string"><text:p>Observaciones</text:p></table:table-cell>
+    </table:table-row>
+    <table:table-row>
+     <table:table-cell office:value-type="string"><text:p>CER-001</text:p></table:table-cell>
+     <table:table-cell office:value-type="string"><text:p>Cerámica Símil Madera Roble 45x45</text:p></table:table-cell>
+     <table:table-cell table:number-rows-spanned="2" office:value-type="string"><text:p>Cerámicos</text:p></table:table-cell>
+     <table:table-cell office:value-type="string"><text:p>m2</text:p></table:table-cell>
+     <table:table-cell office:value-type="float" office:value="2.02"><text:p>2,02</text:p></table:table-cell>
+     <table:table-cell office:value-type="float" office:value="10"><text:p>10</text:p></table:table-cell>
+     <table:table-cell table:style-name="cmoney" office:value-type="currency" office:currency="ARS" office:value="37290"><text:p>$ 37.290</text:p></table:table-cell>
+     <table:table-cell office:value-type="string"><text:p>https://www.ceramicos-del-sur.test/p/cer-001</text:p></table:table-cell>
+     <table:table-cell table:style-name="cdate" office:value-type="date" office:date-value="2026-03-15"><text:p>15/03/2026</text:p></table:table-cell>
+     <table:table-cell office:value-type="string"><text:p>Esmaltada, apta interior</text:p></table:table-cell>
+    </table:table-row>
+    <table:table-row>
+     <table:table-cell office:value-type="string"><text:p>CER-002</text:p></table:table-cell>
+     <table:table-cell office:value-type="string"><text:p>Cerámica Blanca Brillante 30x60</text:p></table:table-cell>
+     <table:covered-table-cell/>
+     <table:table-cell office:value-type="string"><text:p>m2</text:p></table:table-cell>
+     <table:table-cell office:value-type="float" office:value="1.62"><text:p>1,62</text:p></table:table-cell>
+     <table:table-cell/>
+     <table:table-cell office:value-type="string"><text:p>21.450,50</text:p></table:table-cell>
+     <table:table-cell/>
+     <table:table-cell/>
+     <table:table-cell office:value-type="string"><text:p>Sin link todavía</text:p></table:table-cell>
+    </table:table-row>
+   </table:table>
+   <table:table table:name="Notas">
+    <table:table-row><table:table-cell office:value-type="string"><text:p>Hoja de notas</text:p></table:table-cell></table:table-row>
+   </table:table>
+  </office:spreadsheet>
+ </office:body>
+</office:document>

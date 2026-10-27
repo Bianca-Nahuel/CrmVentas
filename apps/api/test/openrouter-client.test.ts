@@ -220,6 +220,114 @@ describe('OpenRouterClient', () => {
       expect(bodies.map((body) => body.tool_choice)).toEqual(['auto', 'auto', 'none']);
     });
 
+    it('el resultado va delimitado con <resultado_herramienta>', async () => {
+      const { instance, bodies } = client([toolCall('c1', '{"sku":"A"}'), ok({ answer: 'listo' })]);
+      await instance.complete(request({ tools: [tool as LlmTool] }));
+      const messages = bodies[1]!.messages as { role: string; content: string }[];
+      const content = messages.find((message) => message.role === 'tool')!.content;
+      expect(content.startsWith('<resultado_herramienta>{')).toBe(true);
+      expect(content.endsWith('}</resultado_herramienta>')).toBe(true);
+    });
+
+    describe('modo final_tool (plan B)', () => {
+      const finalCall = (args: unknown, extra: unknown[] = []) => ({
+        body: {
+          choices: [
+            {
+              finish_reason: 'tool_calls',
+              message: {
+                content: null,
+                tool_calls: [
+                  ...extra,
+                  {
+                    id: 'f1',
+                    type: 'function',
+                    function: { name: 'entregar_turno', arguments: JSON.stringify(args) },
+                  },
+                ],
+              },
+            },
+          ],
+          usage: { prompt_tokens: 500, completion_tokens: 20, cost: 0.0001 },
+        },
+      });
+      type Body = { function: { name: string; parameters: unknown } };
+
+      it('sin response_format; tool_choice required; la salida es la herramienta final', async () => {
+        calls.length = 0;
+        const { instance, bodies } = client([
+          toolCall('c1', '{"sku":"P-60"}'),
+          finalCall({ answer: 'listo' }),
+        ]);
+        const result = await instance.complete(
+          request({ tools: [tool as LlmTool], toolOutputMode: 'final_tool' }),
+        );
+        expect(result.parsed).toEqual({ answer: 'listo' });
+        expect(calls).toEqual([{ sku: 'P-60' }]);
+        expect(result.toolCalls).toHaveLength(1);
+        expect(bodies[0]).not.toHaveProperty('response_format');
+        expect(bodies[0]!.tool_choice).toBe('required');
+        const declared = bodies[0]!.tools as Body[];
+        expect(declared.map((t) => t.function.name)).toEqual(['buscar_productos', 'entregar_turno']);
+        expect(declared[1]!.function.parameters).toEqual(z.toJSONSchema(schema));
+        expect((bodies[0]!.messages as { content: string }[])[0]!.content).toContain('entregar_turno');
+      });
+
+      it('al agotar las llamadas, fuerza la herramienta final', async () => {
+        const { instance, bodies } = client([toolCall('c1', '{"sku":"A"}'), finalCall({ answer: 'listo' })]);
+        await instance.complete(
+          request({ tools: [tool as LlmTool], maxToolCalls: 1, toolOutputMode: 'final_tool' }),
+        );
+        expect(bodies.map((body) => body.tool_choice)).toEqual([
+          'required',
+          { type: 'function', function: { name: 'entregar_turno' } },
+        ]);
+      });
+
+      it('la salida final junto con otra herramienta se descarta y se sigue', async () => {
+        calls.length = 0;
+        const other = {
+          id: 'c1',
+          type: 'function',
+          function: { name: 'buscar_productos', arguments: '{"sku":"B"}' },
+        };
+        const { instance, bodies } = client([
+          finalCall({ answer: 'apurado' }, [other]),
+          finalCall({ answer: 'bien' }),
+        ]);
+        const result = await instance.complete(
+          request({ tools: [tool as LlmTool], toolOutputMode: 'final_tool' }),
+        );
+        expect(result.parsed).toEqual({ answer: 'bien' });
+        expect(calls).toEqual([{ sku: 'B' }]);
+        const toolMessages = (bodies[1]!.messages as { role: string; tool_call_id?: string }[]).filter(
+          (message) => message.role === 'tool',
+        );
+        expect(toolMessages.map((message) => message.tool_call_id)).toEqual(['c1', 'f1']);
+      });
+
+      it('texto suelto sin la herramienta final, o argumentos inválidos → invalid_output', async () => {
+        const text = await failure(
+          client([ok('hola')]).instance.complete(
+            request({ tools: [tool as LlmTool], toolOutputMode: 'final_tool' }),
+          ),
+        );
+        expect(text.kind).toBe('invalid_output');
+        const bad = await failure(
+          client([finalCall({ otra: 1 })]).instance.complete(
+            request({ tools: [tool as LlmTool], toolOutputMode: 'final_tool' }),
+          ),
+        );
+        expect(bad.kind).toBe('invalid_output');
+      });
+
+      it('sin herramientas, final_tool no cambia nada (response_format como siempre)', async () => {
+        const { instance, bodies } = client([ok({ answer: 'sí' })]);
+        await instance.complete(request({ toolOutputMode: 'final_tool' }));
+        expect(bodies[0]).toHaveProperty('response_format');
+      });
+    });
+
     it('si insiste con herramientas después del máximo → invalid_output', async () => {
       const { instance } = client([toolCall('c1', '{"sku":"A"}'), toolCall('c2', '{"sku":"B"}')]);
       const error = await failure(instance.complete(request({ tools: [tool as LlmTool], maxToolCalls: 1 })));

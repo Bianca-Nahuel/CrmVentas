@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { CatalogModule } from '../catalog/catalog.module.js';
 import { OutboundModule } from '../messaging/outbound/outbound.module.js';
 import { TenantConfigService } from './config/tenant-config.service.js';
 import { AI_BUDGET_GUARD, NoopBudgetGuard } from './llm/budget-guard.js';
@@ -11,7 +12,7 @@ import { AiReplyWorker } from './reply/ai-reply.worker.js';
  * 008 reemplaza AI_BUDGET_GUARD y la 009 el LLM_CLIENT_FACTORY, sin tocar el pipeline.
  */
 @Module({
-  imports: [OutboundModule],
+  imports: [OutboundModule, CatalogModule],
   providers: [
     TenantConfigService,
     { provide: LLM_CLIENT_FACTORY, useClass: PlatformLlmClientFactory },

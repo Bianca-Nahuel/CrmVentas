@@ -10,6 +10,8 @@ import { TenantConfigService } from '../src/ai/config/tenant-config.service.js';
 import { NoopBudgetGuard } from '../src/ai/llm/budget-guard.js';
 import { LlmError } from '../src/ai/llm/llm-client.js';
 import { AiReplyService } from '../src/ai/reply/ai-reply.service.js';
+import { CatalogRefreshWorker } from '../src/catalog/catalog-refresh.worker.js';
+import { CatalogService } from '../src/catalog/catalog.service.js';
 import type { Env } from '../src/config/env.js';
 import { APP_DB, type AppDatabase } from '../src/db/database.module.js';
 import { withTenantTransaction } from '../src/db/tenant-context.js';
@@ -59,6 +61,8 @@ function makeService(env: Partial<Env> = {}) {
     configs,
     outbound,
     presence as unknown as PresenceService,
+    ctx.app.get(CatalogService),
+    ctx.app.get(CatalogRefreshWorker),
   );
 }
 
@@ -333,7 +337,7 @@ describe('3 y 7. puntaje y calificación', () => {
     expect(aiRun).toMatchObject({
       decision: 'replied',
       score: 61,
-      prompt_version: 'v1',
+      prompt_version: 'v2',
       config_version: 1,
       provider: 'openrouter',
       billing_mode: 'platform',
