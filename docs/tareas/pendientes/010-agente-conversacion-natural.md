@@ -52,14 +52,24 @@ pero si le preguntan si es una persona, sigue diciendo que es un asistente autom
      sugerencias). `faltan` deja de ser un orden fijo: el modelo elige el dato más pertinente para lo que se
      está hablando, y la logística (retiro o envío, zona, fecha) y el nombre van después de saber qué busca.
    - No repetir una pregunta que el cliente no contestó en el turno anterior.
+   - **Nunca repreguntar un dato que ya está**, aunque lo haya dicho en este mismo mensaje o de otra forma
+     ("un baño de 2x3", "para fin de mes"). Hoy `faltan` se calcula con el estado anterior al turno y
+     contradice esa regla. En v3:
+     - la salida suma `asks_field: key | null` (qué dato pregunta la respuesta);
+     - `decide()` rechaza una respuesta que pregunta un campo que ya está en lo combinado del turno y, en su
+       lugar, manda la respuesta sin la pregunta o pide otra vuelta;
+     - se registran por conversación los campos que el cliente no quiso dar o que ya se preguntaron dos
+       veces, y no vuelven a `faltan`.
    - No usar cierres genéricos ("¿algo más?"), frases de manual ni el nombre del cliente en cada mensaje.
    - `availability`: separar "¿venden o trabajan X?" (consulta de catálogo: se responde con
      `buscar_productos`, sin afirmar stock) de "¿hay stock de este producto, para cuándo, lo puedo retirar
      hoy?" (disparador). Mantener la regla de marcarlo ante la duda solo para el segundo caso. Lo mismo en
      `TRIGGER_DESCRIPTIONS` de la capa de la empresa. El detector en código (`critical-triggers.ts`) no se
      relaja en esta tarea.
-2. **Varios mensajes:** schema de salida v3 con `replies: string[]` (de 1 a 3, cada uno de hasta 1 o 2
-   oraciones; `reply` desaparece). `decide()` controla **cada parte** con `checkReply` y también la
+2. **Varios mensajes:** schema de salida v3 con `replies: string[]` (1 o 2, cada uno de hasta 1 o 2
+   oraciones; `reply` desaparece). El modelo **elige** cuántos: por defecto 1. Dos solo cuando son dos cosas
+   distintas, como una respuesta y una pregunta aparte, o una respuesta con un dato y un comentario, y
+   nunca dos para un saludo o una respuesta corta. El eval mide que la mayoría de los turnos salga en 1. `decide()` controla **cada parte** con `checkReply` y también la
    concatenación (los topes de largo valen para el total). Si una parte falla, no sale ninguna y se deriva
    como hoy.
    - `sendAiReply` encola una fila por parte, con `idempotencyKey` `ai:<messageId>:<n>`, en la misma
@@ -78,7 +88,9 @@ pero si le preguntan si es una persona, sigue diciendo que es un asistente autom
    - "¿tienen porcelanato símil madera?" con catálogo (no deriva);
    - "¿hay stock del X para retirar hoy?" (deriva o pide datos, según el modo);
    - cliente que no contesta una pregunta (no se repite);
-   - respuesta en dos partes.
+   - cliente que da un dato en el mismo mensaje en que pregunta otra cosa ("busco para el baño, 2x3,
+     ¿tienen gris?"): no se le vuelve a preguntar el ambiente ni los m²;
+   - respuesta en dos partes, y respuestas simples que tienen que salir en una sola.
 
    Nuevas expectativas en el runner: `max_partes` y `sin_pregunta`. `max_preguntas: 1` va en todos los
    casos nuevos.
@@ -94,6 +106,9 @@ pero si le preguntan si es una persona, sigue diciendo que es un asistente autom
       Un reintento del trabajo no duplica ninguna, y una parte que falla los controles bloquea todas
       (tests e2e).
 - [ ] El `intro` de un `after_fields` aparece solo en la primera pregunta (test de `decide`).
+- [ ] Una respuesta con `asks_field` de un campo ya obtenido no sale tal cual (test de `decide`); en los
+      evals, 0 repreguntas de datos ya dados.
+- [ ] En los evals de saludo y de respuesta simple sale un solo mensaje.
 - [ ] Evals v3 contra la línea base v2: no baja la precisión de puntaje ni de disparadores, siguen en 0 las
       respuestas a leads calientes y no aparecen respuestas que nieguen ser un asistente.
 - [ ] Decisión de la espera entre partes registrada en `docs/decisiones.md`.
