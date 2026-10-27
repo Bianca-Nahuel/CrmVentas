@@ -44,7 +44,8 @@ pero si le preguntan si es una persona, sigue diciendo que es un asistente autom
 ## Pasos / requisitos
 
 1. **Prompt v3** (`apps/api/src/ai/prompts/v3/`, sin editar v2) y `reply-engine.ts` apuntando a v3:
-   - Saludo: si el cliente solo saluda, el mensaje es solo un saludo; si saluda y pregunta, saludo y
+   - Saludo: si el cliente solo saluda, el mensaje es un saludo y, como mucho, una invitación abierta
+     ("¿En qué te puedo ayudar?"; ajuste del usuario del 2026-10-27); si saluda y pregunta, saludo y
      respuesta. Nunca saludo y pregunta de calificación en el mismo turno.
    - Si el cliente hizo una pregunta, ese turno la responde; solo agrega una pregunta si hace falta para
      ayudarlo (medida, ambiente, para buscar el producto).

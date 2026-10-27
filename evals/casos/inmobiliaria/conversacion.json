@@ -3,7 +3,7 @@
     "id": "IV01",
     "tenant_config": "inmobiliaria",
     "tipo": "conversacion",
-    "titulo": "Solo saluda: solo saluda",
+    "titulo": "Solo saluda: saludo y, como mucho, una invitación abierta (sin pedir datos)",
     "conversacion": [
       {
         "de": "cliente",
@@ -12,9 +12,17 @@
     ],
     "esperado": {
       "accion": "responder",
-      "sin_pregunta": true,
       "max_partes": 1,
-      "max_preguntas": 1
+      "max_preguntas": 1,
+      "no_pregunta": [
+        "comprar o (para )?alquilar",
+        "zona|barrio",
+        "ambientes",
+        "presupuesto",
+        "cr[eé]dito",
+        "mudarte|cu[aá]ndo",
+        "nombre"
+      ]
     }
   },
   {

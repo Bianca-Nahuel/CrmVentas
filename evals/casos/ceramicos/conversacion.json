@@ -3,7 +3,7 @@
     "id": "CV01",
     "tenant_config": "ceramicos",
     "tipo": "conversacion",
-    "titulo": "Solo saluda: solo saluda, sin preguntar datos",
+    "titulo": "Solo saluda: saludo y, como mucho, una invitación abierta (sin pedir datos)",
     "conversacion": [
       {
         "de": "cliente",
@@ -12,7 +12,6 @@
     ],
     "esperado": {
       "accion": "responder",
-      "sin_pregunta": true,
       "max_partes": 1,
       "no_pregunta": ["ambiente", "m2|m²|metros", "cu[aá]ndo", "nombre", "retir|env[ií]o"],
       "max_preguntas": 1
