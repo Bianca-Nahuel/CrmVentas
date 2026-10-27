@@ -8,7 +8,7 @@ import {
 } from '@ventas/shared';
 import type { LlmClientFactory, LlmSelection } from '../src/ai/llm/llm-client.factory.js';
 import { LlmError, type LlmClient, type LlmRequest, type LlmResult } from '../src/ai/llm/llm-client.js';
-import type { AgentOutput } from '../src/ai/prompts/v2/output-schema.js';
+import type { AgentOutput } from '../src/ai/prompts/v3/output-schema.js';
 import { withTenant, type TestContext } from './helpers.js';
 import { uid } from './outbound-helpers.js';
 
@@ -170,7 +170,8 @@ export function agentOutput(config: TenantConfig, overrides: Partial<AgentOutput
     language: 'es',
     triggers: [],
     action: 'none',
-    reply: null,
+    replies: [],
+    asks_field: null,
     suggestion: null,
     handoff_summary: 'Cliente consultando.',
     reason: null,

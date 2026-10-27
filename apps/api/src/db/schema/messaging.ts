@@ -298,7 +298,7 @@ export const outboundMessages = pgTable(
     ),
     check(
       'outbound_messages_reject_reason_check',
-      sql`${t.rejectReason} IN ('no_inbound', 'window_expired', 'contact_blocked', 'channel_unavailable', 'channel_paused')`,
+      sql`${t.rejectReason} IN ('no_inbound', 'window_expired', 'contact_blocked', 'channel_unavailable', 'channel_paused', 'superseded')`,
     ),
     check(
       'outbound_messages_rejected_reason_check',

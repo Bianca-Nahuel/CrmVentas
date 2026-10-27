@@ -20,6 +20,7 @@ import {
 import type { JobAttempt } from '../../whatsapp/inbound/inbound.worker.js';
 import {
   MAX_SENDS_PER_MINUTE_PER_CHANNEL,
+  NEXT_PART_RECHECK_MS,
   RATE_WINDOW_MS,
   STUCK_SENDING_AFTER_MS,
   TYPING_INDICATOR_MAX_MS,
@@ -132,6 +133,7 @@ export class OutboundWorker implements OnApplicationBootstrap {
           tenantId: job.tenantId,
           ...(job.gapMs === undefined ? {} : { gapMs: job.gapMs }),
           ...(claim.gapMs === undefined ? {} : { gapMs: claim.gapMs }),
+          ...(job.afterOutboundId ? { afterOutboundId: job.afterOutboundId } : {}),
         } satisfies OutboundJob,
         { singletonKey: claim.conversationId, startAfter: claim.startAfter },
       );
@@ -194,6 +196,7 @@ export class OutboundWorker implements OnApplicationBootstrap {
         body: outboundMessages.body,
         conversationId: outboundMessages.conversationId,
         claimedAt: outboundMessages.claimedAt,
+        createdAt: outboundMessages.createdAt,
         stuck: sql<boolean>`${outboundMessages.claimedAt} <= now() - make_interval(secs => ${STUCK_SENDING_AFTER_MS / 1000})`,
       })
       .from(outboundMessages)
@@ -225,6 +228,26 @@ export class OutboundWorker implements OnApplicationBootstrap {
         .set({ status: 'rejected', rejectReason: context.rejectReason })
         .where(and(eq(outboundMessages.id, job.outboundId), eq(outboundMessages.status, 'queued')));
       return { kind: 'done', result: 'rechazado', reason: context.rejectReason };
+    }
+
+    // Parte siguiente de una respuesta (tarea 010): después de la anterior, y solo si sigue correspondiendo.
+    if (job.afterOutboundId) {
+      const next = await this.nextPartState(tx, job.afterOutboundId, row.conversationId, row.createdAt);
+      if (next === 'wait') {
+        return {
+          kind: 'reschedule',
+          conversationId: row.conversationId,
+          startAfter: new Date((await dbNow(tx)).getTime() + NEXT_PART_RECHECK_MS),
+          reason: 'waiting_previous_part',
+        };
+      }
+      if (next === 'superseded') {
+        await tx
+          .update(outboundMessages)
+          .set({ status: 'rejected', rejectReason: 'superseded' })
+          .where(and(eq(outboundMessages.id, job.outboundId), eq(outboundMessages.status, 'queued')));
+        return { kind: 'done', result: 'rechazado', reason: 'superseded' };
+      }
     }
 
     // Otro envío del mismo chat en curso (la cola ya evita dos activos por chat; esto cubre un trabajo
@@ -270,8 +293,9 @@ export class OutboundWorker implements OnApplicationBootstrap {
       };
     }
 
-    // Separación con el saliente anterior del chat, si no hubo un entrante en el medio.
-    const gapMs = job.gapMs ?? sameChatGapMs(this.timing.random);
+    // Separación con el saliente anterior del chat, si no hubo un entrante en el medio. Una parte siguiente
+    // no la espera: ya salió la anterior y tiene su propio "escribiendo…".
+    const gapMs = job.afterOutboundId ? 0 : (job.gapMs ?? sameChatGapMs(this.timing.random));
     const [previous] = await tx
       .select({ claimedAt: sql<Date | string | null>`max(${outboundMessages.claimedAt})` })
       .from(outboundMessages)
@@ -300,6 +324,34 @@ export class OutboundWorker implements OnApplicationBootstrap {
       .returning({ id: outboundMessages.id });
     if (claimed.length === 0) return { kind: 'done', result: 'sin_cambios', reason: 'claim_lost' };
     return { kind: 'send', context, body: row.body, unread: await unreadInbound(tx, row.conversationId) };
+  }
+
+  /**
+   * ¿La parte siguiente puede salir? 'wait' mientras la anterior no terminó; 'superseded' si la anterior no
+   * salió, si después de armar la respuesta escribió el cliente, respondió una persona o se pausó la IA.
+   */
+  private async nextPartState(
+    tx: AppTx,
+    previousId: string,
+    conversationId: string,
+    createdAt: Date,
+  ): Promise<'send' | 'wait' | 'superseded'> {
+    const [previous] = await tx
+      .select({ status: outboundMessages.status })
+      .from(outboundMessages)
+      .where(eq(outboundMessages.id, previousId));
+    if (!previous || previous.status === 'failed' || previous.status === 'rejected') return 'superseded';
+    if (previous.status !== 'sent') return 'wait';
+    const result = await tx.execute<{ changed: boolean }>(sql`
+      SELECT EXISTS (
+        SELECT 1 FROM messages m
+        WHERE m.conversation_id = ${conversationId} AND m.created_at > ${createdAt}
+          AND (m.direction = 'inbound' OR m.sender_type = 'user')
+      ) OR EXISTS (
+        SELECT 1 FROM conversations c WHERE c.id = ${conversationId} AND c.ai_paused_until > now()
+      ) AS changed
+    `);
+    return result.rows[0]?.changed ? 'superseded' : 'send';
   }
 
   /**

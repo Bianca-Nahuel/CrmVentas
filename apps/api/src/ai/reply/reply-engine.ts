@@ -6,14 +6,14 @@ import { AI_MAX_OUTPUT_TOKENS, DISCOVERED_NOTES_MAX, MAX_TOOL_CALLS_PER_TURN } f
 import type { LlmRequest, LlmTool } from '../llm/llm-client.js';
 import type { TurnCatalogContext } from '../tools/turn-catalog-context.js';
 import { addUsd, tokensCostUsd } from '../llm/money.js';
-import { buildPrompt, type HistoryMessage } from '../prompts/v2/index.js';
+import { buildPrompt, type HistoryMessage } from '../prompts/v3/index.js';
 import {
   buildOutputSchema,
   type AgentOutput,
   type DiscoveredNote,
   type ExtractedValue,
-} from '../prompts/v2/output-schema.js';
-import type { TenantLayerState } from '../prompts/v2/tenant-layer.js';
+} from '../prompts/v3/output-schema.js';
+import type { TenantLayerState } from '../prompts/v3/tenant-layer.js';
 import { computeScore, type ScoreBreakdown } from '../scoring/score.js';
 import { isOpenAt, localTime } from './business-hours.js';
 import { detectCriticalTriggers } from './critical-triggers.js';

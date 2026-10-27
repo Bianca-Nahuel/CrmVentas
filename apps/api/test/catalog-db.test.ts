@@ -9,7 +9,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { TenantConfigService, InvalidTenantConfigError } from '../src/ai/config/tenant-config.service.js';
 import { NoopBudgetGuard } from '../src/ai/llm/budget-guard.js';
 import type { LlmRequest } from '../src/ai/llm/llm-client.js';
-import type { AgentOutput } from '../src/ai/prompts/v2/output-schema.js';
+import type { AgentOutput } from '../src/ai/prompts/v3/output-schema.js';
 import { AiReplyService } from '../src/ai/reply/ai-reply.service.js';
 import { CatalogRefreshWorker } from '../src/catalog/catalog-refresh.worker.js';
 import { CatalogService } from '../src/catalog/catalog.service.js';
@@ -559,7 +559,11 @@ describe('7. turno del agente con catálogo', () => {
       await run('ver_producto', { sku: 'CER-001' });
       for (const extra of extraTools) await run(extra.name, extra.args);
       const config = (await tx(currentTenant, (t) => configs.latest(t))) as unknown as { config: never };
-      return agentOutput(config.config, { signals: signals(config.config, 1), action: 'reply', reply });
+      return agentOutput(config.config, {
+        signals: signals(config.config, 1),
+        action: 'reply',
+        replies: [reply],
+      });
     };
   }
   let currentTenant = '';
@@ -593,7 +597,7 @@ describe('7. turno del agente con catálogo', () => {
       'SELECT prompt_version, catalog_citations FROM ai_runs WHERE conversation_id = $1',
       [chat.conversationId],
     );
-    expect(rows[0].prompt_version).toBe('v2');
+    expect(rows[0].prompt_version).toBe('v3');
     const citations = rows[0].catalog_citations;
     expect(citations.consulted).toEqual(
       expect.arrayContaining([

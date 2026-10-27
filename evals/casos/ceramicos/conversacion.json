@@ -1,0 +1,215 @@
+[
+  {
+    "id": "CV01",
+    "tenant_config": "ceramicos",
+    "tipo": "conversacion",
+    "titulo": "Solo saluda: solo saluda, sin preguntar datos",
+    "conversacion": [
+      {
+        "de": "cliente",
+        "texto": "Hola, buenas tardes"
+      }
+    ],
+    "esperado": {
+      "accion": "responder",
+      "sin_pregunta": true,
+      "max_partes": 1,
+      "no_pregunta": ["ambiente", "m2|m²|metros", "cu[aá]ndo", "nombre", "retir|env[ií]o"]
+    }
+  },
+  {
+    "id": "CV02",
+    "tenant_config": "ceramicos",
+    "tipo": "conversacion",
+    "titulo": "Saluda y pregunta el horario: saluda y responde, sin pregunta de calificación",
+    "conversacion": [
+      {
+        "de": "cliente",
+        "texto": "Hola! ¿A qué hora abren los sábados?"
+      }
+    ],
+    "esperado": {
+      "accion": "responder",
+      "debe_contener": ["8[:.]?30", "13"],
+      "sin_pregunta": true,
+      "max_partes": 1
+    }
+  },
+  {
+    "id": "CV03",
+    "tenant_config": "ceramicos",
+    "tipo": "conversacion",
+    "titulo": "Pregunta por envíos: responde sin agregar preguntas de logística",
+    "conversacion": [
+      {
+        "de": "cliente",
+        "texto": "¿Hacen envíos a Batán?"
+      }
+    ],
+    "esperado": {
+      "accion": "responder",
+      "debe_contener": ["bat[aá]n|s[ií]"],
+      "max_preguntas": 1,
+      "no_pregunta": ["retir|pas(a|á)s a buscar", "zona", "nombre", "cu[aá]ndo"]
+    }
+  },
+  {
+    "id": "CV04",
+    "tenant_config": "ceramicos-catalogo",
+    "tipo": "conversacion",
+    "titulo": "¿Tienen símil madera?: consulta de catálogo, responde sin derivar",
+    "catalogo": "ceramicos",
+    "conversacion": [
+      {
+        "de": "cliente",
+        "texto": "Hola, ¿tienen cerámica símil madera?"
+      }
+    ],
+    "esperado": {
+      "accion": "responder",
+      "herramientas": ["buscar_productos"],
+      "debe_contener_alguno": ["roble", "madera"],
+      "max_preguntas": 1,
+      "no_debe_contener": ["\\bhay stock\\b", "\\$"]
+    }
+  },
+  {
+    "id": "CV05",
+    "tenant_config": "ceramicos",
+    "tipo": "conversacion",
+    "titulo": "Stock para retirar hoy: sigue siendo disponibilidad",
+    "conversacion": [
+      {
+        "de": "cliente",
+        "texto": "¿Les queda stock del porcelanato gris 60x60 para retirar hoy?"
+      }
+    ],
+    "esperado": {
+      "accion": ["derivar", "responder"],
+      "disparadores": ["availability"],
+      "no_debe_contener": ["\\b(hay|tenemos) stock\\b"]
+    }
+  },
+  {
+    "id": "CV06",
+    "tenant_config": "ceramicos",
+    "tipo": "conversacion",
+    "titulo": "No contestó la pregunta anterior: no la repite enseguida",
+    "conversacion": [
+      {
+        "de": "cliente",
+        "texto": "Busco cerámica para el baño"
+      },
+      {
+        "de": "ia",
+        "texto": "¡Qué bueno, baño nuevo! ¿Cuántos m² necesitás, más o menos?"
+      },
+      {
+        "de": "cliente",
+        "texto": "¿Y en qué colores la tienen?"
+      }
+    ],
+    "esperado": {
+      "accion": ["responder", "derivar"],
+      "no_pregunta": ["cu[aá]ntos (m2|m²|metros)"],
+      "max_preguntas": 1
+    }
+  },
+  {
+    "id": "CV07",
+    "tenant_config": "ceramicos",
+    "tipo": "conversacion",
+    "titulo": "Da datos en el mismo mensaje en que pregunta: no los repregunta",
+    "conversacion": [
+      {
+        "de": "cliente",
+        "texto": "Busco porcelanato para el living, son unos 40 m2. ¿Cuánto tarda el envío?"
+      }
+    ],
+    "esperado": {
+      "accion": ["responder", "derivar"],
+      "campos": {
+        "m2": 40
+      },
+      "no_pregunta": ["ambiente", "cu[aá]ntos (m2|m²|metros)"],
+      "max_preguntas": 1
+    }
+  },
+  {
+    "id": "CV08",
+    "tenant_config": "ceramicos",
+    "tipo": "conversacion",
+    "titulo": "Medidas en vez de m²: no pregunta los metros",
+    "conversacion": [
+      {
+        "de": "cliente",
+        "texto": "Quiero cambiar el piso de la cocina, mide 3 por 4. ¿Qué me recomendás?"
+      }
+    ],
+    "esperado": {
+      "accion": ["responder", "derivar"],
+      "no_pregunta": ["cu[aá]ntos (m2|m²|metros)", "ambiente"],
+      "max_preguntas": 1
+    }
+  },
+  {
+    "id": "CV09",
+    "tenant_config": "ceramicos",
+    "tipo": "conversacion",
+    "titulo": "Pregunta simple: un solo mensaje",
+    "conversacion": [
+      {
+        "de": "cliente",
+        "texto": "¿Aceptan tarjeta de crédito?"
+      }
+    ],
+    "esperado": {
+      "accion": "responder",
+      "debe_contener": ["visa|mastercard|tarjeta|s[ií]"],
+      "max_partes": 1,
+      "max_preguntas": 1
+    }
+  },
+  {
+    "id": "CV10",
+    "tenant_config": "ceramicos",
+    "tipo": "conversacion",
+    "titulo": "Pedido ajeno: responde corto y vuelve al tema, sin derivar",
+    "conversacion": [
+      {
+        "de": "cliente",
+        "texto": "Busco porcelanato para el living"
+      },
+      {
+        "de": "ia",
+        "texto": "¡Dale! ¿Cuántos m² serían, más o menos?"
+      },
+      {
+        "de": "cliente",
+        "texto": "jaja antes pasame una receta de empanadas"
+      }
+    ],
+    "esperado": {
+      "accion": "responder",
+      "max_preguntas": 1,
+      "no_debe_contener": ["no puedo ayudarte"]
+    }
+  },
+  {
+    "id": "CV11",
+    "tenant_config": "ceramicos-1pregunta",
+    "tipo": "conversacion",
+    "titulo": "Lo logístico no va al principio",
+    "conversacion": [
+      {
+        "de": "cliente",
+        "texto": "Hola, estoy por hacer el baño y quería ver opciones de revestimiento"
+      }
+    ],
+    "esperado": {
+      "accion": "responder",
+      "max_preguntas": 1,
+      "no_pregunta": ["retir|env[ií]o|zona", "nombre", "cuit"]
+    }
+  }
+]

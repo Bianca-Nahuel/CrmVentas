@@ -10,11 +10,11 @@ import {
 } from '@ventas/shared';
 import { describe, expect, it } from 'vitest';
 import { routeModel } from '../src/ai/llm/llm-client.factory.js';
-import { buildOutputSchema } from '../src/ai/prompts/v2/output-schema.js';
-import { buildPrompt } from '../src/ai/prompts/v2/index.js';
+import { buildOutputSchema } from '../src/ai/prompts/v3/output-schema.js';
+import { buildPrompt } from '../src/ai/prompts/v3/index.js';
 import { decide } from '../src/ai/reply/decide.js';
 import { parseMarkers } from '../src/ai/reply/markers.js';
-import { buildCheckContext, checkReply, numbersIn } from '../src/ai/reply/output-checks.js';
+import { buildCheckContext, checkReplies, checkReply, numbersIn } from '../src/ai/reply/output-checks.js';
 import { buildCatalogTools, searchTerms } from '../src/ai/tools/catalog-tools.js';
 import { TurnCatalogContext } from '../src/ai/tools/turn-catalog-context.js';
 import { CatalogViewer } from '../src/catalog/catalog-viewer.js';
@@ -540,6 +540,16 @@ describe('marcas y controles de salida', () => {
     expect(template).toBe('Sale dato y dato.');
   });
 
+  it('respuesta en partes: si una parte posterior falla, no sale nada y no quedan citas registradas', async () => {
+    const s = await turn();
+    const result = checkReplies(
+      ['La Roble 45x45 está a {{precio:CER-001:lista}}.', 'Te queda en $ 9.999'],
+      checks(s),
+    );
+    expect(result).toEqual({ ok: false, control: 'money' });
+    expect(s.context.cited).toEqual([]);
+  });
+
   it('precio vigente, promo con condición, link y cajas → se renderizan y se registran las citas', async () => {
     const s = await turn();
     await call(s.tools, 'calcular_cantidad', { sku: 'CER-001', cantidad: 45, unidad: 'm2' });
@@ -574,7 +584,9 @@ describe('marcas y controles de salida', () => {
     // Lo que no es la unidad repetida queda: otra línea, otra palabra.
     expect(
       checkReply('Está a {{precio:CER-001:lista}}\npor m² se calculan las cajas.', checks(s)),
-    ).toMatchObject({ reply: 'Está a $37.290 por m²\npor m² se calculan las cajas. Precio sujeto a cambios.' });
+    ).toMatchObject({
+      reply: 'Está a $37.290 por m²\npor m² se calculan las cajas. Precio sujeto a cambios.',
+    });
     expect(checkReply('Está a {{precio:CER-001:lista}} por metro de pared.', checks(s))).toMatchObject({
       reply: 'Está a $37.290 por m² por metro de pared. Precio sujeto a cambios.',
     });
@@ -667,7 +679,7 @@ describe('disponibilidad y decide', () => {
     await call(s.tools, 'ver_producto', { sku: 'CER-001' });
     const config = base(catalog);
     return decide({
-      output: agentOutput(config, { action: 'reply', reply, triggers }),
+      output: agentOutput(config, { action: 'reply', replies: [reply], triggers }),
       config,
       score: 20,
       obtained: new Set(),
@@ -691,7 +703,7 @@ describe('disponibilidad y decide', () => {
     );
     expect(result.decision).toMatchObject({
       kind: 'reply',
-      text: 'La Roble 45x45 figura con stock en la web (consultado el 27/10 11:00).',
+      parts: ['La Roble 45x45 figura con stock en la web (consultado el 27/10 11:00).'],
     });
     expect(result.triggers).toEqual(['availability']);
   });
@@ -768,7 +780,7 @@ describe('configuración del catálogo', () => {
   });
 });
 
-describe('prompt v2', () => {
+describe('prompt v3', () => {
   it('la capa de la empresa informa el catálogo; la capa fija pide marcas', () => {
     const config = testConfig([], { catalog: catalogConfig({ availability_source: 'web' }) as never });
     const prompt = buildPrompt({
@@ -783,7 +795,7 @@ describe('prompt v2', () => {
       },
       history: [],
     });
-    expect(prompt.system).toContain('REGLAS FIJAS (v2)');
+    expect(prompt.system).toContain('REGLAS FIJAS (v3)');
     expect(prompt.system).toContain(
       '"catalogo":{"activo":true,"precios_citables":"lista y promo","informa_disponibilidad":true}',
     );

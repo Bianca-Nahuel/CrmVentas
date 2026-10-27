@@ -5,11 +5,17 @@ import { channels, outboundMessages } from '../../db/schema/messaging.js';
 import { currentTx, type AppTx } from '../../db/tenant-context.js';
 import { BOSS, QUEUES } from '../../jobs/jobs.module.js';
 import type { ProviderFailure, SeenMessage } from '../../whatsapp/provider.js';
-import { REPLY_WINDOW_HOURS } from './outbound.constants.js';
+import { NEXT_PART_START_AFTER_SECONDS, REPLY_WINDOW_HOURS } from './outbound.constants.js';
 
 export type OutboundSenderType = 'ai' | 'user' | 'app';
 export type RejectReason =
-  'no_inbound' | 'window_expired' | 'contact_blocked' | 'channel_unavailable' | 'channel_paused';
+  | 'no_inbound'
+  | 'window_expired'
+  | 'contact_blocked'
+  | 'channel_unavailable'
+  | 'channel_paused'
+  /** Parte siguiente de una respuesta que ya no corresponde (ver EnqueueTextInput.afterOutboundId). */
+  | 'superseded';
 export type OutboundStatus = 'queued' | 'sending' | 'sent' | 'failed' | 'rejected';
 
 export interface EnqueueTextInput {
@@ -25,6 +31,11 @@ export interface EnqueueTextInput {
    * descuenta ese tiempo de la demora antes de enviar.
    */
   typingSince?: Date | null;
+  /**
+   * Parte siguiente de una respuesta en varios mensajes (tarea 010): sale después de que salió esta otra
+   * fila y se rechaza ('superseded') si esa no salió, si escribió el cliente o si respondió una persona.
+   */
+  afterOutboundId?: string;
 }
 
 export interface EnqueueTextResult {
@@ -43,6 +54,8 @@ export interface OutboundJob {
   gapMs?: number;
   /** ISO: desde cuándo el chat ya muestra "escribiendo…" (ver EnqueueTextInput.typingSince). */
   typingSince?: string;
+  /** Ver EnqueueTextInput.afterOutboundId. */
+  afterOutboundId?: string;
 }
 
 /** Destino y reglas de envío de una conversación, evaluadas en la base con su now(). */
@@ -174,9 +187,12 @@ export class OutboundService {
         outboundId: inserted.id,
         tenantId: inserted.tenantId,
         ...(input.typingSince ? { typingSince: input.typingSince.toISOString() } : {}),
+        ...(input.afterOutboundId ? { afterOutboundId: input.afterOutboundId } : {}),
       };
       await this.boss.send(QUEUES.whatsappOutbound, job, {
         singletonKey: context.conversationId,
+        // Una parte siguiente arranca un poco después, para no competir con la anterior en la cola.
+        ...(input.afterOutboundId ? { startAfter: NEXT_PART_START_AFTER_SECONDS } : {}),
         // Misma transacción: el trabajo existe solo si la fila se confirma.
         db: fromDrizzle(tx, sql),
       });

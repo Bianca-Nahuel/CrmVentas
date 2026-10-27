@@ -139,7 +139,7 @@ async function deliver(chat: Chat) {
 
 const config = testConfig();
 const reply = (text: string, extra: Parameters<typeof agentOutput>[1] = {}) =>
-  agentOutput(config, { action: 'reply', reply: text, ...extra });
+  agentOutput(config, { action: 'reply', replies: [text], ...extra });
 
 describe('1. debounce', () => {
   it('tres entrantes seguidos → tres trabajos singleton con espera; una sola corrida con los tres', async () => {
@@ -305,6 +305,38 @@ describe('2. filtros: no se llama al modelo y queda el motivo', () => {
 });
 
 describe('3 y 7. puntaje y calificación', () => {
+  it('respuesta en 2 mensajes: 2 filas encadenadas (ai:<id> y ai:<id>:1); un reintento no duplica', async () => {
+    const chat = await setup();
+    const messageId = await addMessage(ctx, chat, { text: 'Hola, ¿trabajan porcelanato símil madera?' });
+    fake.respond = () =>
+      agentOutput(config, {
+        action: 'reply',
+        replies: ['¡Hola! Sí, trabajamos varios modelos.', '¿Para qué ambiente sería?'],
+        asks_field: 'producto_ambiente',
+      });
+    expect((await run(chat, messageId)).decision).toBe('replied');
+    const { rows } = await ctx.ownerPool.query<{ id: string; body: string; idempotency_key: string }>(
+      `SELECT id, body, idempotency_key FROM outbound_messages WHERE conversation_id = $1 ORDER BY idempotency_key`,
+      [chat.conversationId],
+    );
+    expect(rows.map((row) => [row.idempotency_key, row.body])).toEqual([
+      [`ai:${messageId}`, '¡Hola! Sí, trabajamos varios modelos.'],
+      [`ai:${messageId}:1`, '¿Para qué ambiente sería?'],
+    ]);
+    const jobs = await ctx.ownerPool.query<{ data: { outboundId: string; afterOutboundId?: string } }>(
+      `SELECT data FROM pgboss.job WHERE name = 'whatsapp-outbound' AND data->>'outboundId' = $1`,
+      [rows[1]!.id],
+    );
+    expect(jobs.rows[0]!.data.afterOutboundId).toBe(rows[0]!.id);
+
+    // Reintento del mismo trabajo: ya hay una decisión final, no vuelve a encolar.
+    expect((await run(chat, messageId)).decision).toBe('skipped:duplicate');
+    expect(await outbox(chat)).toHaveLength(2);
+    expect((await conversation(chat)).qualification_turns).toBe(1);
+    const [aiRun] = await runs(chat);
+    expect(aiRun.outbound_message_id).toBe(rows[0]!.id);
+  });
+
   it('reply de calificación: se envía como ai con ai:<id>, el puntaje y el desglose quedan guardados y los datos se combinan', async () => {
     const chat = await setup();
     await ctx.ownerPool.query(`UPDATE conversations SET extracted_data = '{"m2": 40}' WHERE id = $1`, [
@@ -337,7 +369,7 @@ describe('3 y 7. puntaje y calificación', () => {
     expect(aiRun).toMatchObject({
       decision: 'replied',
       score: 61,
-      prompt_version: 'v2',
+      prompt_version: 'v3',
       config_version: 1,
       provider: 'openrouter',
       billing_mode: 'platform',
@@ -389,7 +421,7 @@ describe('5 y 6. disparadores', () => {
     expect(await outbox(chat)).toMatchObject([
       {
         sender_type: 'ai',
-        body: `${AVAILABILITY_INTRO} ¿Cuántos m² necesitás, más o menos? ¿Cómo es tu nombre?`,
+        body: `${AVAILABILITY_INTRO} ¿Cuántos m² necesitás, más o menos?`,
       },
     ]);
 
@@ -398,7 +430,7 @@ describe('5 y 6. disparadores', () => {
     fake.respond = () =>
       agentOutput(config, {
         action: 'reply',
-        reply: 'Gracias Ana',
+        replies: ['Gracias Ana'],
         triggers: ['availability'],
         extracted: { ...agentOutput(config).extracted, m2: 40, nombre: 'Ana' },
       });

@@ -7,8 +7,12 @@ export const AI_DEBOUNCE_SECONDS = 10;
 export const AI_HISTORY_MESSAGES = 20;
 export const AI_MESSAGE_MAX_CHARS = 1_000;
 
-/** Tope de una respuesta enviada como 'ai' (control de salida). */
+/** Tope de una respuesta enviada como 'ai' (control de salida; con varias partes, del total). */
 export const AI_REPLY_MAX_CHARS = 500;
+/** Mensajes en que se puede partir una respuesta (tarea 010). */
+export const AI_MAX_REPLY_PARTS = 2;
+/** Preguntas por mensaje de la v3, aunque la config permita más (tarea 010). */
+export const AI_MAX_QUESTIONS_PER_TURN = 1;
 /** Tope después de poner los valores de las marcas del catálogo (precios con condición, links). */
 export const AI_REPLY_RENDERED_MAX_CHARS = 900;
 

@@ -31,6 +31,14 @@ export const RATE_WINDOW_MS = 60_000;
 /** Entre dos salientes seguidos al mismo chat (sin un entrante en el medio): 30–60 s al azar. */
 export const SAME_CHAT_GAP_MS = { minMs: 30_000, maxMs: 60_000 } as const;
 
+/**
+ * Respuesta en varios mensajes (tarea 010): la parte siguiente no espera SAME_CHAT_GAP_MS, sino que sale
+ * cuando salió la anterior, con su propio visto → "escribiendo…" (TYPING_DELAY). El límite por canal vale
+ * igual. Mientras la anterior no salió, se vuelve a mirar en NEXT_PART_RECHECK_MS.
+ */
+export const NEXT_PART_START_AFTER_SECONDS = 1;
+export const NEXT_PART_RECHECK_MS = 2_000;
+
 /** Un envío en 'sending' más viejo que esto se da por trabado (unknown_outcome); nunca se reenvía. */
 export const STUCK_SENDING_AFTER_MS = 120_000;
 

@@ -29,7 +29,7 @@ const { OpenRouterClient } = await import('../src/ai/llm/providers/openrouter/op
 const { LlmError } = await import('../src/ai/llm/llm-client.js');
 const { addUsd } = await import('../src/ai/llm/money.js');
 const { prepareTurn, evaluateTurn, catalogChecks } = await import('../src/ai/reply/reply-engine.js');
-const { buildCheckContext, checkReply } = await import('../src/ai/reply/output-checks.js');
+const { buildCheckContext, checkReplies } = await import('../src/ai/reply/output-checks.js');
 const { localTime } = await import('../src/ai/reply/business-hours.js');
 const { routeModel } = await import('../src/ai/llm/llm-client.factory.js');
 const { buildCatalogTools } = await import('../src/ai/tools/catalog-tools.js');
@@ -39,7 +39,7 @@ const { CatalogViewer } = await import('../src/catalog/catalog-viewer.js');
 const { ProductPageReader } = await import('../src/catalog/web/product-page-reader.js');
 
 type TenantConfig = import('@ventas/shared').TenantConfig;
-type HistoryMessage = import('../src/ai/prompts/v2/index.js').HistoryMessage;
+type HistoryMessage = import('../src/ai/prompts/v3/index.js').HistoryMessage;
 type TurnEvaluation = import('../src/ai/reply/reply-engine.js').TurnEvaluation;
 
 const ROOT = resolve(import.meta.dirname, '../../..');
@@ -85,6 +85,11 @@ interface EvalCase {
     no_debe_contener?: Regexes;
     resumen_contiene?: Regexes;
     max_preguntas?: number;
+    /** Cantidad de mensajes en que salió la respuesta (tarea 010). */
+    max_partes?: number;
+    min_partes?: number;
+    /** La respuesta no tiene ninguna pregunta (por ejemplo, a un saludo solo). */
+    sin_pregunta?: boolean;
     sugerencia?: boolean;
     mensaje_fijo?: 'in_hours' | 'after_hours';
     /** Herramientas del catálogo que tiene que haber llamado. */
@@ -109,6 +114,10 @@ interface CaseResult {
   triggersModel: string[];
   triggersCode: string[];
   reply: string | null;
+  /** Mensajes en que salió la respuesta (0 si no hubo). */
+  parts: number;
+  /** El código sacó una repregunta de un dato que ya estaba. */
+  repeatRemoved: boolean;
   rawReply: string | null;
   rawControl: string | null;
   summary: string | null;
@@ -273,6 +282,8 @@ async function runCase(
         score: null,
         triggersModel: [],
         reply: null,
+        parts: 0,
+        repeatRemoved: false,
         rawReply: null,
         rawControl: null,
         summary: null,
@@ -287,12 +298,13 @@ async function runCase(
 
   const evaluation = evaluateTurn(input, prepared, output, estado.after_fields_asks ?? 0);
   const { decision } = evaluation;
-  const reply = decision.kind === 'reply' ? decision.text : null;
-  const rawReply = output?.reply ?? null;
+  const parts = decision.kind === 'reply' ? decision.parts : [];
+  const reply = parts.length > 0 ? parts.join('\n') : null;
+  const rawReply = output && output.replies.length > 0 ? output.replies.join('\n') : null;
   // Antes del control crudo, que vuelve a renderizar (y registraría las citas dos veces).
   const catalogResult = catalogInfo();
   const checks = { ...buildCheckContext(config), ...catalogChecks(input, prepared) };
-  const rawCheck = rawReply ? checkReply(rawReply, checks) : null;
+  const rawCheck = output && rawReply ? checkReplies(output.replies, checks) : null;
   const accion = accionOf(evaluation);
   const expected = item.esperado;
   const failures: string[] = [];
@@ -357,6 +369,13 @@ async function runCase(
   if (expected.max_preguntas !== undefined && questions(reply) > expected.max_preguntas) {
     fail(`${questions(reply)} preguntas (máximo ${expected.max_preguntas})`);
   }
+  if (expected.sin_pregunta && questions(reply) > 0) fail(`${questions(reply)} preguntas (sin pregunta)`);
+  if (expected.max_partes !== undefined && parts.length > expected.max_partes) {
+    fail(`${parts.length} mensajes (máximo ${expected.max_partes})`);
+  }
+  if (expected.min_partes !== undefined && parts.length < expected.min_partes) {
+    fail(`${parts.length} mensajes (mínimo ${expected.min_partes})`);
+  }
   if (expected.sugerencia !== undefined && (output?.suggestion !== null) !== expected.sugerencia) {
     fail(expected.sugerencia ? 'no sugirió' : 'sugirió');
   }
@@ -395,6 +414,8 @@ async function runCase(
     score,
     triggersModel: output?.triggers ?? [],
     reply,
+    parts: parts.length,
+    repeatRemoved: decision.kind === 'reply' && decision.repeatRemoved === true,
     rawReply,
     rawControl: rawCheck && !rawCheck.ok ? rawCheck.control : null,
     summary,
@@ -561,6 +582,19 @@ function metrics(cases: EvalCase[], results: CaseResult[]) {
       pct: pct(repeated.length, repeatCases.length),
       meta: '≤ 5 %',
     },
+    // Tarea 010: forma de las respuestas.
+    conversacion: {
+      respuestas: results.filter((r) => r.parts > 0).length,
+      en_un_mensaje: pct(
+        results.filter((r) => r.parts === 1).length,
+        Math.max(1, results.filter((r) => r.parts > 0).length),
+      ),
+      mas_de_una_pregunta: {
+        casos: results.filter((r) => questions(r.reply) > 1).map((r) => r.id),
+        meta: 0,
+      },
+      repreguntas_sacadas_por_el_codigo: results.filter((r) => r.repeatRemoved).map((r) => r.id),
+    },
     resumen_con_campos: {
       guardado: '100 % (lo completa el código)',
       crudo_del_modelo: pct(handoffs.filter((r) => r.rawSummaryCoversFields).length, handoffs.length),
@@ -588,7 +622,9 @@ function catalogMetrics(cases: EvalCase[], results: CaseResult[]) {
   const stockClaims = catalogResults.filter(
     (r) =>
       r.reply &&
-      /\b(stock|agotad|disponib|lo tenemos|la tenemos|los tenemos|las tenemos|quedan? (pocas|pocos|cajas|unidades))/i.test(r.reply) &&
+      /\b(stock|agotad|disponib|lo tenemos|la tenemos|los tenemos|las tenemos|quedan? (pocas|pocos|cajas|unidades))/i.test(
+        r.reply,
+      ) &&
       !r.catalog!.cited.some((c) => c.startsWith('stock')),
   );
   const hotCases = cases.filter((item) => item.esperado.puntaje === 'gte_hot').map((item) => item.id);

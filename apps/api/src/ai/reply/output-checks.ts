@@ -290,3 +290,35 @@ export function checkReply(reply: string, context: CheckContext): CheckResult {
   if ([...rendered].length > AI_REPLY_RENDERED_MAX_CHARS) return fail('max_length');
   return { ok: true, reply: rendered as SafeReply };
 }
+
+export type CheckPartsResult = { ok: true; parts: SafeReply[] } | { ok: false; control: OutputControl };
+
+/**
+ * Respuesta en varios mensajes (tarea 010): cada parte pasa por checkReply y los topes de largo valen para
+ * el total (sin marcas y con los valores puestos). Una parte que falla bloquea todas.
+ */
+export function checkReplies(parts: string[], context: CheckContext): CheckPartsResult {
+  const nonEmpty = parts.map((part) => part.trim()).filter((part) => part !== '');
+  if (nonEmpty.length === 0) return { ok: false, control: 'empty' };
+  const templateChars = nonEmpty.reduce(
+    (total, part) => total + [...parseMarkers(part).template.trim()].length,
+    0,
+  );
+  if (templateChars > AI_REPLY_MAX_CHARS) return { ok: false, control: 'max_length' };
+  // checkReply registra las citas al renderizar: si una parte posterior falla, no sale nada y se descartan.
+  const cited = context.catalog?.cited;
+  const citedBefore = cited?.length ?? 0;
+  const fail = (control: OutputControl): CheckPartsResult => {
+    if (cited) cited.length = citedBefore;
+    return { ok: false, control };
+  };
+  const checked: SafeReply[] = [];
+  for (const part of nonEmpty) {
+    const result = checkReply(part, context);
+    if (!result.ok) return fail(result.control);
+    checked.push(result.reply);
+  }
+  const renderedChars = checked.reduce((total, part) => total + [...part].length, 0);
+  if (renderedChars > AI_REPLY_RENDERED_MAX_CHARS) return fail('max_length');
+  return { ok: true, parts: checked };
+}

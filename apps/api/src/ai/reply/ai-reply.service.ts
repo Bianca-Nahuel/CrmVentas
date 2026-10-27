@@ -24,9 +24,9 @@ import { LLM_CLIENT_FACTORY, type LlmClientFactory, type LlmSelection } from '..
 import { LlmError, type LlmResult } from '../llm/llm-client.js';
 import { CatalogRefreshWorker } from '../../catalog/catalog-refresh.worker.js';
 import { CatalogService } from '../../catalog/catalog.service.js';
-import { PROMPT_VERSION, type HistoryAuthor, type HistoryMessage } from '../prompts/v2/index.js';
-import type { AgentOutput, DiscoveredNote, ExtractedValue } from '../prompts/v2/output-schema.js';
-import type { TenantLayerState } from '../prompts/v2/tenant-layer.js';
+import { PROMPT_VERSION, type HistoryAuthor, type HistoryMessage } from '../prompts/v3/index.js';
+import type { AgentOutput, DiscoveredNote, ExtractedValue } from '../prompts/v3/output-schema.js';
+import type { TenantLayerState } from '../prompts/v3/tenant-layer.js';
 import { tierFor } from '../scoring/score.js';
 import type { AiReplyJob } from './ai-reply.job.js';
 import { isOpenAt, localTime } from './business-hours.js';
@@ -329,7 +329,7 @@ export class AiReplyService {
     let outboundId: string | null = null;
     let decisionName: string;
     if (decision.kind === 'reply') {
-      const sent = await this.sendAiReply(tx, job, decision.text, typingSince);
+      const sent = await this.sendAiReply(tx, job, decision.parts, typingSince);
       outboundId = sent.outboundId;
       decisionName = sent.rejected
         ? 'error:send_rejected'
@@ -379,6 +379,9 @@ export class AiReplyService {
       messageId: job.messageId,
       decision: run.decision ?? decisionName,
       ...(decision.kind === 'handoff' ? { handoffReason: decision.reason } : {}),
+      ...(decision.kind === 'reply'
+        ? { parts: decision.parts.length, ...(decision.repeatRemoved ? { repeatRemoved: true } : {}) }
+        : {}),
       score,
       triggers: evaluation.triggers,
       costUsd: run.costUsd,
@@ -394,19 +397,31 @@ export class AiReplyService {
     };
   }
 
-  /** La única salida de texto generado: solo acepta un SafeReply (pasó los controles de salida). */
-  private async sendAiReply(tx: AppTx, job: AiReplyJob, text: SafeReply, typingSince: Date | null) {
-    const result = await this.outbound.enqueueText(
-      {
-        conversationId: job.conversationId,
-        body: text,
-        senderType: 'ai',
-        idempotencyKey: `ai:${job.messageId}`,
-        typingSince,
-      },
-      tx,
-    );
-    return { outboundId: result.outboundId, created: result.created, rejected: result.status === 'rejected' };
+  /**
+   * La única salida de texto generado: solo acepta SafeReply (pasaron los controles de salida). Una fila por
+   * parte, en la misma transacción: la primera con la clave de siempre (`ai:<messageId>`, así un reintento
+   * de un trabajo anterior a la tarea 010 no duplica) y las siguientes con `:<n>`, encadenadas a la anterior.
+   */
+  private async sendAiReply(tx: AppTx, job: AiReplyJob, parts: SafeReply[], typingSince: Date | null) {
+    let first: Awaited<ReturnType<OutboundService['enqueueText']>> | null = null;
+    let previousId: string | null = null;
+    for (const [index, body] of parts.entries()) {
+      const result = await this.outbound.enqueueText(
+        {
+          conversationId: job.conversationId,
+          body,
+          senderType: 'ai',
+          idempotencyKey: index === 0 ? `ai:${job.messageId}` : `ai:${job.messageId}:${index}`,
+          ...(index === 0 ? { typingSince } : { afterOutboundId: previousId! }),
+        },
+        tx,
+      );
+      first ??= result;
+      // Con la primera rechazada (fuera de ventana, canal pausado…), las demás no se encolan.
+      if (result.status === 'rejected') break;
+      previousId = result.outboundId;
+    }
+    return { outboundId: first!.outboundId, created: first!.created, rejected: first!.status === 'rejected' };
   }
 
   /** Deriva: marca la conversación y manda el texto fijo de la empresa, una sola vez por conversación. */

@@ -1,0 +1,65 @@
+[
+  {
+    "id": "IV01",
+    "tenant_config": "inmobiliaria",
+    "tipo": "conversacion",
+    "titulo": "Solo saluda: solo saluda",
+    "conversacion": [
+      {
+        "de": "cliente",
+        "texto": "Buen día!"
+      }
+    ],
+    "esperado": {
+      "accion": "responder",
+      "sin_pregunta": true,
+      "max_partes": 1
+    }
+  },
+  {
+    "id": "IV02",
+    "tenant_config": "inmobiliaria",
+    "tipo": "conversacion",
+    "titulo": "Da varios datos y pregunta: no los repregunta",
+    "conversacion": [
+      {
+        "de": "cliente",
+        "texto": "Hola, busco un 3 ambientes para alquilar en La Perla. ¿Piden garantía propietaria?"
+      }
+    ],
+    "esperado": {
+      "accion": ["responder", "derivar"],
+      "campos": {
+        "operacion": "alquiler",
+        "ambientes": 3
+      },
+      "no_pregunta": ["comprar o (para )?alquilar", "cu[aá]ntos ambientes", "zona|barrio"],
+      "max_preguntas": 1
+    }
+  },
+  {
+    "id": "IV03",
+    "tenant_config": "inmobiliaria",
+    "tipo": "conversacion",
+    "titulo": "No contestó la pregunta anterior: no la repite",
+    "conversacion": [
+      {
+        "de": "cliente",
+        "texto": "Quiero comprar un departamento"
+      },
+      {
+        "de": "ia",
+        "texto": "¡Buenísimo! ¿En qué zona o barrio estás buscando?"
+      },
+      {
+        "de": "cliente",
+        "texto": "¿Trabajan con crédito hipotecario?"
+      }
+    ],
+    "esperado": {
+      "accion": ["responder", "derivar"],
+      "no_pregunta": ["zona|barrio"],
+      "max_preguntas": 1
+    }
+  }
+]

@@ -15,6 +15,7 @@ import {
 } from '../src/messaging/outbound/outbound.service.js';
 import { WORST_CASE_SEND_MS } from '../src/messaging/outbound/outbound.constants.js';
 import { OutboundWorker } from '../src/messaging/outbound/outbound.worker.js';
+import { addMessage } from './ai-helpers.js';
 import { asApp, errorCodeIn, startTestContext, type TestContext } from './helpers.js';
 import {
   attempt,
@@ -555,6 +556,116 @@ describe('5. errores del proveedor', () => {
       expect(outcome).toBe('fallido');
       expect(await outbox(outboundId)).toMatchObject({ status: 'failed', last_error: error });
     }
+  });
+});
+
+describe('4b. respuesta en partes (tarea 010)', () => {
+  const partJob = (chat: Chat, outboundId: string, afterOutboundId: string) => ({
+    outboundId,
+    tenantId: chat.tenantId,
+    afterOutboundId,
+  });
+
+  it('la parte siguiente se encola con su anterior y arranca un poco después', async () => {
+    const chat = await freshChat();
+    const first = await enqueue(chat);
+    const second = await enqueue(chat, { afterOutboundId: first.outboundId });
+    const { rows } = await ctx.ownerPool.query<{ data: OutboundJob; start_after: Date; created_on: Date }>(
+      `SELECT data, start_after, created_on FROM pgboss.job WHERE name = $1 AND data->>'outboundId' = $2`,
+      [QUEUES.whatsappOutbound, second.outboundId],
+    );
+    expect(rows[0]!.data.afterOutboundId).toBe(first.outboundId);
+    expect(rows[0]!.start_after.getTime()).toBeGreaterThan(rows[0]!.created_on.getTime());
+  });
+
+  it('con la anterior enviada sale enseguida, sin la separación de 30–60 s del chat', async () => {
+    const chat = await freshChat();
+    const first = await enqueue(chat, { body: 'Sí, trabajamos porcelanato símil madera.' });
+    const second = await enqueue(chat, { body: '¿Para qué ambiente es?', afterOutboundId: first.outboundId });
+    const provider = new FakeProvider();
+    const { worker } = workerWith(provider);
+    expect(await worker.handle(job(chat, first.outboundId), attempt())).toBe('enviado');
+    expect(await worker.handle(partJob(chat, second.outboundId, first.outboundId), attempt())).toBe(
+      'enviado',
+    );
+    expect(provider.sends().map((call) => call.text)).toEqual([
+      'Sí, trabajamos porcelanato símil madera.',
+      '¿Para qué ambiente es?',
+    ]);
+    // Cada parte con su visto → "escribiendo…".
+    expect(provider.calls.filter((call) => call.method === 'startTyping')).toHaveLength(2);
+  });
+
+  it('si la anterior todavía no salió, espera (se reprograma) sin enviar', async () => {
+    const chat = await freshChat();
+    const first = await enqueue(chat);
+    const second = await enqueue(chat, { afterOutboundId: first.outboundId });
+    const provider = new FakeProvider();
+    const { worker, sent } = workerWith(provider);
+    expect(await worker.handle(partJob(chat, second.outboundId, first.outboundId), attempt())).toBe(
+      'reprogramado',
+    );
+    expect(sent[0]!.data).toMatchObject({ outboundId: second.outboundId, afterOutboundId: first.outboundId });
+    expect(provider.sends()).toHaveLength(0);
+    expect(await outbox(second.outboundId)).toMatchObject({ status: 'queued' });
+  });
+
+  it('si la anterior no salió (failed o rejected) → superseded, sin enviar', async () => {
+    const chat = await freshChat();
+    const first = await enqueue(chat);
+    const second = await enqueue(chat, { afterOutboundId: first.outboundId });
+    await ctx.ownerPool.query(
+      `UPDATE outbound_messages SET status = 'failed', last_error = 'invalid_recipient' WHERE id = $1`,
+      [first.outboundId],
+    );
+    const provider = new FakeProvider();
+    const { worker } = workerWith(provider);
+    expect(await worker.handle(partJob(chat, second.outboundId, first.outboundId), attempt())).toBe(
+      'rechazado',
+    );
+    expect(await outbox(second.outboundId)).toMatchObject({
+      status: 'rejected',
+      reject_reason: 'superseded',
+    });
+    expect(provider.sends()).toHaveLength(0);
+  });
+
+  it.each([
+    ['escribió el cliente', 'contact'],
+    ['respondió una persona', 'user'],
+  ] as const)('si entre parte y parte %s → superseded', async (_name, from) => {
+    const chat = await freshChat();
+    const first = await enqueue(chat);
+    const second = await enqueue(chat, { afterOutboundId: first.outboundId });
+    const provider = new FakeProvider();
+    const { worker } = workerWith(provider);
+    expect(await worker.handle(job(chat, first.outboundId), attempt())).toBe('enviado');
+    await addMessage(ctx, chat, { from, text: 'otra cosa' });
+    expect(await worker.handle(partJob(chat, second.outboundId, first.outboundId), attempt())).toBe(
+      'rechazado',
+    );
+    expect(await outbox(second.outboundId)).toMatchObject({
+      status: 'rejected',
+      reject_reason: 'superseded',
+    });
+    expect(provider.sends()).toHaveLength(1);
+  });
+
+  it('con la IA pausada (una persona tomó la conversación) → superseded', async () => {
+    const chat = await freshChat();
+    const first = await enqueue(chat);
+    const second = await enqueue(chat, { afterOutboundId: first.outboundId });
+    const provider = new FakeProvider();
+    const { worker } = workerWith(provider);
+    expect(await worker.handle(job(chat, first.outboundId), attempt())).toBe('enviado');
+    await ctx.ownerPool.query(
+      `UPDATE conversations SET ai_paused_until = now() + interval '12 hours' WHERE id = $1`,
+      [chat.conversationId],
+    );
+    expect(await worker.handle(partJob(chat, second.outboundId, first.outboundId), attempt())).toBe(
+      'rechazado',
+    );
+    expect(provider.sends()).toHaveLength(1);
   });
 });
 

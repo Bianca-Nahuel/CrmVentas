@@ -3,11 +3,11 @@
 import { tenantConfigSchema } from '@ventas/shared';
 import { describe, expect, it } from 'vitest';
 import { addUsd, tokensCostUsd, usdFromNumber } from '../src/ai/llm/money.js';
-import { buildPrompt } from '../src/ai/prompts/v2/index.js';
-import { buildOutputSchema } from '../src/ai/prompts/v2/output-schema.js';
+import { buildPrompt } from '../src/ai/prompts/v3/index.js';
+import { buildOutputSchema } from '../src/ai/prompts/v3/output-schema.js';
 import { isOpenAt, localTime } from '../src/ai/reply/business-hours.js';
 import { detectCriticalTriggers } from '../src/ai/reply/critical-triggers.js';
-import { decide, type DecideInput } from '../src/ai/reply/decide.js';
+import { decide, withoutQuestions, type DecideInput } from '../src/ai/reply/decide.js';
 import { composeHandoffSummary } from '../src/ai/reply/handoff-summary.js';
 import { buildCheckContext, checkReply } from '../src/ai/reply/output-checks.js';
 import { mergeDiscovered, mergeExtracted } from '../src/ai/reply/reply-engine.js';
@@ -297,7 +297,7 @@ describe('4. decide', () => {
     ...overrides,
   });
   const reply = (text: string, extra: Partial<ReturnType<typeof agentOutput>> = {}) =>
-    agentOutput(config, { action: 'reply', reply: text, ...extra });
+    agentOutput(config, { action: 'reply', replies: [text], ...extra });
 
   it('0. salida inválida → deriva', () => {
     expect(decide(base({ output: null })).decision).toEqual({ kind: 'handoff', reason: 'invalid_output' });
@@ -322,8 +322,22 @@ describe('4. decide', () => {
       }),
     );
     expect(result.decision).toMatchObject({ kind: 'reply', source: 'ask_fields' });
-    const text = (result.decision as { text: string }).text;
-    expect(text).toBe(`${AVAILABILITY_INTRO} ¿Cuántos m² necesitás, más o menos? ¿Cómo es tu nombre?`);
+    const parts = (result.decision as { parts: string[] }).parts;
+    // Una pregunta por turno (tarea 010), con el intro solo la primera vez.
+    expect(parts).toEqual([`${AVAILABILITY_INTRO} ¿Cuántos m² necesitás, más o menos?`]);
+  });
+
+  it('1b. after_fields: el intro va solo en la primera pregunta', () => {
+    const result = decide(
+      base({
+        config: afterFields,
+        output: reply('Sí, hay stock', { triggers: ['availability'] }),
+        checks: buildCheckContext(afterFields),
+        counters: { qualificationTurns: 1, hotTurns: 0, suggestionsCount: 0, afterFieldsAsks: 1 },
+        obtained: new Set(['m2']),
+      }),
+    );
+    expect(result.decision).toMatchObject({ kind: 'reply', parts: ['¿Cómo es tu nombre?'] });
   });
 
   it('1b. after_fields con los datos → deriva', () => {
@@ -416,7 +430,7 @@ describe('4. decide', () => {
   });
 
   it('6. action handoff → deriva (y el reply no sale)', () => {
-    const output = agentOutput(config, { action: 'handoff', reply: 'Te paso con alguien' });
+    const output = agentOutput(config, { action: 'handoff', replies: ['Te paso con alguien'] });
     expect(decide(base({ output })).decision).toEqual({ kind: 'handoff', reason: 'model' });
   });
 
@@ -424,8 +438,97 @@ describe('4. decide', () => {
     expect(decide(base({ output: reply('Abrimos de 9 a 17:30.') })).decision).toMatchObject({
       kind: 'reply',
       source: 'model',
-      text: 'Abrimos de 9 a 17:30.',
+      parts: ['Abrimos de 9 a 17:30.'],
     });
+  });
+
+  it('7. dos mensajes → se envían los dos, en orden', () => {
+    const output = agentOutput(config, {
+      action: 'reply',
+      replies: ['Sí, trabajamos porcelanato símil madera.', '¿Para qué ambiente es?'],
+      asks_field: 'producto_ambiente',
+    });
+    expect(decide(base({ output })).decision).toEqual({
+      kind: 'reply',
+      parts: ['Sí, trabajamos porcelanato símil madera.', '¿Para qué ambiente es?'],
+      source: 'model',
+      suggestion: false,
+    });
+  });
+
+  it('7. el largo máximo vale para el total de las partes', () => {
+    const long = 'a'.repeat(260);
+    const output = agentOutput(config, { action: 'reply', replies: [long, long] });
+    expect(decide(base({ output })).decision).toEqual({
+      kind: 'handoff',
+      reason: 'blocked:max_length',
+      blocked: 'max_length',
+    });
+  });
+
+  it('7. una parte que falla un control bloquea todas', () => {
+    const output = agentOutput(config, {
+      action: 'reply',
+      replies: ['Abrimos de 9 a 17:30.', 'Sale $ 9.999'],
+    });
+    expect(decide(base({ output })).decision).toMatchObject({ kind: 'handoff', reason: 'blocked:money' });
+  });
+
+  it('7. repregunta de un dato que ya está (también de este turno) → se saca la pregunta', () => {
+    const output = agentOutput(config, {
+      action: 'reply',
+      replies: ['¡Buenísimo, para el baño! ¿Para qué ambiente es?'],
+      asks_field: 'producto_ambiente',
+    });
+    expect(decide(base({ output, obtained: new Set(['producto_ambiente']) })).decision).toEqual({
+      kind: 'reply',
+      parts: ['¡Buenísimo, para el baño!'],
+      source: 'model',
+      suggestion: false,
+      repeatRemoved: true,
+    });
+  });
+
+  it('7. repregunta en la segunda parte → sale solo la primera', () => {
+    const output = agentOutput(config, {
+      action: 'reply',
+      replies: ['Sí, tenemos varios modelos.', '¿Cuántos m² necesitás, más o menos?'],
+      asks_field: 'm2',
+    });
+    expect(decide(base({ output, obtained: new Set(['m2']) })).decision).toMatchObject({
+      parts: ['Sí, tenemos varios modelos.'],
+      repeatRemoved: true,
+    });
+  });
+
+  it('7. si la repregunta era todo el mensaje → va la pregunta del siguiente dato pendiente', () => {
+    const output = agentOutput(config, {
+      action: 'reply',
+      replies: ['¿Para qué ambiente es?'],
+      asks_field: 'producto_ambiente',
+    });
+    expect(decide(base({ output, obtained: new Set(['producto_ambiente']) })).decision).toMatchObject({
+      kind: 'reply',
+      parts: ['¿Cuántos m² necesitás, más o menos?'],
+      repeatRemoved: true,
+    });
+  });
+
+  it('7. si la repregunta era todo el mensaje y no falta ningún dato → no responde', () => {
+    const output = agentOutput(config, {
+      action: 'reply',
+      replies: ['¿Para qué ambiente es?'],
+      asks_field: 'producto_ambiente',
+    });
+    const all = new Set(config.qualification.fields.map((field) => field.key));
+    expect(decide(base({ output, obtained: all })).decision).toEqual({ kind: 'none' });
+  });
+
+  it('withoutQuestions saca solo las oraciones que preguntan', () => {
+    expect(withoutQuestions(['Está a $37.290 por m². ¿Lo querés para el baño? Te paso el link.'])).toEqual([
+      'Está a $37.290 por m². Te paso el link.',
+    ]);
+    expect(withoutQuestions(['¿Para cuándo?', 'Dale.'])).toEqual(['Dale.']);
   });
 
   it('7. reply que falla un control → deriva bloqueado', () => {
@@ -477,12 +580,13 @@ describe('schema de salida', () => {
     expect(json.additionalProperties).toBe(false);
     expect(json.required.sort()).toEqual([
       'action',
+      'asks_field',
       'discovered',
       'extracted',
       'handoff_summary',
       'language',
       'reason',
-      'reply',
+      'replies',
       'signals',
       'suggestion',
       'triggers',
@@ -502,7 +606,7 @@ describe('schema de salida', () => {
       'señal fuera de rango',
       { signals: { ...agentOutput(config).signals, intent: { score: 9, evidence: null } } },
     ],
-    ['reply vacío con action reply', { action: 'reply', reply: '   ' }],
+    ['reply vacío con action reply', { action: 'reply', replies: ['   '] }],
     ['disparador que no existe', { triggers: ['inventado'] }],
     ['fecha mal formada', { extracted: { ...agentOutput(config).extracted, fecha_compra: 'el lunes' } }],
   ])('6. salida inválida: %s', (_name, overrides) => {
@@ -510,7 +614,9 @@ describe('schema de salida', () => {
   });
 
   it('una salida correcta valida', () => {
-    expect(schema.zod.safeParse(agentOutput(config, { action: 'reply', reply: 'Hola' })).success).toBe(true);
+    expect(schema.zod.safeParse(agentOutput(config, { action: 'reply', replies: ['Hola'] })).success).toBe(
+      true,
+    );
   });
 });
 
