@@ -144,3 +144,24 @@ Resumen con:
 - el resultado de cada punto de la verificación, con la tabla de evals v2 contra v3;
 - el veredicto de `revisor-codigo` y de `revisor-seguridad`;
 - las decisiones tomadas que no estaban en la tarea.
+
+## Avance (2026-10-27)
+
+Implementada y aprobada por los dos revisores; **falta la verificación con el modelo** (sigue en curso).
+
+- Archivos: `apps/api/src/ai/prompts/v3/` (nuevo), `reply/decide.ts`, `reply/output-checks.ts`
+  (`checkReplies`), `reply/reply-engine.ts`, `reply/ai-reply.service.ts` (partes y `loadFieldAsks`),
+  `messaging/outbound/` (partes encadenadas, `superseded`), migración `0014_outbound_superseded.sql`,
+  `scripts/evals.ts`, `evals/casos/*/conversacion.json` (18 casos) y tests.
+- Verificación:
+  1. `npm run lint && npm run typecheck`: sin errores.
+  2. `npm run test`: 606 verdes, contra Postgres local.
+  3. Evals v2 contra v3: **pendiente**, porque no hay `OPENROUTER_API_KEY` en el entorno de la sesión.
+  4. Prueba real por WhatsApp: **pendiente**.
+- `revisor-codigo`: APROBADO en la segunda ronda. En la primera marcó un bloqueante (datos rechazados o
+  ya preguntados), que se implementó, y varios importantes, todos corregidos. Lo menor quedó como deuda.
+- `revisor-seguridad`: APROBADO en la segunda ronda. En la primera marcó un ALTO: una frase partida en
+  dos mensajes esquivaba los controles. Se corrigió controlando también las partes unidas.
+- Decisiones #64 y #65, y la deuda de la tarea 010 en `docs/decisiones.md`.
+- Para cerrar: correr los evals (línea base v2 y v3), comparar, hacer la prueba real y mover a `hechas/`.
+

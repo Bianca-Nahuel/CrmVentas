@@ -155,6 +155,9 @@ Hallazgos de `revisor-codigo` y `revisor-seguridad` que no bloquean:
 - **Proporción de respuestas en 2 mensajes:** medirla en `ai_runs` y alertar si pasa, por ejemplo, el 40 %, por el riesgo de bloqueo de la conexión no oficial.
 - **Nota de precio repetida:** si las dos partes citan precios, "Precio sujeto a cambios" puede salir en las dos.
 - **Pregunta de reemplazo:** cuando el código saca una repregunta y no queda nada, pregunta el siguiente dato por prioridad (no el más natural). La reformulación de la 015 lo mejora.
+- **Campo realmente preguntado:** `loadFieldAsks` cuenta el `asks_field` del modelo aunque `decide()` haya sacado o reemplazado esa pregunta. Guardar en `ai_runs` el campo que se envió de verdad.
+- **Corte de oraciones:** `sentences()` no separa una pregunta seguida de un emoji o un paréntesis sin espacio ("¿Te sirve?😊").
+- **Obligatorio agotado:** un campo `required` que el cliente no quiso dar ya no se pregunta, pero sigue impidiendo la derivación `qualified`; la conversación se deriva por `hot_turns` o `max_turns`.
 - **Ventana del entrante en `nextPartState`:** un entrante cuya transacción empezó antes de armar la respuesta y se confirmó después puede no detectarse (ventana de milisegundos).
 
 ## Deuda pendiente (tarea 007, catálogo)

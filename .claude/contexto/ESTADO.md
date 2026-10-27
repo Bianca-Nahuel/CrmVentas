@@ -31,7 +31,7 @@ _Última actualización: 2026-10-26 (tarea 007, prueba local y real)_
 
 ## En curso
 
-- (nada)
+- **Tarea 010** (`docs/tareas/en-curso/`): prompt v3, respuestas en 1 o 2 mensajes y sin repreguntas. Implementada en `claude/hopeful-darwin-mfj88r`, con 606 tests y los dos revisores aprobados. Faltan los evals v2 contra v3 (hace falta `OPENROUTER_API_KEY` en el entorno o correrlos en local) y la prueba real por WhatsApp. Tiene una migración nueva (0014): correr `npm run db:migrate`.
 
 ## Siguiente
 
