@@ -16,6 +16,7 @@
       "Bash(npx drizzle-kit *)",
       "Bash(npx prettier *)",
       "Bash(npx eslint *)",
+      "Bash(npx ng *)",
       "Bash(node *)",
       "Bash(docker compose *)",
       "Bash(curl http://localhost*)",
