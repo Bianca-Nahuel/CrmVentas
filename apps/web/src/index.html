@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="es-AR" data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <!-- El título lo pone App con PRODUCT_NAME (src/app/brand.ts). -->
+    <title></title>
+    <base href="/" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="referrer" content="same-origin" />
+    <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+    <!--
+      Aplica el tema antes de pintar (sin parpadeo). Solo lee la preferencia visual: nunca datos de sesión.
+      Si se cambia este script, hay que recalcular su hash para la CSP (docs/entorno-dev.md).
+    -->
+    <script>
+      (function () {
+        var pref = 'system';
+        try {
+          pref = localStorage.getItem('panel.theme') || 'system';
+        } catch (e) {}
+        var dark =
+          pref === 'dark' || (pref !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches);
+        document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+      })();
+    </script>
+  </head>
+  <body>
+    <app-root></app-root>
+    <noscript>Este panel necesita JavaScript.</noscript>
+  </body>
+</html>

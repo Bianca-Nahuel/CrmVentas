@@ -11,3 +11,8 @@ coverage/
 
 # Resultados de los evals de la IA (tarea 006)
 evals/resultados/
+
+# Panel (Angular): caché del CLI y resultados de Playwright
+apps/web/.angular/
+apps/web/test-results/
+apps/web/playwright-report/

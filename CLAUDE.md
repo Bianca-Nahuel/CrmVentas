@@ -17,8 +17,9 @@ cerámicos (Lecer), pero **nada de un negocio puntual va en el código**: todo s
 - Estado / logs: `docker compose -f infra/docker-compose.yml ps` · `... logs -f waha`
 - psql: `docker compose -f infra/docker-compose.yml exec postgres psql -U ventas_owner -d ventas`
 - Instalar: `npm install` (raíz; workspaces `apps/*`, `libs/*`)
-- API en desarrollo: `npm run dev:api` (http://localhost:3000/api) · build: `npm run build`
-- Calidad: `npm run test` (e2e contra el Postgres local) · `npm run lint` · `npm run typecheck` · `npm run format`
+- API en desarrollo: `npm run dev:api` (http://localhost:3000/api) · build: `npm run build` (API + panel)
+- Panel en desarrollo: `npm run dev:web` (http://localhost:4200, proxy `/api` → :3000; sistema de diseño en `/dev/diseno`, solo desarrollo) · `npm run build:web` · `npm run test:web` (Vitest) · `npm run e2e:web` (Playwright contra la API real con el seed)
+- Calidad: `npm run test` (e2e de la API contra el Postgres local + unitarios del panel) · `npm run lint` (incluye el chequeo de las reglas de seguridad del panel) · `npm run typecheck` · `npm run format`
 - Base: `npm run db:generate` (nueva migración desde el schema de Drizzle; `-- --custom` para SQL a mano) · `npm run db:migrate` (corre como `ventas_owner`) · `npm run db:seed` (datos de prueba, nunca en producción)
 - El `.env` de la raíz lo cargan solos la app, los tests, el seed y drizzle-kit (`apps/api/src/config/load-env.ts`), salvo con `NODE_ENV=production`
 

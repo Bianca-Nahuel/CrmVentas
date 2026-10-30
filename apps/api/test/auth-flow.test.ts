@@ -60,14 +60,40 @@ describe('sesión y contexto de empresa', () => {
     expect(res.status).toBe(401);
   });
 
-  it('registro por API setea una cookie HttpOnly y SameSite=Lax', async () => {
+  it('no hay registro público: sign-up por HTTP se rechaza y no crea el usuario', async () => {
     const client = new HttpClient(ctx);
+    const email = `${ctx.prefix}-signup@example.test`;
     const res = await client.post('/api/auth/sign-up/email', {
-      email: `${ctx.prefix}-signup@example.test`,
+      email,
       password: 'test-only-Password-123',
       name: 'signup',
     });
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(400);
+    expect(client.lastSetCookie.find((c) => c.includes('session_token='))).toBeUndefined();
+    const { rowCount } = await ctx.ownerPool.query('SELECT 1 FROM users WHERE email = $1', [email]);
+    expect(rowCount).toBe(0);
+  });
+
+  it('crear usuarios con el plugin admin por HTTP exige sesión de administrador', async () => {
+    const body = {
+      email: `${ctx.prefix}-intruso@example.test`,
+      password: 'test-only-Password-123',
+      name: 'intruso',
+    };
+    const anonymous = await new HttpClient(ctx).post('/api/auth/admin/create-user', body);
+    expect(anonymous.status).toBe(401);
+
+    const owner = new HttpClient(ctx);
+    await owner.signIn(emails.ownerA);
+    expect((await owner.post('/api/auth/admin/create-user', body)).status).toBe(403);
+
+    const { rowCount } = await ctx.ownerPool.query('SELECT 1 FROM users WHERE email = $1', [body.email]);
+    expect(rowCount).toBe(0);
+  });
+
+  it('el login setea una cookie HttpOnly, SameSite=Lax y Path=/', async () => {
+    const client = new HttpClient(ctx);
+    expect((await client.signIn(emails.ownerA)).status).toBe(200);
     const sessionCookie = client.lastSetCookie.find((c) => c.includes('session_token='));
     expect(sessionCookie).toBeDefined();
     expect(sessionCookie).toMatch(/HttpOnly/i);

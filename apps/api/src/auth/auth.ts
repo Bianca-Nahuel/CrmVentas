@@ -144,7 +144,9 @@ export function createAuth(env: Env, db: AuthDb) {
 
     // Verificación de email y recuperación de contraseña: desactivadas hasta tener proveedor de email
     // (sin sendVerificationEmail ni sendResetPassword configurados, esos flujos no envían nada).
-    emailAndPassword: { enabled: true, requireEmailVerification: false },
+    // Sin registro público: /sign-up/email responde 400 (también desde el servidor). Las cuentas se crean
+    // con auth.api.createUser del plugin admin (seed, alta de clientes) o por invitación.
+    emailAndPassword: { enabled: true, requireEmailVerification: false, disableSignUp: true },
 
     advanced: {
       database: { generateId: 'uuid' },

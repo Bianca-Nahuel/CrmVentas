@@ -16,6 +16,8 @@ export const statement = {
   lead: ['read', 'read_all', 'update', 'assign'],
   conversation: ['read', 'read_all', 'reply'],
   metrics: ['read'],
+  // Consumo y facturación de la empresa (créditos de IA, plan). Solo el owner.
+  billing: ['read'],
 } as const;
 
 // Tipo explícito: sin él, el .d.ts emitido expande el tipo y deja de ser asignable a AccessControl.
@@ -32,6 +34,7 @@ const productFull = {
 
 export const owner = ac.newRole({
   ...productFull,
+  billing: ['read'],
   organization: ['update', 'delete'],
   member: ['create', 'update', 'delete'],
   invitation: ['create', 'cancel'],

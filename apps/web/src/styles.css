@@ -1,0 +1,235 @@
+/* Estilos globales: fuente propia (servida desde el build), tokens, Tailwind y la base. */
+@import '@fontsource-variable/plus-jakarta-sans';
+@import '@angular/cdk/overlay-prebuilt.css';
+@import './styles/tokens.css';
+@import 'tailwindcss';
+
+/* Tailwind lee los tokens en tiempo de ejecución (inline: las utilidades usan la variable directamente). */
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-text: var(--text);
+  --color-muted: var(--text-muted);
+  --color-subtle: var(--text-subtle);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-on-primary: var(--on-primary);
+  --color-primary-soft: var(--primary-soft);
+  --color-primary-strong: var(--primary-strong);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-error: var(--error);
+  --color-error-soft: var(--error-soft);
+  --color-hot: var(--lead-hot);
+  --color-hot-soft: var(--lead-hot-soft);
+  --color-warm: var(--lead-warm);
+  --color-warm-soft: var(--lead-warm-soft);
+  --color-cold: var(--lead-cold);
+  --color-cold-soft: var(--lead-cold-soft);
+
+  --radius-sm: var(--radius-sm);
+  --radius-md: var(--radius-md);
+  --radius-lg: var(--radius-lg);
+
+  --shadow-1: var(--shadow-1);
+  --shadow-2: var(--shadow-2);
+  --shadow-3: var(--shadow-3);
+
+  --font-sans: var(--font-sans);
+}
+
+@layer base {
+  html {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-sans);
+    font-size: 16px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    min-height: 100dvh;
+    background: var(--bg);
+  }
+
+  h1,
+  h2,
+  h3 {
+    color: var(--text);
+    font-weight: 700;
+    letter-spacing: -0.01em;
+  }
+
+  :focus-visible {
+    outline: none;
+    box-shadow: var(--focus-ring);
+  }
+
+  ::selection {
+    background: var(--primary-soft);
+    color: var(--primary-strong);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+@layer components {
+  /* Botones: <button appButton variant="primary|secondary|ghost|danger" size="md|sm"> */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2);
+    min-height: var(--touch-target);
+    padding: 0 var(--space-4);
+    border: 1px solid transparent;
+    border-radius: var(--radius-md);
+    font-weight: 600;
+    font-size: 15px;
+    line-height: 1;
+    cursor: pointer;
+    transition:
+      background-color 120ms ease,
+      border-color 120ms ease,
+      color 120ms ease;
+  }
+  .btn:disabled,
+  .btn[aria-disabled='true'] {
+    cursor: not-allowed;
+    opacity: 0.55;
+  }
+  .btn-sm {
+    min-height: 36px;
+    padding: 0 var(--space-3);
+    font-size: 14px;
+  }
+  .btn-primary {
+    background: var(--primary);
+    color: var(--on-primary);
+  }
+  .btn-primary:not(:disabled):hover {
+    background: var(--primary-hover);
+  }
+  .btn-secondary {
+    background: var(--surface);
+    border-color: var(--border-strong);
+    color: var(--text);
+  }
+  .btn-secondary:not(:disabled):hover {
+    background: var(--surface-2);
+  }
+  .btn-ghost {
+    background: transparent;
+    color: var(--text-muted);
+  }
+  .btn-ghost:not(:disabled):hover {
+    background: var(--surface-2);
+    color: var(--text);
+  }
+  .btn-danger {
+    background: var(--error);
+    color: var(--surface);
+  }
+
+  /* Inputs */
+  .input {
+    width: 100%;
+    min-height: var(--touch-target);
+    padding: 0 var(--space-3);
+    background: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-md);
+    font-size: 16px; /* 16px: iOS no hace zoom al enfocar */
+  }
+  .input::placeholder {
+    color: var(--text-subtle);
+  }
+  .input:focus-visible {
+    border-color: var(--primary);
+  }
+  .input[aria-invalid='true'] {
+    border-color: var(--error);
+  }
+
+  /* Tarjetas */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-1);
+  }
+
+  /* Menús y paneles flotantes (CDK) */
+  .menu {
+    min-width: 220px;
+    padding: var(--space-1);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-2);
+  }
+  .menu-item {
+    display: flex;
+    width: 100%;
+    align-items: center;
+    gap: var(--space-2);
+    min-height: 40px;
+    padding: 0 var(--space-3);
+    border-radius: var(--radius-sm);
+    color: var(--text);
+    font-size: 14px;
+    text-align: left;
+    cursor: pointer;
+  }
+  .menu-item:hover,
+  .menu-item:focus-visible {
+    background: var(--surface-2);
+    box-shadow: none;
+    outline: 2px solid var(--primary);
+    outline-offset: -2px;
+  }
+  .menu-item:hover {
+    outline: none;
+  }
+  .menu-separator {
+    height: 1px;
+    margin: var(--space-1) 0;
+    background: var(--border);
+  }
+
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+}
+
+/* Fondo de los overlays de la CDK (cajón del celular, diálogos). */
+.cdk-overlay-backdrop.app-backdrop {
+  background: var(--overlay-backdrop);
+}

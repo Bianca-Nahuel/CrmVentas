@@ -3,10 +3,12 @@
 Postgres 18 (con pgvector) y WAHA corren en Docker. El backend (NestJS) y el frontend
 (Angular) corren en el host, fuera de Docker.
 
-| Servicio                        | Dirección en el host    |
-| ------------------------------- | ----------------------- |
-| Postgres                        | `localhost:5432`        |
-| WAHA (API, dashboard y Swagger) | `http://localhost:3001` |
+| Servicio                           | Dirección en el host    |
+| ---------------------------------- | ----------------------- |
+| Postgres                           | `localhost:5432`        |
+| WAHA (API, dashboard y Swagger)    | `http://localhost:3001` |
+| API (NestJS, `npm run dev:api`)    | `http://localhost:3000` |
+| Panel (Angular, `npm run dev:web`) | `http://localhost:4200` |
 
 Los dos puertos se publican solo en `127.0.0.1`: no se ven desde otras máquinas de la red.
 
@@ -180,3 +182,86 @@ O reiniciá la base (punto 6).
 ALTER TABLE <tabla> ENABLE ROW LEVEL SECURITY;
 ALTER TABLE <tabla> FORCE ROW LEVEL SECURITY;
 ```
+
+## 8. Panel (Angular)
+
+```bash
+npm run dev:api     # API en :3000
+npm run dev:web     # panel en http://localhost:4200
+```
+
+- **Mismo origen:** el navegador solo habla con `localhost:4200`. El servidor de desarrollo de Angular
+  reenvía `/api` a `http://localhost:3000` (`apps/web/proxy.conf.json`), así la cookie de sesión
+  (`HttpOnly`, `SameSite=Lax`) viaja sin CORS. `TRUSTED_ORIGINS` tiene que incluir
+  `http://localhost:4200` (ya está en `.env.example`).
+- **Control de origen en la API:** todo `POST`/`PUT`/`PATCH`/`DELETE` sin `Origin`, o con un `Origin` fuera de
+  `TRUSTED_ORIGINS`, recibe 403 (`apps/api/src/http/origin-guard.ts`). Solo se exceptúan los webhooks
+  (`/api/webhooks/*`, firmados con HMAC). Para probar la API con `curl`, mandá
+  `-H "Origin: http://localhost:3000"`.
+- **Usuarios de prueba:** los del seed (`npm run db:seed`). No hay registro público (`disableSignUp`); las
+  cuentas se crean con `auth.api.createUser` del plugin admin.
+- **Página del sistema de diseño:** `http://localhost:4200/dev/diseno`. Solo existe en desarrollo: el build de
+  producción reemplaza `src/app/dev/dev.routes.ts` por una lista vacía (`fileReplacements`).
+- **Tests:** `npm run test:web` (unitarios, Vitest) y `npm run e2e:web` (Playwright contra la API real con el
+  seed; levanta la API y el panel si no están corriendo). La primera vez: `npx playwright install chromium`
+  dentro de `apps/web`. Capturas: `npm run e2e:web -- capturas` → `apps/web/test-results/capturas/`.
+
+> Igual que con `npm run test`: si ya hay una `dev:api` corriendo con otro código, bajala antes de los e2e.
+> Dos APIs comparten la cola de pg-boss y se reparten los trabajos (entrantes, envíos, IA).
+
+### Producción (pendiente: se configura con el despliegue)
+
+Front y API van **en el mismo dominio** detrás de Caddy: Caddy sirve los archivos de `apps/web/dist/web/browser`
+y reenvía `/api/*` a la API, que escucha solo en `127.0.0.1`. Así se mantiene el mismo origen, la cookie
+`SameSite=Lax` alcanza y no hace falta CORS. `TRUSTED_ORIGINS` = la URL pública (`https://…`).
+
+Esbozo, a validar al configurar el servidor:
+
+```caddy
+panel.ejemplo.com {
+  encode zstd gzip
+  handle /api/* {
+    reverse_proxy 127.0.0.1:3000
+  }
+  handle {
+    root * /srv/panel
+    try_files {path} /index.html
+    file_server
+  }
+  header {
+    Content-Security-Policy "<la de abajo>"
+    Strict-Transport-Security "max-age=31536000; includeSubDomains"
+    X-Content-Type-Options "nosniff"
+    Referrer-Policy "same-origin"
+    Permissions-Policy "camera=(), microphone=(), geolocation=()"
+    -Server
+  }
+}
+```
+
+**Política de seguridad de contenido (CSP) propuesta:**
+
+```
+default-src 'self';
+script-src 'self' 'sha256-s5TDGwStH9aoB5WkkQO1ZsRPTmFQKvQEJulfP/3g77A=';
+style-src 'self' 'nonce-{NONCE}';
+font-src 'self';
+img-src 'self' data:;
+connect-src 'self';
+object-src 'none';
+base-uri 'self';
+form-action 'self';
+frame-ancestors 'none';
+upgrade-insecure-requests
+```
+
+- `script-src`: solo los archivos propios y el script en línea que aplica el tema antes de pintar
+  (`apps/web/src/index.html`), por su hash. **Si se cambia ese script, hay que recalcular el hash** sobre el
+  `index.html` del build de producción. El build no genera otros scripts en línea (`inlineCritical: false`).
+- `style-src`: Angular y la CDK insertan `<style>` en tiempo de ejecución para los estilos de componentes.
+  Para no abrir `'unsafe-inline'`, la propuesta es un nonce por pedido: Caddy lo genera (plantilla sobre
+  `index.html`), lo pone en la CSP y en `<app-root ngCspNonce="…">`, y Angular lo usa en cada `<style>`. Si al
+  configurar Caddy esto no resulta práctico, la alternativa es `style-src 'self' 'unsafe-inline'`: los scripts
+  siguen restringidos, que es lo que importa contra XSS.
+- `connect-src 'self'`: la API está en el mismo origen. Si después se sirven archivos desde Cloudflare R2,
+  agregar su dominio en `img-src`.

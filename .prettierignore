@@ -4,3 +4,6 @@ coverage
 package-lock.json
 apps/api/drizzle/meta
 *.zip
+apps/web/.angular
+apps/web/test-results
+apps/web/playwright-report

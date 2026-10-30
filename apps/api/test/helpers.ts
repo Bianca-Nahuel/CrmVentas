@@ -122,7 +122,7 @@ export class HttpClient {
 
 export async function createUser(ctx: TestContext, label: string): Promise<{ id: string; email: string }> {
   const email = `${ctx.prefix}-${label}@example.test`;
-  const result = await ctx.auth.api.signUpEmail({ body: { email, name: label, password: TEST_PASSWORD } });
+  const result = await ctx.auth.api.createUser({ body: { email, name: label, password: TEST_PASSWORD } });
   return { id: result.user.id, email };
 }
 

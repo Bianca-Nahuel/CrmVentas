@@ -43,12 +43,15 @@ const USERS = [
   { email: 'owner.ceramicos@example.test', name: 'Owner Cerámicos' },
   { email: 'owner.inmobiliaria@example.test', name: 'Owner Inmobiliaria' },
   { email: 'multi@example.test', name: 'Usuario Dos Empresas' },
+  { email: 'baja@example.test', name: 'Usuario Dado De Baja' },
 ] as const;
 
-// [email, slug, rol]. El owner de cada empresa queda como owner al crearla.
+// [email, slug, rol, status]. El owner de cada empresa queda como owner al crearla.
+// baja@ tiene la membresía desactivada: para probar la pantalla "sin acceso" del panel.
 const EXTRA_MEMBERSHIPS = [
-  ['multi@example.test', 'ceramicos-demo', 'seller'],
-  ['multi@example.test', 'inmobiliaria-demo', 'viewer'],
+  ['multi@example.test', 'ceramicos-demo', 'seller', 'active'],
+  ['multi@example.test', 'inmobiliaria-demo', 'viewer', 'active'],
+  ['baja@example.test', 'ceramicos-demo', 'seller', 'disabled'],
 ] as const;
 
 // Canal de WhatsApp (sesión de WAHA) y cliente de prueba por empresa. Números ficticios.
@@ -86,7 +89,8 @@ const db = authDatabase.db;
 async function ensureUser(email: string, name: string): Promise<string> {
   const [existing] = await db.select({ id: users.id }).from(users).where(eq(users.email, email));
   if (existing) return existing.id;
-  const result = await auth.api.signUpEmail({ body: { email, name, password: SEED_PASSWORD } });
+  // createUser del plugin admin: el registro público está desactivado (disableSignUp).
+  const result = await auth.api.createUser({ body: { email, name, password: SEED_PASSWORD } });
   return result.user.id;
 }
 
@@ -180,14 +184,14 @@ try {
   tenantIds.set('ceramicos-demo', await ensureTenant(TENANTS[0], userIds.get(USERS[0].email)!));
   tenantIds.set('inmobiliaria-demo', await ensureTenant(TENANTS[1], userIds.get(USERS[1].email)!));
 
-  for (const [email, slug, role] of EXTRA_MEMBERSHIPS) {
+  for (const [email, slug, role, status] of EXTRA_MEMBERSHIPS) {
     const userId = userIds.get(email)!;
     const tenantId = tenantIds.get(slug)!;
-    const [existing] = await db
-      .select({ id: memberships.id })
-      .from(memberships)
-      .where(and(eq(memberships.userId, userId), eq(memberships.tenantId, tenantId)));
+    const where = and(eq(memberships.userId, userId), eq(memberships.tenantId, tenantId));
+    const [existing] = await db.select({ id: memberships.id }).from(memberships).where(where);
     if (!existing) await auth.api.addMember({ body: { userId, organizationId: tenantId, role } });
+    // status es columna nuestra (input: false en el plugin): se setea directo en la tabla.
+    await db.update(memberships).set({ status }).where(where);
   }
 
   await ensureMessaging('ceramicos-demo', tenantIds.get('ceramicos-demo')!, userIds.get(USERS[0].email)!);
