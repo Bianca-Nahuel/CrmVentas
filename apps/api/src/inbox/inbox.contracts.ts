@@ -99,6 +99,12 @@ export const leadSummarySchema = z
 
 export const conversationParamsSchema = z.object({ id: uuid }).strict();
 
+// Por qué no se puede responder (reglas de envío de messaging/outbound, sin 'superseded').
+export const replyBlockedReasonSchema = z
+  .enum(['no_inbound', 'window_expired', 'contact_blocked', 'channel_unavailable', 'channel_paused'])
+  .meta({ id: 'ReplyBlockedReason' });
+export type ReplyBlockedReason = z.infer<typeof replyBlockedReasonSchema>;
+
 export const conversationDetailSchema = z
   .object({
     id: uuid,
@@ -137,6 +143,15 @@ export const conversationDetailSchema = z
       pausedUntil: isoDate.nullable(),
       lastReactivation: z.object({ at: isoDate, byName: z.string().nullable() }).nullable(),
     }),
+    // Si se puede responder desde el panel y, si no, por qué (las mismas reglas que el envío).
+    reply: z
+      .object({
+        allowed: z.boolean(),
+        reason: replyBlockedReasonSchema.nullable(),
+        // Hasta cuándo están pausados los envíos del número; null si no vence (riesgo de bloqueo).
+        pausedUntil: isoDate.nullable(),
+      })
+      .meta({ id: 'ReplyAvailability' }),
     lastMessageAt: isoDate,
   })
   .meta({ id: 'ConversationDetail' });
@@ -161,11 +176,38 @@ export const messageSchema = z
     type: messageTypeSchema,
     // Texto tal cual llegó o salió: contenido no confiable, se muestra como texto.
     body: z.string().nullable(),
-    status: z.enum(['received', 'sent', 'delivered', 'read', 'failed']).nullable(),
+    // Solo los salientes (null en los entrantes). Sale del outbox mientras no se envió y de los acuses
+    // después. reason: en 'failed', not_sent o maybe_sent (pudo haber salido); en 'rejected', la regla de
+    // envío. Nunca el error del proveedor.
+    delivery: z
+      .object({
+        state: z.enum(['queued', 'sending', 'sent', 'delivered', 'read', 'failed', 'rejected']),
+        reason: z.enum(['not_sent', 'maybe_sent']).or(replyBlockedReasonSchema).nullable(),
+      })
+      .nullable()
+      .meta({ id: 'Delivery' }),
+    // Cuándo salió (o cuándo se encoló, si todavía no salió).
     sentAt: isoDate,
   })
   .meta({ id: 'Message' });
 export type MessageDto = z.infer<typeof messageSchema>;
+
+/** 4096: tope de un mensaje de texto de WhatsApp (en caracteres, como char_length en la base). */
+const REPLY_MAX_CHARS = 4096;
+export const sendMessageBodySchema = z
+  .object({
+    // Sin los espacios del principio y del final; los saltos de línea del medio se conservan.
+    body: z
+      .string()
+      .trim()
+      .min(1)
+      .refine((text) => [...text].length <= REPLY_MAX_CHARS, `hasta ${REPLY_MAX_CHARS} caracteres`),
+    // La genera el panel una vez por envío y la repite en los reintentos: no se manda dos veces.
+    idempotencyKey: uuid,
+  })
+  .strict()
+  .meta({ id: 'SendMessageBody' });
+export type SendMessageBody = z.infer<typeof sendMessageBodySchema>;
 
 export const messageListSchema = z
   .object({
@@ -208,6 +250,17 @@ export const inboxRoutes: ApiRoute[] = [
     params: conversationParamsSchema,
     query: messageListQuerySchema,
     response: messageListSchema,
+  },
+  {
+    method: 'post',
+    path: '/conversations/{id}/messages',
+    operationId: 'sendMessage',
+    summary:
+      'Responde por WhatsApp desde el panel (idempotente por idempotencyKey). 409 con code si no se puede enviar',
+    params: conversationParamsSchema,
+    body: sendMessageBodySchema,
+    response: messageSchema,
+    conflict: true,
   },
   {
     method: 'post',

@@ -593,7 +593,7 @@ describe('detalle y mensajes', () => {
     expect(JSON.stringify(audio.body)).not.toContain('clave-secreta');
     for (const item of audio.body!.items as Record<string, unknown>[]) {
       expect(Object.keys(item).sort()).toEqual(
-        ['body', 'direction', 'id', 'senderType', 'sentAt', 'sentByName', 'status', 'type'].sort(),
+        ['body', 'direction', 'id', 'senderType', 'sentAt', 'sentByName', 'delivery', 'type'].sort(),
       );
     }
   });

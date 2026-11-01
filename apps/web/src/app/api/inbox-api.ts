@@ -11,6 +11,7 @@ import {
   listSellers,
   markConversationRead,
   reactivateAi,
+  sendMessage,
   setChannelMembers,
   type ListLeads$Params,
   type StrictHttpResponse,
@@ -19,7 +20,7 @@ import {
 const body = <T>(response: Observable<StrictHttpResponse<T>>) => response.pipe(map((r) => r.body));
 
 /**
- * Bandeja, leads y números (tarea 014). Usa las funciones del cliente generado desde el OpenAPI de la API
+ * Bandeja, leads y números (tarea 014); responder desde el panel (024). Usa las funciones del cliente generado desde el OpenAPI de la API
  * (npm run api:generate), sobre HttpClient: pasan por el interceptor de errores como el resto.
  */
 @Injectable({ providedIn: 'root' })
@@ -41,6 +42,11 @@ export class InboxApi {
 
   messages(id: string, before?: string) {
     return body(listMessages(this.http, this.rootUrl, { id, before, limit: 50 }));
+  }
+
+  /** Responde por WhatsApp. idempotencyKey: la misma en los reintentos de un mismo envío. */
+  sendMessage(id: string, text: string, idempotencyKey: string) {
+    return body(sendMessage(this.http, this.rootUrl, { id, body: { body: text, idempotencyKey } }));
   }
 
   markRead(id: string) {

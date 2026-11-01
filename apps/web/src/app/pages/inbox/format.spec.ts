@@ -1,5 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { contactName, dayLabel, groupByDay, previewText, reasonLabel, shortWhen, waitingFor } from './format';
+import {
+  contactName,
+  dayLabel,
+  deliveryHelp,
+  deliveryLabel,
+  groupByDay,
+  previewText,
+  reasonLabel,
+  shortWhen,
+  waitingFor,
+} from './format';
 
 // Fechas locales (el test corre con la zona del sistema): se arman con new Date(año, mes, día, hora).
 const at = (day: number, hour = 10, minute = 0) => new Date(2026, 9, day, hour, minute).toISOString();
@@ -74,5 +84,25 @@ describe('waitingFor', () => {
     expect(waitingFor(ago(12), NOW)).toBe('12 min');
     expect(waitingFor(ago(185), NOW)).toBe('3 h');
     expect(waitingFor(ago(60 * 50), NOW)).toBe('2 d');
+  });
+});
+
+describe('deliveryLabel y deliveryHelp', () => {
+  it('cada estado en palabras; "no sabemos" se distingue de "no se envió"', () => {
+    expect(deliveryLabel({ state: 'queued', reason: null })).toBe('En cola');
+    expect(deliveryLabel({ state: 'sending', reason: null })).toBe('Enviando…');
+    expect(deliveryLabel({ state: 'sent', reason: null })).toBe('Enviado');
+    expect(deliveryLabel({ state: 'delivered', reason: null })).toBe('Entregado');
+    expect(deliveryLabel({ state: 'read', reason: null })).toBe('Leído');
+    expect(deliveryLabel({ state: 'failed', reason: 'not_sent' })).toBe('No se envió');
+    expect(deliveryLabel({ state: 'failed', reason: 'maybe_sent' })).toBe('No sabemos si llegó');
+    expect(deliveryLabel({ state: 'rejected', reason: 'window_expired' })).toBe('No se envió');
+  });
+
+  it('ayuda solo cuando hace falta: revisar el teléfono o el motivo del rechazo', () => {
+    expect(deliveryHelp({ state: 'sent', reason: null })).toBeNull();
+    expect(deliveryHelp({ state: 'failed', reason: 'not_sent' })).toBeNull();
+    expect(deliveryHelp({ state: 'failed', reason: 'maybe_sent' })).toContain('revisalo en el teléfono');
+    expect(deliveryHelp({ state: 'rejected', reason: 'channel_paused' })).toContain('pausados');
   });
 });

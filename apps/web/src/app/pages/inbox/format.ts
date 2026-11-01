@@ -1,5 +1,14 @@
 // Textos y fechas de la bandeja. Funciones puras (se prueban sin TestBed). Locale es-AR.
-import type { LeadState, MessageType, SenderType } from '../../api/generated';
+import type {
+  Delivery,
+  LeadState,
+  MessageType,
+  ReplyBlockedReason as ReplyBlockedReasonOrNull,
+  SenderType,
+} from '../../api/generated';
+
+/** Motivo por el que no se puede responder (el tipo generado incluye null). */
+export type ReplyBlockedReason = NonNullable<ReplyBlockedReasonOrNull>;
 
 const LOCALE = 'es-AR';
 
@@ -30,6 +39,68 @@ export const SENDER_LABELS: Record<SenderType, string> = {
   ai: 'IA',
   user: 'Equipo',
   app: 'Mensaje automático',
+};
+
+/** Estado de un mensaje saliente, siempre en palabras (el ícono acompaña, nunca solo el color). */
+export function deliveryLabel(delivery: NonNullable<Delivery>): string {
+  switch (delivery.state) {
+    case 'queued':
+      return 'En cola';
+    case 'sending':
+      return 'Enviando…';
+    case 'sent':
+      return 'Enviado';
+    case 'delivered':
+      return 'Entregado';
+    case 'read':
+      return 'Leído';
+    case 'failed':
+      return delivery.reason === 'maybe_sent' ? 'No sabemos si llegó' : 'No se envió';
+    case 'rejected':
+      return 'No se envió';
+  }
+}
+
+/** Ayuda debajo de un mensaje que no salió (o que no sabemos si salió). */
+export function deliveryHelp(delivery: NonNullable<Delivery>): string | null {
+  if (delivery.state === 'failed') {
+    return delivery.reason === 'maybe_sent'
+      ? 'Puede que haya llegado igual: revisalo en el teléfono antes de reenviarlo.'
+      : null;
+  }
+  if (delivery.state === 'rejected' && delivery.reason) {
+    return REPLY_BLOCKED_SHORT[delivery.reason as ReplyBlockedReason] ?? null;
+  }
+  return null;
+}
+
+/** Por qué no se puede responder desde el panel (aviso arriba de la caja de respuesta). */
+export const REPLY_BLOCKED_TEXT: Record<ReplyBlockedReason, string> = {
+  channel_paused:
+    'Los envíos de este número están pausados por riesgo de bloqueo de WhatsApp. Mientras tanto, respondé desde el teléfono. Un administrador puede revisar el número.',
+  channel_unavailable:
+    'Este número está desconectado de WhatsApp. Hay que volver a vincularlo para responder desde acá.',
+  window_expired:
+    'Pasaron más de 24 h desde el último mensaje del cliente. WhatsApp solo deja responder dentro de ese plazo: cuando vuelva a escribir, vas a poder contestarle.',
+  no_inbound: 'El cliente todavía no escribió. Desde el panel no se inician conversaciones.',
+  contact_blocked: 'Este contacto está bloqueado.',
+};
+
+const REPLY_BLOCKED_SHORT: Record<ReplyBlockedReason, string> = {
+  channel_paused: 'Los envíos del número estaban pausados.',
+  channel_unavailable: 'El número estaba desconectado.',
+  window_expired: 'Pasaron más de 24 h desde el último mensaje del cliente.',
+  no_inbound: 'El cliente todavía no había escrito.',
+  contact_blocked: 'El contacto está bloqueado.',
+};
+
+/** Código del 409 de POST /conversations/:id/messages → motivo (los mismos de reply.reason). */
+export const REPLY_CONFLICT_CODES: Record<string, ReplyBlockedReason> = {
+  CHANNEL_PAUSED: 'channel_paused',
+  CHANNEL_UNAVAILABLE: 'channel_unavailable',
+  WINDOW_EXPIRED: 'window_expired',
+  NO_INBOUND: 'no_inbound',
+  CONTACT_BLOCKED: 'contact_blocked',
 };
 
 // Motivos de derivación que decide el código (decide.ts y los disparadores de la config).

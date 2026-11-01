@@ -3,7 +3,15 @@ import { sql, type SQL } from 'drizzle-orm';
 import { TenantConfigService } from '../ai/config/tenant-config.service.js';
 import type { AppTx, TenantContext } from '../db/tenant-context.js';
 import { ConversationScope, scopeCondition, type Scope } from './conversation-scope.js';
-import type { ConversationDetail, LeadList, LeadListQuery, LeadRow, MessageDto } from './inbox.contracts.js';
+import { SEND_REJECT_REASON } from '../messaging/outbound/outbound.service.js';
+import type {
+  ConversationDetail,
+  LeadList,
+  LeadListQuery,
+  LeadRow,
+  MessageDto,
+  ReplyBlockedReason,
+} from './inbox.contracts.js';
 
 const PREVIEW_CHARS = 160;
 // Solo dígitos y separadores de teléfono, con al menos 4 dígitos: se busca por número.
@@ -22,7 +30,9 @@ const STATE = sql`CASE WHEN c.handed_off_at IS NOT NULL THEN 'handed_off'
 // Derivada sin respuesta de una persona del equipo desde la derivación.
 const PENDING = sql`(c.handed_off_at IS NOT NULL AND NOT EXISTS (
   SELECT 1 FROM messages um WHERE um.conversation_id = c.id AND um.sender_type = 'user'
-    AND um.sent_at >= c.handed_off_at))`;
+    AND um.sent_at >= c.handed_off_at) AND NOT EXISTS (
+  SELECT 1 FROM outbound_messages uo WHERE uo.conversation_id = c.id AND uo.sender_type = 'user'
+    AND uo.status IN ('queued', 'sending') AND uo.created_at >= c.handed_off_at))`;
 
 // Bandeja (sort=priority, decisión #82):
 //   1. arriba, las que ya atendió una persona y esperan respuesta (el cliente le contestó a alguien del equipo);
@@ -191,8 +201,13 @@ export class InboxService {
       last_message_at: string;
       reactivated_at: string | null;
       reactivated_by: string | null;
+      reply_reason: ReplyBlockedReason | null;
+      sending_paused_until: string | null;
     }>(sql`
       SELECT c.id, ct.display_name, ct.profile_name, ct.wa_id,
+             ${SEND_REJECT_REASON} AS reply_reason,
+             CASE WHEN ch.sending_paused_until > now() AND ch.sending_paused_until <> 'infinity'
+               THEN ${iso(sql`ch.sending_paused_until`)} END AS sending_paused_until,
              ch.id AS channel_id, ch.name AS channel_name, ch.phone_number AS channel_phone,
              c.lead_score, c.lead_tier, c.score_breakdown, c.extracted_data,
              ${iso(sql`c.handed_off_at`)} AS handed_off_at, c.handoff_reason, c.handoff_summary,
@@ -237,6 +252,11 @@ export class InboxService {
         pausedUntil: row.paused ? row.ai_paused_until : null,
         lastReactivation: row.reactivated_at ? { at: row.reactivated_at, byName: row.reactivated_by } : null,
       },
+      reply: {
+        allowed: row.reply_reason === null,
+        reason: row.reply_reason,
+        pausedUntil: row.reply_reason === 'channel_paused' ? row.sending_paused_until : null,
+      },
       lastMessageAt: row.last_message_at,
     };
   }
@@ -252,42 +272,36 @@ export class InboxService {
     if (query.before) {
       const cursor = decodeCursor(query.before);
       if (!cursor) throw new BadRequestException({ code: 'VALIDATION_ERROR', issues: [{ path: 'before' }] });
-      before = sql`(m.sent_at, m.id) < (${cursor.sentAt}::timestamptz, ${cursor.id}::uuid)`;
+      before = sql`(i.at, i.id) < (${cursor.sentAt}::timestamptz, ${cursor.id}::uuid)`;
     }
-    // Columnas explícitas: nunca raw ni media_key.
-    const result = await tx.execute<{
-      id: string;
-      direction: MessageDto['direction'];
-      sender_type: MessageDto['senderType'];
-      sent_by_name: string | null;
-      type: MessageDto['type'];
-      body: string | null;
-      status: MessageDto['status'];
-      sent_at: string;
-    }>(sql`
-      SELECT m.id, m.direction, m.sender_type, u.name AS sent_by_name, m.type, m.body, m.status,
-             ${iso(sql`m.sent_at`)} AS sent_at
-      FROM messages m
-      LEFT JOIN users u ON u.id = m.sent_by_user_id
-      WHERE m.conversation_id = ${id} AND ${before}
-      ORDER BY m.sent_at DESC, m.id DESC
+    const result = await tx.execute<ItemSqlRow>(sql`
+      ${conversationItems(id)}
+      SELECT ${ITEM_COLUMNS} FROM items i
+      WHERE ${before}
+      ORDER BY i.at DESC, i.id DESC
       LIMIT ${query.limit + 1}
     `);
     const rows = result.rows.slice(0, query.limit);
     const oldest = rows.at(-1);
     return {
-      items: rows.reverse().map((row) => ({
-        id: row.id,
-        direction: row.direction,
-        senderType: row.sender_type,
-        sentByName: row.sender_type === 'user' ? row.sent_by_name : null,
-        type: row.type,
-        body: row.body,
-        status: row.status,
-        sentAt: row.sent_at,
-      })),
+      items: rows.reverse().map(toMessageDto),
       nextBefore: result.rows.length > query.limit && oldest ? encodeCursor(oldest.sent_at, oldest.id) : null,
     };
+  }
+
+  /**
+   * Un envío del outbox como mensaje de la lista (la respuesta de POST .../messages): el mensaje enviado
+   * si ya salió, o la fila de la cola si todavía no.
+   */
+  async outboundAsMessage(tx: AppTx, conversationId: string, outboundId: string): Promise<MessageDto> {
+    const result = await tx.execute<ItemSqlRow>(sql`
+      ${conversationItems(conversationId)}
+      SELECT ${ITEM_COLUMNS} FROM items i
+      WHERE i.id = (SELECT COALESCE(o.message_id, o.id) FROM outbound_messages o WHERE o.id = ${outboundId})
+    `);
+    const row = result.rows[0];
+    if (!row) throw new Error('No se encontró el envío recién encolado');
+    return toMessageDto(row);
   }
 
   /**
@@ -382,8 +396,9 @@ export class InboxService {
 
 /**
  * Conversaciones de la lista con las columnas que se calculan (alias c en el resto de la consulta):
- *   pending        derivada y sin respuesta de una persona desde la derivación;
- *   waiting_since  el primer mensaje del cliente que nadie respondió (IA o persona); NULL si no espera;
+ *   pending        derivada y sin respuesta de una persona desde la derivación (una del panel en cola cuenta);
+ *   waiting_since  el primer mensaje del cliente que nadie respondió (IA o persona, también una respuesta
+ *                  del panel en cola); NULL si no espera;
  *   human_waiting  espera respuesta y ya habló con alguien del equipo;
  *   unread         hay mensajes del cliente posteriores a lo que vio este usuario.
  */
@@ -409,13 +424,97 @@ function leadBase(where: SQL, userId: string): SQL {
     LEFT JOIN LATERAL (
       SELECT min(m.sent_at) AS waiting_since FROM messages m
       WHERE m.conversation_id = c.id AND m.sender_type = 'contact'
-        AND m.sent_at > COALESCE((
-          SELECT max(rm.sent_at) FROM messages rm
-          WHERE rm.conversation_id = c.id AND rm.sender_type IN ('ai', 'user')
-        ), '-infinity')
+        AND m.sent_at > GREATEST(
+          COALESCE((
+            SELECT max(rm.sent_at) FROM messages rm
+            WHERE rm.conversation_id = c.id AND rm.sender_type IN ('ai', 'user')
+          ), '-infinity'),
+          -- Una respuesta del panel cuenta desde que se encola (si falla, vuelve a esperar).
+          COALESCE((
+            SELECT max(ro.created_at) FROM outbound_messages ro
+            WHERE ro.conversation_id = c.id AND ro.sender_type = 'user' AND ro.status IN ('queued', 'sending')
+          ), '-infinity'))
     ) w ON true
     WHERE ${where}
   `;
+}
+
+type ItemSqlRow = {
+  id: string;
+  direction: MessageDto['direction'];
+  sender_type: MessageDto['senderType'];
+  sent_by_name: string | null;
+  type: MessageDto['type'];
+  body: string | null;
+  message_status: 'received' | 'sent' | 'delivered' | 'read' | 'failed' | null;
+  outbox_status: 'queued' | 'sending' | 'sent' | 'failed' | 'rejected' | null;
+  last_error: string | null;
+  reject_reason: string | null;
+  sent_at: string;
+};
+
+/**
+ * CTE `items` de una conversación: los mensajes (entrantes y salientes ya enviados) y los envíos del
+ * outbox que todavía no tienen mensaje (en cola, enviándose, fallidos o rechazados). Un envío que salió
+ * se ve una sola vez: el worker crea el mensaje y le pone message_id al outbox en la misma transacción.
+ * Las respuestas de la IA que dejó sin efecto una persona (superseded) nunca salieron y no se muestran.
+ * Columnas explícitas: nunca raw, media_key, la clave de idempotencia ni el error del proveedor.
+ */
+function conversationItems(conversationId: string): SQL {
+  return sql`
+    WITH items AS (
+      SELECT m.id, m.direction, m.sender_type, u.name AS sent_by_name, m.type, m.body,
+             m.status AS message_status, NULL::text AS outbox_status, NULL::text AS last_error,
+             NULL::text AS reject_reason, m.sent_at AS at
+      FROM messages m
+      LEFT JOIN users u ON u.id = m.sent_by_user_id
+      WHERE m.conversation_id = ${conversationId}
+      UNION ALL
+      SELECT o.id, 'outbound', o.sender_type, u.name, 'text', o.body,
+             NULL, o.status, o.last_error, o.reject_reason, o.created_at
+      FROM outbound_messages o
+      LEFT JOIN users u ON u.id = o.sent_by_user_id
+      WHERE o.conversation_id = ${conversationId} AND o.message_id IS NULL
+        AND o.reject_reason IS DISTINCT FROM 'superseded'
+    )`;
+}
+
+const ITEM_COLUMNS = sql`i.id, i.direction, i.sender_type, i.sent_by_name, i.type, i.body, i.message_status,
+  i.outbox_status, i.last_error, i.reject_reason, ${iso(sql`i.at`)} AS sent_at`;
+
+function toMessageDto(row: ItemSqlRow): MessageDto {
+  return {
+    id: row.id,
+    direction: row.direction,
+    senderType: row.sender_type,
+    sentByName: row.sender_type === 'user' ? row.sent_by_name : null,
+    type: row.type,
+    body: row.body,
+    delivery: toDelivery(row),
+    sentAt: row.sent_at,
+  };
+}
+
+/** Estado que ve el panel: del outbox mientras no hay mensaje; después, de los acuses del mensaje. */
+function toDelivery(row: ItemSqlRow): MessageDto['delivery'] {
+  if (row.direction === 'inbound') return null;
+  switch (row.outbox_status ?? row.message_status) {
+    case 'queued':
+      return { state: 'queued', reason: null };
+    case 'sending':
+      return { state: 'sending', reason: null };
+    case 'delivered':
+      return { state: 'delivered', reason: null };
+    case 'read':
+      return { state: 'read', reason: null };
+    case 'failed':
+      // unknown_outcome: el pedido pudo haber llegado (el panel no ofrece reintentar).
+      return { state: 'failed', reason: row.last_error === 'unknown_outcome' ? 'maybe_sent' : 'not_sent' };
+    case 'rejected':
+      return { state: 'rejected', reason: row.reject_reason as ReplyBlockedReason };
+    default:
+      return { state: 'sent', reason: null };
+  }
 }
 
 function toLeadRow(row: LeadSqlRow): LeadRow {

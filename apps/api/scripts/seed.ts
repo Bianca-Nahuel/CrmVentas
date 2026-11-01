@@ -4,7 +4,8 @@
 // (los usuarios comunes no pueden crear empresas). Los datos de mensajería (un canal, un contacto, una
 // conversación y dos mensajes por empresa) van por el pool de ventas_app con app.tenant_id, como lo
 // hará el webhook. Cerámicos suma un segundo número, leads de demo para la bandeja y multi@ asignado al
-// número principal (tarea 014). Es idempotente.
+// número principal (tarea 014), y leads para responder desde el panel con la sucursal pausada (tarea 024).
+// Es idempotente.
 //
 // Credenciales y números SOLO de desarrollo (dominio reservado .test, teléfonos ficticios). Nunca
 // usar datos reales.
@@ -21,7 +22,8 @@ const { parseEnv } = await import('../src/config/env.js');
 const { createAppDatabase, createAuthDatabase } = await import('../src/db/pools.js');
 const { createAuth } = await import('../src/auth/auth.js');
 const { memberships, tenants, users } = await import('../src/db/schema/auth.js');
-const { channels, contacts, conversations, messages } = await import('../src/db/schema/messaging.js');
+const { channels, contacts, conversations, messages, outboundMessages } =
+  await import('../src/db/schema/messaging.js');
 
 export const SEED_PASSWORD = 'dev-only-Password-123';
 
@@ -188,6 +190,8 @@ type SeedMessage = {
   text: string | null;
   type?: string;
   minutesAgo: number;
+  /** Acuse de un saliente (por defecto, leído). */
+  status?: 'sent' | 'delivered' | 'read';
 };
 interface SeedLead {
   waId: string;
@@ -199,6 +203,8 @@ interface SeedLead {
   pausedHours?: number;
   extracted?: Record<string, string | number>;
   messages: SeedMessage[];
+  /** Respuestas del equipo que no salieron (filas failed del outbox, sin mensaje). */
+  failedOutbound?: { text: string; minutesAgo: number; lastError: 'invalid_recipient' | 'unknown_outcome' }[];
 }
 
 const DAY = 24 * 60;
@@ -287,6 +293,43 @@ const DEMO_LEADS: SeedLead[] = [
     },
     messages: [{ from: 'contact', text: 'Quiero reservar 30 cajas, ¿cómo pago?', minutesAgo: 45 }],
   },
+  // Tarea 024: los estados de los mensajes salientes (con dos envíos fallidos en el outbox).
+  {
+    waId: '+5491100000207',
+    name: 'Carla Estados',
+    channel: 'principal',
+    score: 28,
+    tier: 'cold',
+    messages: [
+      { from: 'contact', text: 'Hola, ¿tienen guardas para cocina?', minutesAgo: 180 },
+      { from: 'ai', text: '¡Hola Carla! Sí, ¿qué medida buscás?', minutesAgo: 179, status: 'read' },
+      { from: 'contact', text: 'De 8 cm de alto, en blanco', minutesAgo: 170 },
+      { from: 'user', text: 'Te paso las opciones que tenemos', minutesAgo: 160, status: 'delivered' },
+      { from: 'user', text: 'Son 3 modelos, el más pedido es el liso', minutesAgo: 159, status: 'sent' },
+    ],
+    failedOutbound: [
+      { text: 'Te mando las fotos por acá', minutesAgo: 150, lastError: 'invalid_recipient' },
+      { text: '¿Te sirve alguno de esos?', minutesAgo: 140, lastError: 'unknown_outcome' },
+    ],
+  },
+  // Tarea 024: el cliente escribió hace más de 24 h (no se le puede responder desde el panel).
+  {
+    waId: '+5491100000208',
+    name: 'Diego Ventana',
+    channel: 'principal',
+    score: 40,
+    tier: 'cold',
+    messages: [{ from: 'contact', text: 'Hola, ¿qué precio tiene el adhesivo?', minutesAgo: 2 * DAY }],
+  },
+  // Tarea 024: el e2e de Playwright le responde desde el panel (con el proveedor de WhatsApp falso).
+  {
+    waId: '+5491100000209',
+    name: 'Elena Respuesta',
+    channel: 'principal',
+    score: 45,
+    tier: 'warm',
+    messages: [{ from: 'contact', text: '¿Me pasan el horario del local?', minutesAgo: 20 }],
+  },
 ];
 
 async function ensureInboxDemo(tenantId: string, ownerId: string, sellerId: string) {
@@ -318,6 +361,12 @@ async function ensureInboxDemo(tenantId: string, ownerId: string, sellerId: stri
         .returning({ id: channels.id });
     }
     const channelIds = { principal: principal!.id, sucursal: sucursal!.id };
+    // Tarea 024: la sucursal tiene los envíos pausados por riesgo de bloqueo (el panel lo explica y no deja
+    // responder). Se vuelve a poner en cada corrida.
+    await tx
+      .update(channels)
+      .set({ sendingPausedUntil: sql`'infinity'::timestamptz`, sendingPausedReason: 'blocked_risk:463' })
+      .where(eq(channels.id, sucursal!.id));
 
     for (const lead of DEMO_LEADS) {
       const channelId = channelIds[lead.channel];
@@ -352,13 +401,34 @@ async function ensureInboxDemo(tenantId: string, ownerId: string, sellerId: stri
             sentByUserId: message.from === 'user' ? ownerId : null,
             type: message.type ?? 'text',
             body: message.text,
-            status: message.from === 'contact' ? 'received' : 'read',
+            status: message.from === 'contact' ? 'received' : (message.status ?? 'read'),
             raw: { seed: true },
             sentAt: new Date(Date.now() - message.minutesAgo * 60_000),
           })),
         );
+        if (lead.failedOutbound?.length) {
+          await tx.insert(outboundMessages).values(
+            lead.failedOutbound.map((failed, index) => ({
+              tenantId,
+              conversationId: conversation!.id,
+              channelId,
+              idempotencyKey: `seed-${lead.waId}-failed-${index}`,
+              senderType: 'user',
+              sentByUserId: ownerId,
+              body: failed.text,
+              status: 'failed',
+              lastError: failed.lastError,
+              attempts: 1,
+              claimedAt: new Date(Date.now() - failed.minutesAgo * 60_000),
+              createdAt: new Date(Date.now() - failed.minutesAgo * 60_000),
+            })),
+          );
+        }
       }
       const lastMinutes = Math.min(...lead.messages.map((message) => message.minutesAgo));
+      const lastInboundMinutes = Math.min(
+        ...lead.messages.filter((message) => message.from === 'contact').map((message) => message.minutesAgo),
+      );
       // El estado del lead (lo escriben el worker de la IA y el panel) vuelve al de demo en cada corrida.
       await tx.execute(sql`
         UPDATE conversations SET
@@ -370,7 +440,7 @@ async function ensureInboxDemo(tenantId: string, ownerId: string, sellerId: stri
           handoff_summary = ${lead.handoff?.summary ?? null},
           ai_paused_until = ${lead.pausedHours ? sql`now() + make_interval(hours => ${lead.pausedHours})` : sql`NULL`},
           last_message_at = now() - make_interval(mins => ${lastMinutes}),
-          last_inbound_at = now() - make_interval(mins => ${lastMinutes})
+          last_inbound_at = now() - make_interval(mins => ${lastInboundMinutes})
         WHERE id = ${conversation!.id}
       `);
     }

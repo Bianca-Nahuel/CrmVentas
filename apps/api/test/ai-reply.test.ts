@@ -15,6 +15,7 @@ import { CatalogService } from '../src/catalog/catalog.service.js';
 import type { Env } from '../src/config/env.js';
 import { APP_DB, type AppDatabase } from '../src/db/database.module.js';
 import { withTenantTransaction } from '../src/db/tenant-context.js';
+import { ReplyService } from '../src/inbox/reply.service.js';
 import { BOSS, QUEUES } from '../src/jobs/jobs.module.js';
 import { OutboundService } from '../src/messaging/outbound/outbound.service.js';
 import type { PresenceService } from '../src/messaging/outbound/presence.service.js';
@@ -644,6 +645,32 @@ describe('T2: re-verificación con la conversación bloqueada', () => {
     expect((await run(chat, messageId)).decision).toBe('skipped:ai_paused');
     expect(await outbox(chat)).toEqual([]);
     expect((await runs(chat))[0]).toMatchObject({ decision: 'skipped:ai_paused', cost_usd: '0.00020000' });
+  });
+
+  it('024: una persona responde desde el panel durante la llamada → la IA no contesta; el siguiente tampoco', async () => {
+    const chat = await setup();
+    const messageId = await addMessage(ctx, chat);
+    const replyFromPanel = () =>
+      withTenantTransaction(db.db, { tenantId: chat.tenantId, userId: chat.ownerId }, (tx) =>
+        ctx.app
+          .get(ReplyService)
+          .send(tx, { tenantId: chat.tenantId, userId: chat.ownerId, role: 'owner' }, chat.conversationId, {
+            body: 'Te atiendo yo',
+            idempotencyKey: crypto.randomUUID(),
+          }),
+      );
+    fake.respond = async () => {
+      await replyFromPanel();
+      return reply('Hola');
+    };
+    expect((await run(chat, messageId)).decision).toBe('skipped:ai_paused');
+    expect((await outbox(chat)).map((row) => row.sender_type)).toEqual(['user']);
+
+    // El cliente vuelve a escribir durante la pausa: la IA no corre (ni llama al modelo).
+    fake.respond = async () => reply('No debería');
+    const next = await addMessage(ctx, chat, { text: 'Dale, gracias' });
+    expect((await run(chat, next)).decision).toBe('skipped:ai_paused');
+    expect((await outbox(chat)).map((row) => row.sender_type)).toEqual(['user']);
   });
 
   it('llega otro entrante durante la llamada → superseded (lo procesa el trabajo del nuevo)', async () => {

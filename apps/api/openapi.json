@@ -358,6 +358,9 @@
               "lastReactivation"
             ]
           },
+          "reply": {
+            "$ref": "#/components/schemas/ReplyAvailability"
+          },
           "lastMessageAt": {
             "type": "string",
             "format": "date-time"
@@ -373,6 +376,7 @@
           "extractedData",
           "handoff",
           "ai",
+          "reply",
           "lastMessageAt"
         ]
       },
@@ -446,6 +450,43 @@
           "completeness"
         ]
       },
+      "ReplyAvailability": {
+        "type": "object",
+        "properties": {
+          "allowed": {
+            "type": "boolean"
+          },
+          "reason": {
+            "$ref": "#/components/schemas/ReplyBlockedReason"
+          },
+          "pausedUntil": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "allowed",
+          "reason",
+          "pausedUntil"
+        ]
+      },
+      "ReplyBlockedReason": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "enum": [
+          "no_inbound",
+          "window_expired",
+          "contact_blocked",
+          "channel_unavailable",
+          "channel_paused",
+          null
+        ]
+      },
       "MessageList": {
         "type": "object",
         "properties": {
@@ -499,19 +540,8 @@
               "null"
             ]
           },
-          "status": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "enum": [
-              "received",
-              "sent",
-              "delivered",
-              "read",
-              "failed",
-              null
-            ]
+          "delivery": {
+            "$ref": "#/components/schemas/Delivery"
           },
           "sentAt": {
             "type": "string",
@@ -525,9 +555,68 @@
           "sentByName",
           "type",
           "body",
-          "status",
+          "delivery",
           "sentAt"
         ]
+      },
+      "Delivery": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "sending",
+              "sent",
+              "delivered",
+              "read",
+              "failed",
+              "rejected"
+            ]
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "not_sent",
+                  "maybe_sent"
+                ]
+              },
+              {
+                "$ref": "#/components/schemas/ReplyBlockedReason"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "state",
+          "reason"
+        ]
+      },
+      "SendMessageBody": {
+        "type": "object",
+        "properties": {
+          "body": {
+            "type": "string",
+            "minLength": 1
+          },
+          "idempotencyKey": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "body",
+          "idempotencyKey"
+        ],
+        "additionalProperties": false
       },
       "ChannelList": {
         "type": "object",
@@ -1132,6 +1221,135 @@
             }
           },
           "404": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "sendMessage",
+        "tags": [
+          "panel"
+        ],
+        "summary": "Responde por WhatsApp desde el panel (idempotente por idempotencyKey). 409 con code si no se puede enviar",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SendMessageBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Message"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
             "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
             "content": {
               "application/json": {

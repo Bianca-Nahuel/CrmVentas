@@ -9,6 +9,8 @@ export type { GetConversation$Params as GetConversation$Params } from './fn/pane
 export { getConversation as getConversation } from './fn/panel/get-conversation';
 export type { ListMessages$Params as ListMessages$Params } from './fn/panel/list-messages';
 export { listMessages as listMessages } from './fn/panel/list-messages';
+export type { SendMessage$Params as SendMessage$Params } from './fn/panel/send-message';
+export { sendMessage as sendMessage } from './fn/panel/send-message';
 export type { MarkConversationRead$Params as MarkConversationRead$Params } from './fn/panel/mark-conversation-read';
 export { markConversationRead as markConversationRead } from './fn/panel/mark-conversation-read';
 export type { ReactivateAi$Params as ReactivateAi$Params } from './fn/panel/reactivate-ai';

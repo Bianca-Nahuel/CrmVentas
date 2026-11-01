@@ -6,6 +6,7 @@ import type { PgBoss } from 'pg-boss';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { APP_DB, type AppDatabase } from '../src/db/database.module.js';
 import { withTenantTransaction } from '../src/db/tenant-context.js';
+import { ReplyService } from '../src/inbox/reply.service.js';
 import { BOSS, QUEUES } from '../src/jobs/jobs.module.js';
 import { ECHO_RECHECK_MAX } from '../src/messaging/outbound/outbound.constants.js';
 import { OutboundService } from '../src/messaging/outbound/outbound.service.js';
@@ -163,6 +164,48 @@ describe('6. eco de un mensaje propio', () => {
       expect.objectContaining({ external_id: `true_${key}`, direction: 'outbound', sender_type: 'ai', body }),
     ]);
     expect((await conversationState(chat.conversationId)).ai_paused_until).toBeNull();
+  });
+
+  it('024: el eco de una respuesta del panel no la duplica ni cambia quién la mandó, ni mueve la pausa', async () => {
+    const chat = await freshChat();
+    const body = 'Te atiendo yo, Ana';
+    const sent = await withTenantTransaction(db.db, { tenantId: chat.tenantId, userId: chat.ownerId }, (tx) =>
+      ctx.app
+        .get(ReplyService)
+        .send(tx, { tenantId: chat.tenantId, userId: chat.ownerId, role: 'owner' }, chat.conversationId, {
+          body,
+          idempotencyKey: crypto.randomUUID(),
+        }),
+    );
+    const pausedBySend = (await conversationState(chat.conversationId)).ai_paused_until;
+    expect(pausedBySend).not.toBeNull();
+
+    const key = newKey();
+    const echoes = inbound();
+    const provider = new FakeProvider();
+    provider.sendResult = () => ({ ok: true, externalId: `true_${key}`, sentAt: new Date().toISOString() });
+    // Un eco mientras sale (se reprograma) y otro después (propio).
+    provider.duringSend = () => echoes.handle(echoEvent(chat, key, body));
+    const { boss } = fakeBoss();
+    const worker = new OutboundWorker(boss, registryWith(provider), db, {
+      sleep: async () => {},
+      random: () => 0.5,
+    });
+    expect(await worker.handle({ outboundId: sent.id, tenantId: chat.tenantId }, attempt())).toBe('enviado');
+    expect(echoes.sent).toHaveLength(1);
+    await echoes.handle(echoEvent(chat, key, body), 1);
+    await echoes.handle(echoEvent(chat, key, body));
+
+    expect(await messagesOf(chat.conversationId)).toEqual([
+      expect.objectContaining({
+        external_id: `true_${key}`,
+        direction: 'outbound',
+        sender_type: 'user',
+        sent_by_user_id: chat.ownerId,
+        body,
+      }),
+    ]);
+    expect((await conversationState(chat.conversationId)).ai_paused_until).toEqual(pausedBySend);
   });
 
   it('eco que coincide con un envío unknown_outcome → se confirma (sent) y, por las dudas, pausa', async () => {

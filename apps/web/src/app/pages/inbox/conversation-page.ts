@@ -10,7 +10,7 @@ import {
   untracked,
 } from '@angular/core';
 import { RouterLink } from '@angular/router';
-import { ArrowLeft, Bot, ChevronDown, FileQuestion, ShieldAlert } from 'lucide';
+import { ArrowLeft, Bot, ChevronDown, FileQuestion, RefreshCw, RotateCw, ShieldAlert } from 'lucide';
 import { filter, switchMap } from 'rxjs';
 import { InboxApi } from '../../api/inbox-api';
 import type { ConversationDetail, Message } from '../../api/generated';
@@ -26,6 +26,9 @@ import { Score } from '../../ui/score';
 import { NotifyService } from '../../ui/toast';
 import {
   AI_STATE_LABELS,
+  REPLY_BLOCKED_TEXT,
+  REPLY_CONFLICT_CODES,
+  deliveryHelp,
   MESSAGE_TYPE_LABELS,
   SENDER_LABELS,
   contactName,
@@ -34,19 +37,21 @@ import {
   reasonLabel,
   timeLabel,
 } from './format';
+import { DeliveryStatus } from './delivery-status';
 import { InboxReads } from './inbox-reads';
+import { ReplyBox } from './reply-box';
 
 const DESKTOP = '(min-width: 1024px)';
 
 /**
- * Conversación de solo lectura (tarea 014). Todo lo que viene de WhatsApp y el resumen de la IA son
- * contenido no confiable: se muestran por interpolación (texto), sin links ni formato. Responder desde el
- * panel llega con la 024.
+ * Conversación (tarea 014) con la respuesta desde el panel (024). Todo lo que viene de WhatsApp y el
+ * resumen de la IA son contenido no confiable: se muestran por interpolación (texto), sin links ni formato.
+ * El estado de los mensajes se actualiza con el refresco de 30 s o con Actualizar (el tiempo real es la 025).
  */
 @Component({
   selector: 'app-conversation-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink, Icon, Score],
+  imports: [RouterLink, Icon, Score, ReplyBox, DeliveryStatus],
   host: { class: 'flex flex-col lg:h-full lg:min-h-0' },
   template: `
     <a class="btn btn-ghost btn-sm mb-3 self-start lg:hidden" routerLink="/conversaciones">
@@ -72,7 +77,7 @@ const DESKTOP = '(min-width: 1024px)';
         Celular: todo apilado y el resumen desplegable.
       -->
       <div
-        class="flex flex-col gap-3 lg:min-h-0 lg:flex-1 xl:grid xl:grid-cols-[minmax(0,1fr)_288px] xl:grid-rows-[auto_minmax(0,1fr)] xl:gap-0"
+        class="flex flex-col gap-3 lg:min-h-0 lg:flex-1 xl:grid xl:grid-cols-[minmax(0,1fr)_288px] xl:grid-rows-[auto_minmax(0,1fr)_auto] xl:gap-0"
       >
         <header
           class="flex flex-wrap items-start justify-between gap-3 border-border lg:border-b lg:px-5 lg:pt-4 lg:pb-3 xl:col-start-1 xl:row-start-1"
@@ -85,19 +90,30 @@ const DESKTOP = '(min-width: 1024px)';
               {{ c.contact.waId }} · {{ c.channel.name }} ({{ c.channel.phoneNumber }})
             </p>
           </div>
-          <span
-            class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-sm font-semibold"
-            [class]="
-              c.ai.state === 'active' ? 'bg-success-soft text-success' : 'bg-warning-soft text-warning'
-            "
-            data-testid="ai-state"
-          >
-            <app-icon [icon]="botIcon" [size]="15" /> {{ aiLabel(c) }}
-          </span>
+          <div class="flex items-center gap-2">
+            <button
+              type="button"
+              class="btn btn-ghost btn-sm"
+              data-testid="refresh"
+              [disabled]="firstPage.isLoading()"
+              (click)="refresh()"
+            >
+              <app-icon [icon]="refreshIcon" [size]="16" /> Actualizar
+            </button>
+            <span
+              class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-sm font-semibold"
+              [class]="
+                c.ai.state === 'active' ? 'bg-success-soft text-success' : 'bg-warning-soft text-warning'
+              "
+              data-testid="ai-state"
+            >
+              <app-icon [icon]="botIcon" [size]="15" /> {{ aiLabel(c) }}
+            </span>
+          </div>
         </header>
 
         <aside
-          class="flex flex-col gap-3 lg:px-5 xl:col-start-2 xl:row-span-2 xl:row-start-1 xl:overflow-y-auto xl:border-l xl:border-border xl:p-4"
+          class="flex flex-col gap-3 lg:px-5 xl:col-start-2 xl:row-span-3 xl:row-start-1 xl:overflow-y-auto xl:border-l xl:border-border xl:p-4"
           aria-label="Datos del lead"
         >
           <app-score [score]="c.score" [level]="c.tier" variant="full" />
@@ -229,12 +245,33 @@ const DESKTOP = '(min-width: 1024px)';
                           {{ typeLabel(message) }} (todavía no se puede ver en el panel)
                         </p>
                       }
-                      <time
-                        class="tabular mt-0.5 block text-right text-[11px] text-subtle"
-                        [attr.datetime]="message.sentAt"
-                        [attr.title]="fullWhen(message.sentAt)"
-                        >{{ time(message.sentAt) }}</time
-                      >
+                      <div class="mt-0.5 flex items-center justify-end gap-2">
+                        <time
+                          class="tabular text-[11px] text-subtle"
+                          [attr.datetime]="message.sentAt"
+                          [attr.title]="fullWhen(message.sentAt)"
+                          >{{ time(message.sentAt) }}</time
+                        >
+                        @if (message.delivery; as d) {
+                          <app-delivery-status [delivery]="d" />
+                        }
+                      </div>
+                      @if (message.delivery; as d) {
+                        @if (deliveryHelp(d); as help) {
+                          <p class="mt-1 text-xs text-muted">{{ help }}</p>
+                        }
+                        @if (canRetry(message, c)) {
+                          <button
+                            type="button"
+                            class="btn btn-secondary btn-sm mt-1.5"
+                            data-testid="retry"
+                            [disabled]="retrying() === message.id"
+                            (click)="retry(message)"
+                          >
+                            <app-icon [icon]="retryIcon" [size]="15" /> Reintentar
+                          </button>
+                        }
+                      }
                     </div>
                   </div>
                 }
@@ -248,6 +285,20 @@ const DESKTOP = '(min-width: 1024px)';
             </div>
           </div>
         </div>
+
+        @if (canReply()) {
+          <!--
+            Celular: fija abajo (sticky dentro de la página, que es la que hace scroll) y con el margen del
+            área segura; el viewport se achica con el teclado (interactive-widget en index.html).
+            Escritorio: al pie de la columna del chat.
+          -->
+          <app-reply-box
+            class="sticky bottom-0 z-10 -mx-4 border-t border-border bg-bg px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:-mx-6 sm:px-6 lg:static lg:mx-0 lg:bg-surface lg:px-5 lg:pb-4 xl:col-start-1 xl:row-start-3"
+            [conversation]="c"
+            (sent)="onSent($event)"
+            (blocked)="detail.reload()"
+          />
+        }
       </div>
     } @else {
       <p class="p-5 text-muted">Cargando conversación…</p>
@@ -287,6 +338,12 @@ export class ConversationPage {
   });
   protected readonly loadingOlder = signal(false);
   protected readonly reactivating = signal(false);
+  /** Mensaje fallido que se está reenviando. */
+  protected readonly retrying = signal<string | null>(null);
+  /** Fallidos ya reenviados desde esta pantalla (el botón no se vuelve a ofrecer). */
+  private readonly retried = signal<ReadonlySet<string>>(new Set());
+  /** Clave del reintento de cada fallido, hasta que el servidor lo confirma. */
+  private readonly retryKeys = new Map<string, string>();
 
   protected readonly conversation = computed<ConversationDetail | null>(() =>
     this.detail.hasValue() ? this.detail.value() : null,
@@ -303,7 +360,8 @@ export class ConversationPage {
       [...this.older(), ...first].filter((m) => !seen.has(m.id) && seen.add(m.id) !== undefined),
     );
   });
-  protected readonly canReactivate = computed(() => can(this.auth.role(), { conversation: ['reply'] }));
+  protected readonly canReply = computed(() => can(this.auth.role(), { conversation: ['reply'] }));
+  protected readonly canReactivate = this.canReply;
   /** El resumen arranca abierto en el escritorio y cerrado en el celular. */
   protected readonly openSummary = globalThis.matchMedia?.(DESKTOP).matches ?? true;
 
@@ -312,6 +370,9 @@ export class ConversationPage {
   protected readonly alertIcon = ShieldAlert;
   protected readonly chevronIcon = ChevronDown;
   protected readonly notFoundIcon = FileQuestion;
+  protected readonly refreshIcon = RefreshCw;
+  protected readonly retryIcon = RotateCw;
+  protected readonly deliveryHelp = deliveryHelp;
   protected readonly fullWhen = fullWhen;
   protected readonly time = timeLabel;
   protected readonly reason = reasonLabel;
@@ -354,6 +415,75 @@ export class ConversationPage {
     if (this.notFound()) return;
     this.detail.reload();
     this.firstPage.reload();
+  }
+
+  /** Recién encolado: se ve al instante y se pide de nuevo la primera página (y el estado de la IA). */
+  protected onSent(message: Message) {
+    this.firstPage.update((page) =>
+      page && !page.items.some((m) => m.id === message.id)
+        ? { ...page, items: [...page.items, message] }
+        : page,
+    );
+    this.firstPage.reload();
+    this.detail.reload();
+    this.summary.refresh();
+  }
+
+  /**
+   * Solo lo que seguro no salió (nunca maybe_sent), si se puede responder y si todavía no se reenvió: ni
+   * desde esta pantalla ni con un mensaje posterior del equipo con el mismo texto (otra pestaña, otra
+   * persona). Así un segundo clic no le manda el texto dos veces al cliente.
+   */
+  protected canRetry(message: Message, c: ConversationDetail): boolean {
+    if (
+      !this.canReply() ||
+      !c.reply.allowed ||
+      message.senderType !== 'user' ||
+      message.delivery?.state !== 'failed' ||
+      message.delivery.reason !== 'not_sent' ||
+      !message.body ||
+      this.retried().has(message.id)
+    ) {
+      return false;
+    }
+    const items = this.groups().flatMap((group) => group.items);
+    const index = items.findIndex((m) => m.id === message.id);
+    return !items
+      .slice(index + 1)
+      .some((m) => m.senderType === 'user' && m.body === message.body && m.delivery?.state !== 'failed');
+  }
+
+  /**
+   * Reenviar es un envío nuevo: el fallido queda en el historial como "No se envió". La clave se guarda
+   * por mensaje hasta que el servidor confirma, así un reintento después de un corte no lo duplica.
+   */
+  protected retry(message: Message) {
+    if (!message.body) return;
+    const key = this.retryKeys.get(message.id) ?? crypto.randomUUID();
+    this.retryKeys.set(message.id, key);
+    this.retrying.set(message.id);
+    this.api.sendMessage(this.id(), message.body, key).subscribe({
+      next: (sent) => {
+        this.retrying.set(null);
+        this.retryKeys.delete(message.id);
+        this.retried.update((ids) => new Set(ids).add(message.id));
+        this.onSent(sent);
+      },
+      error: (cause: unknown) => {
+        this.retrying.set(null);
+        const status = cause instanceof HttpErrorResponse ? cause.status : null;
+        const code =
+          cause instanceof HttpErrorResponse ? (cause.error as { code?: unknown } | null)?.code : null;
+        const reason = typeof code === 'string' ? REPLY_CONFLICT_CODES[code] : undefined;
+        if (status === 409) this.retryKeys.delete(message.id);
+        if (reason) this.notify.show(REPLY_BLOCKED_TEXT[reason]);
+        // Sin conexión ya avisa el interceptor; 401/403 llevan a otra pantalla.
+        else if (status !== 0 && status !== 401 && status !== 403) {
+          this.notify.show('No pudimos reenviar el mensaje. Probá de nuevo en un momento.');
+        }
+        this.detail.reload();
+      },
+    });
   }
 
   protected align(message: Message): string {

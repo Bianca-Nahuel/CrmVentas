@@ -3,6 +3,7 @@
 
 import { ChannelRef } from '../models/channel-ref';
 import { ContactRef } from '../models/contact-ref';
+import { ReplyAvailability } from '../models/reply-availability';
 import { ScoreBreakdown } from '../models/score-breakdown';
 export interface ConversationDetail {
   ai: {
@@ -27,6 +28,7 @@ export interface ConversationDetail {
 } | null);
   id: string;
   lastMessageAt: string;
+  reply: ReplyAvailability;
   score: (number | null);
   scoreBreakdown: ScoreBreakdown | null;
   tier: ('hot' | 'warm' | 'cold' | null);

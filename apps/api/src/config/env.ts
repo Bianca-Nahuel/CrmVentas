@@ -60,6 +60,11 @@ const envSchema = z.object({
   WAHA_WEBHOOK_HMAC_KEY: z
     .string()
     .refine((value) => Buffer.byteLength(value, 'utf8') >= 32, 'tiene que tener al menos 32 bytes'),
+  // Solo para los e2e del panel: reemplaza a WAHA por un proveedor que no envía nada (prohibido en producción).
+  WHATSAPP_FAKE_PROVIDER: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((value) => value === 'true'),
   // IA (tarea 006). Interruptor general, apagado por defecto.
   AI_ENABLED: z
     .enum(['true', 'false'])
@@ -82,6 +87,13 @@ const envSchema = z.object({
 });
 
 const envSchemaWithRules = envSchema.superRefine((env, ctx) => {
+  if (env.WHATSAPP_FAKE_PROVIDER && env.NODE_ENV === 'production') {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['WHATSAPP_FAKE_PROVIDER'],
+      message: 'no se puede usar en producción',
+    });
+  }
   if (env.AI_ENABLED && !env.OPENROUTER_API_KEY) {
     ctx.addIssue({
       code: 'custom',

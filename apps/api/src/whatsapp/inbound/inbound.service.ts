@@ -15,11 +15,8 @@ import { APP_DB, type AppDatabase } from '../../db/database.module.js';
 import { channels, contacts, conversations, messages, outboundMessages } from '../../db/schema/messaging.js';
 import { withTenantTransaction, type AppTx } from '../../db/tenant-context.js';
 import { BOSS, QUEUES } from '../../jobs/jobs.module.js';
-import {
-  AI_PAUSE_AFTER_HUMAN_HOURS,
-  ECHO_RECHECK_MAX,
-  ECHO_RECONCILE_WINDOW_MS,
-} from '../../messaging/outbound/outbound.constants.js';
+import { ECHO_RECHECK_MAX, ECHO_RECONCILE_WINDOW_MS } from '../../messaging/outbound/outbound.constants.js';
+import { pauseAiAfterHuman } from '../../messaging/outbound/outbound.service.js';
 
 /**
  * guardado/duplicado: mensaje entrante. propio: eco de algo que mandó el sistema. reconciliado: eco que
@@ -294,7 +291,7 @@ export class InboundService {
         if (!messageId) return 'duplicado';
         // Igual se pausa: si en realidad lo escribió una persona con el mismo texto (un "Gracias"), la IA
         // no tiene que responderle encima. Equivocarse acá solo pausa la IA.
-        await this.pauseAi(tx, conversationId);
+        await pauseAiAfterHuman(tx, conversationId);
         return 'reconciliado';
       }
     }
@@ -304,17 +301,8 @@ export class InboundService {
       sentByUserId: null,
     });
     if (!messageId) return 'duplicado';
-    await this.pauseAi(tx, conversationId);
+    await pauseAiAfterHuman(tx, conversationId);
     return 'pausado';
-  }
-
-  private async pauseAi(tx: AppTx, conversationId: string): Promise<void> {
-    await tx
-      .update(conversations)
-      .set({
-        aiPausedUntil: sql`GREATEST(COALESCE(${conversations.aiPausedUntil}, now()), now() + make_interval(hours => ${AI_PAUSE_AFTER_HUMAN_HOURS}))`,
-      })
-      .where(eq(conversations.id, conversationId));
   }
 
   /** Mensaje saliente de un eco. Devuelve su id, o null si otro trabajo ya lo guardó. */

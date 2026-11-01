@@ -15,4 +15,6 @@ export interface ApiRoute {
   body?: z.ZodType;
   /** Respuesta 200. Sin respuesta: 204. */
   response?: z.ZodType;
+  /** Puede responder 409 con un code (por ejemplo, una regla de envío que no se cumple). */
+  conflict?: boolean;
 }

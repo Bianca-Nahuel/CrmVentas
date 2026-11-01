@@ -8,9 +8,12 @@ import {
   conversationParamsSchema,
   leadListQuerySchema,
   messageListQuerySchema,
+  sendMessageBodySchema,
   type LeadListQuery,
+  type SendMessageBody,
 } from './inbox.contracts.js';
 import { InboxService } from './inbox.service.js';
+import { ReplyService } from './reply.service.js';
 
 // Rutas y esquemas: inbox.contracts.ts y channels.contracts.ts (de ahí sale también el OpenAPI).
 // La visibilidad por número la aplica InboxService con ConversationScope; el rol, @RequirePermission.
@@ -19,7 +22,10 @@ const idParam = new ZodValidationPipe(conversationParamsSchema, { notFound: true
 
 @Controller()
 export class InboxController {
-  constructor(private readonly inbox: InboxService) {}
+  constructor(
+    private readonly inbox: InboxService,
+    private readonly replies: ReplyService,
+  ) {}
 
   @RequirePermission({ lead: ['read'] })
   @Get('leads')
@@ -46,6 +52,16 @@ export class InboxController {
     @Query(new ZodValidationPipe(messageListQuerySchema)) query: { before?: string; limit: number },
   ) {
     return this.inbox.listMessages(currentTx(), currentTenantContext(), params.id, query);
+  }
+
+  @RequirePermission({ conversation: ['reply'] })
+  @HttpCode(200)
+  @Post('conversations/:id/messages')
+  sendMessage(
+    @Param(idParam) params: { id: string },
+    @Body(new ZodValidationPipe(sendMessageBodySchema)) body: SendMessageBody,
+  ) {
+    return this.replies.send(currentTx(), currentTenantContext(), params.id, body);
   }
 
   @RequirePermission({ conversation: ['read'] })

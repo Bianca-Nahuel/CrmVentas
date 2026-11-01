@@ -8,6 +8,20 @@ _Última actualización: 2026-10-30 (tarea 014, bandeja y grilla de leads)_
 
 ## Hecho
 
+- **Tarea 024 (responder desde el panel):** hecha el 2026-11-01 en la rama `claude/responder-desde-panel`, que sale de `claude/bandeja-y-leads` con la 014 commiteada (`e0ed17a`). Ver el "Resultado" en `docs/tareas/hechas/024-responder-desde-el-panel.md` y las decisiones #83 a #87.
+  - **Qué hay:**
+    - `POST /api/conversations/:id/messages`, idempotente y con 409 por cada regla de envío;
+    - pausa de la IA y cancelación de sus respuestas en cola;
+    - estado de cada mensaje (`delivery`) y `reply` en el detalle;
+    - caja de respuesta, Reintentar y Actualizar en el panel;
+    - proveedor de WhatsApp falso para los e2e y los tests (`WHATSAPP_FAKE_PROVIDER`).
+  - **Verificación:** API 653/653, panel 83/83, e2e y lint, typecheck y build OK. Los dos revisores aprobaron.
+  - **Capturas:** aprobadas por el usuario.
+  - **Falta:** la prueba real con WAHA (con el OK del usuario).
+  - **Al commitear:** dejar afuera `tools/panel-pruebas/empresas.local.json` y `.claude/launch.json`.
+  - **Al mergear con la 010:** la `0018_outbound_superseded` es igual a su `0014_outbound_superseded`, así que queda una sola. Renumerar las migraciones 0014 a 0018 de esta rama.
+  - **El seed ahora pausa los envíos de `sucursal-norte`** (riesgo de bloqueo), para mostrar el aviso.
+
 - Tarea 014 (bandeja y grilla de leads): hecha el 2026-10-30 en la rama `claude/bandeja-y-leads`. Ver el "Resultado" en `docs/tareas/hechas/014-bandeja-y-grilla-de-leads.md` y las decisiones #76 a #82.
   - **Qué hay:** grilla de leads, bandeja con la conversación (solo lectura), reactivar la IA, números y vendedores, visibilidad por número (servicio + RLS) y cliente OpenAPI generado.
   - **Verificación:** API 626/626, panel 72/72, e2e 65/65, y lint, typecheck y build OK. Bundle inicial de 491,7 kB, con tabla nativa (#81). Los dos revisores aprobaron y el usuario aprobó las capturas.
@@ -60,7 +74,8 @@ _Última actualización: 2026-10-30 (tarea 014, bandeja y grilla de leads)_
 
 ## Siguiente
 
-- **Commit de la 014** (propuesto, sin hacer) y después la 024 (responder desde el panel; puede usar `ConversationScope`, ya exportado) y la 025 (tiempo real; reemplaza el refresco de 30 s).
+- **Commit de la 024** (propuesto) y la prueba real con WAHA, con el OK del usuario. Después, la 025 (tiempo real; reemplaza el refresco de 30 s y el botón Actualizar). El prompt de la 025 ya se le pasó al usuario.
+- **Seguimiento de la 024 (BAJO de seguridad):** con `dev:api` normal (WAHA real), responder a un lead del seed podría salir a un número inventado. Opción: que el seed deje el canal principal desconectado salvo que se pida otra cosa.
 
 - **Commit de la 023:**
   - va con `package-lock.json`, que lleva las dependencias nuevas del panel;

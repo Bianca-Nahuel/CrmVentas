@@ -129,6 +129,39 @@ for (const theme of THEMES) {
         await shot(page, '15-leads-sin-numeros');
       });
 
+      // Tarea 024: caja de respuesta (con borrador), estados de los mensajes, número pausado y ventana
+      // vencida. No se envía nada: el borrador queda escrito para la captura.
+      const openConversation = async (page: Page, name: string) => {
+        await login(page, USERS.ownerCeramicos);
+        await expectInLayout(page, 'Cerámicos Demo');
+        await page.goto('/conversaciones');
+        await page.getByTestId('inbox-item').filter({ hasText: name }).click();
+        await expect(page.getByTestId('conversation-title')).toHaveText(name);
+        await expect(page.getByTestId('message').first()).toBeVisible();
+      };
+
+      test('responder: caja y estados de los mensajes', async ({ page }) => {
+        await openConversation(page, 'Carla Estados');
+        await expect(page.getByTestId('delivery').first()).toBeVisible();
+        await page
+          .getByTestId('reply-input')
+          .fill('Sí, te las reservo hasta el viernes.\n¿Te paso el total?');
+        await shot(page, '16-responder-estados');
+        if (size.width < 1024) await shot(page, '16b-responder-estados-completa', true);
+      });
+
+      test('responder: número con los envíos pausados', async ({ page }) => {
+        await openConversation(page, 'Sofía Herrera');
+        await expect(page.getByTestId('reply-blocked')).toBeVisible();
+        await shot(page, '17-responder-numero-pausado');
+      });
+
+      test('responder: más de 24 h sin mensajes del cliente', async ({ page }) => {
+        await openConversation(page, 'Diego Ventana');
+        await expect(page.getByTestId('reply-blocked')).toBeVisible();
+        await shot(page, '18-responder-ventana-vencida');
+      });
+
       test('sistema de diseño', async ({ page }) => {
         await page.goto('/dev/diseno');
         await expect(page.getByRole('heading', { name: 'Sistema de diseño' })).toBeVisible();

@@ -49,6 +49,14 @@ describe('parseEnv', () => {
     }
   });
 
+  it('el WhatsApp falso de los e2e está apagado por defecto y prohibido en producción', () => {
+    expect(parseEnv(BASE).WHATSAPP_FAKE_PROVIDER).toBe(false);
+    expect(parseEnv({ ...BASE, WHATSAPP_FAKE_PROVIDER: 'true' }).WHATSAPP_FAKE_PROVIDER).toBe(true);
+    expect(() => parseEnv({ ...BASE, NODE_ENV: 'production', WHATSAPP_FAKE_PROVIDER: 'true' })).toThrow(
+      /WHATSAPP_FAKE_PROVIDER/,
+    );
+  });
+
   it('una URL mal formada da error de validación con el nombre, nunca el valor', () => {
     for (const name of ['WAHA_WEBHOOK_URL', 'WAHA_BASE_URL', 'BETTER_AUTH_URL', 'TRUSTED_ORIGINS']) {
       let message = '';

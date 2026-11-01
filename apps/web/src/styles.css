@@ -165,6 +165,12 @@
   .input[aria-invalid='true'] {
     border-color: var(--error);
   }
+  .input:disabled {
+    cursor: not-allowed;
+    background: var(--surface-2);
+    border-color: var(--border);
+    color: var(--text-muted);
+  }
 
   /* Tarjetas */
   .card {

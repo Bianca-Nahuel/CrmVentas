@@ -47,6 +47,7 @@ export function buildDocument() {
         401: errorSchema,
         403: errorSchema,
         404: errorSchema,
+        ...(route.conflict ? { 409: errorSchema } : {}),
       },
     });
   }
