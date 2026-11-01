@@ -7,10 +7,12 @@ test.describe('login y empresa activa', () => {
     await login(page, USERS.ownerCeramicos);
     await expect(page).toHaveURL('/conversaciones');
     await expectInLayout(page, 'Cerámicos Demo');
+    // Leads puede llevar el número de derivadas sin atender (tarea 014).
     await expect(navLinks(page)).toHaveText([
       'Conversaciones',
-      'Leads',
+      /^Leads/,
       'Canales',
+      'Números y vendedores',
       'Catálogo',
       'Configuración del agente',
       'Consumo',
@@ -85,7 +87,7 @@ test.describe('login y empresa activa', () => {
     await login(page, USERS.multi);
     await page.getByRole('button', { name: /Cerámicos Demo/ }).click();
     await expectInLayout(page, 'Cerámicos Demo');
-    await expect(navLinks(page)).toHaveText(['Conversaciones', 'Leads']);
+    await expect(navLinks(page)).toHaveText(['Conversaciones', /^Leads/]);
     for (const path of ['/canales', '/catalogo', '/agente', '/consumo']) {
       await page.goto(path);
       await expect(page, path).toHaveURL('/sin-acceso');

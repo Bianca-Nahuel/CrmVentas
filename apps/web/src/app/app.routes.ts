@@ -1,8 +1,17 @@
-import type { Routes } from '@angular/router';
+import type { Route, Routes } from '@angular/router';
 import { authGuard, guestGuard, homeGuard, permissionGuard, tenantGuard } from './core/auth/guards';
 import { NAV_ITEMS } from './core/nav';
 import { DEV_ROUTES } from './dev/dev.routes';
 import { Shell } from './pages/layout/shell';
+
+// Secciones que ya tienen su pantalla (tarea 014), todas del mismo módulo lazy (ver inbox.routes.ts).
+// El resto muestra "próximamente".
+const SECTIONS: Record<string, Pick<Route, 'loadChildren'>> = {
+  leads: { loadChildren: () => import('./pages/inbox.routes').then((m) => m.LEADS_ROUTES) },
+  conversaciones: { loadChildren: () => import('./pages/inbox.routes').then((m) => m.INBOX_ROUTES) },
+  numeros: { loadChildren: () => import('./pages/inbox.routes').then((m) => m.CHANNEL_MEMBERS_ROUTES) },
+};
+const comingSoon = () => import('./pages/coming-soon/coming-soon-page').then((m) => m.ComingSoonPage);
 
 export const routes: Routes = [
   {
@@ -35,7 +44,7 @@ export const routes: Routes = [
         title: item.label,
         canActivate: [permissionGuard(item.permission)],
         data: { section: item },
-        loadComponent: () => import('./pages/coming-soon/coming-soon-page').then((m) => m.ComingSoonPage),
+        ...(SECTIONS[item.path] ?? { loadComponent: comingSoon }),
       })),
     ],
   },

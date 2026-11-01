@@ -8,7 +8,8 @@
     "build": "ng build",
     "typecheck": "tsc -p tsconfig.app.json --noEmit && tsc -p tsconfig.spec.json --noEmit && tsc -p tsconfig.e2e.json --noEmit",
     "test": "ng test --watch=false",
-    "e2e": "playwright test"
+    "e2e": "playwright test",
+    "api:client": "ng-openapi-gen -c ng-openapi-gen.json"
   },
   "dependencies": {
     "@angular/cdk": "22.2.5",
@@ -33,6 +34,7 @@
     "@tailwindcss/postcss": "4.3.3",
     "angular-eslint": "22.6.0",
     "jsdom": "30.1.3",
+    "ng-openapi-gen": "1.1.0",
     "postcss": "8.5.32",
     "tailwindcss": "4.3.3",
     "vitest": "5.0.5"

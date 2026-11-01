@@ -36,7 +36,7 @@ import {
   testConfigInput,
   withAvailabilityAfterFields,
 } from './ai-helpers.js';
-import { asApp, errorCodeIn, startTestContext, type TestContext } from './helpers.js';
+import { asApp, errorCodeIn, HttpClient, startTestContext, type TestContext } from './helpers.js';
 import { createChannelTenant, createChat, uid, type Chat } from './outbound-helpers.js';
 import type { TenantConfigInput } from '@ventas/shared';
 
@@ -365,7 +365,7 @@ describe('5 y 6. disparadores', () => {
     fake.respond = () => reply('Sí, lo tenemos', { triggers: ['availability'] });
     expect((await run(chat, messageId)).decision).toBe('handed_off');
     expect(await outbox(chat)).toMatchObject([
-      { sender_type: 'app', body: MSG_IN_HOURS, idempotency_key: `handoff:${chat.conversationId}` },
+      { sender_type: 'app', body: MSG_IN_HOURS, idempotency_key: `handoff:${chat.conversationId}:0` },
     ]);
     expect(await conversation(chat)).toMatchObject({ handoff_reason: 'availability' });
   });
@@ -537,6 +537,96 @@ describe('entrantes sin texto', () => {
     const messageId = await addMessage(ctx, chat, { text: null, type: 'audio' });
     expect((await run(chat, messageId)).decision).toBe('handed_off');
     expect((await outbox(chat)).map((r) => r.body)).toEqual([MSG_IN_HOURS]);
+  });
+});
+
+describe('reactivar la IA (tarea 014)', () => {
+  /** POST /api/conversations/:id/reactivate-ai como el owner de la empresa del chat. */
+  async function reactivate(chat: Chat) {
+    const { rows } = await ctx.ownerPool.query<{ email: string }>('SELECT email FROM users WHERE id = $1', [
+      chat.ownerId,
+    ]);
+    const client = new HttpClient(ctx);
+    expect((await client.signIn(rows[0]!.email)).status).toBe(200);
+    await client.post('/api/auth/organization/set-active', { organizationId: chat.tenantId });
+    const response = await client.post(`/api/conversations/${chat.conversationId}/reactivate-ai`);
+    expect(response.status).toBe(200);
+    return response.body;
+  }
+
+  it('derivar → reactivar → la IA responde el próximo → derivar otra vez → dos textos fijos', async () => {
+    const chat = await setup();
+    const first = await addMessage(ctx, chat, { text: '¿tienen el 60x60 gris?' });
+    fake.respond = () => reply('Sí', { triggers: ['availability'] });
+    expect((await run(chat, first)).decision).toBe('handed_off');
+    await deliver(chat);
+
+    expect(await reactivate(chat)).toMatchObject({ handoff: null, ai: { state: 'active' } });
+    expect(await conversation(chat)).toMatchObject({ handed_off_at: null, handoff_reason: null });
+
+    const second = await addMessage(ctx, chat, { text: 'es para el baño' });
+    fake.respond = () => reply('¿Cuántos m² necesitás?');
+    expect((await run(chat, second)).decision).toBe('replied');
+    await deliver(chat);
+
+    const third = await addMessage(ctx, chat, { text: '¿y lo tienen para hoy?' });
+    fake.respond = () => reply('Sí', { triggers: ['availability'] });
+    expect((await run(chat, third)).decision).toBe('handed_off');
+
+    const fixed = (await outbox(chat)).filter((row) => row.sender_type === 'app');
+    expect(fixed.map((row) => [row.body, row.idempotency_key])).toEqual([
+      [MSG_IN_HOURS, `handoff:${chat.conversationId}:0`],
+      [MSG_IN_HOURS, `handoff:${chat.conversationId}:1`],
+    ]);
+  });
+
+  it('unsupported_media ask_text: después de reactivar vuelve a pedir texto una vez', async () => {
+    const chat = await setup();
+    const audio1 = await addMessage(ctx, chat, { text: null, type: 'audio' });
+    expect((await run(chat, audio1)).decision).toBe('asked_text');
+    await deliver(chat);
+    const audio2 = await addMessage(ctx, chat, { text: null, type: 'audio' });
+    expect((await run(chat, audio2)).decision).toBe('handed_off');
+    await deliver(chat);
+
+    await reactivate(chat);
+    const audio3 = await addMessage(ctx, chat, { text: null, type: 'image' });
+    expect((await run(chat, audio3)).decision).toBe('asked_text');
+
+    const keys = (await outbox(chat)).map((row) => [row.body, row.idempotency_key]);
+    expect(keys).toEqual([
+      [MEDIA_ASK, `media-ask:${chat.conversationId}:0`],
+      [MSG_IN_HOURS, `handoff:${chat.conversationId}:0`],
+      [MEDIA_ASK, `media-ask:${chat.conversationId}:1`],
+    ]);
+  });
+
+  it('lead caliente con los turnos agotados: reactivar reinicia los contadores y la IA vuelve a calificar', async () => {
+    const chat = await setup();
+    await ctx.ownerPool.query(
+      `UPDATE conversations SET handed_off_at = now(), handoff_reason = 'hot_turns', qualification_turns = 6,
+         hot_turns = 2 WHERE id = $1`,
+      [chat.conversationId],
+    );
+    await reactivate(chat);
+    expect(await conversation(chat)).toMatchObject({ qualification_turns: 0, hot_turns: 0 });
+    const { rows } = await ctx.ownerPool.query(
+      'SELECT type, data FROM conversation_events WHERE conversation_id = $1',
+      [chat.conversationId],
+    );
+    expect(rows).toMatchObject([
+      {
+        type: 'ai_reactivated',
+        data: {
+          previous_handoff_reason: 'hot_turns',
+          previous_qualification_turns: 6,
+          previous_hot_turns: 2,
+        },
+      },
+    ]);
+    const messageId = await addMessage(ctx, chat, { text: 'quiero porcelanato para el living' });
+    fake.respond = () => reply('¿Cuántos m² son?', { signals: signals(config, 5) });
+    expect((await run(chat, messageId)).decision).toBe('replied');
   });
 });
 

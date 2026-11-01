@@ -10,9 +10,11 @@ export const statement = {
   // Recursos propios de Better Auth (organization, member, invitation, team, ac)
   ...defaultStatements,
   // Recursos del producto
-  channel: ['read', 'connect', 'disconnect'],
+  // assign: elegir qué vendedores atienden cada número (tarea 014).
+  channel: ['read', 'connect', 'disconnect', 'assign'],
   config: ['read', 'update'],
   catalog: ['read', 'import', 'update'],
+  // read_all: las conversaciones de todos los números, no solo los asignados.
   lead: ['read', 'read_all', 'update', 'assign'],
   conversation: ['read', 'read_all', 'reply'],
   metrics: ['read'],
@@ -24,7 +26,7 @@ export const statement = {
 export const ac: AccessControl<typeof statement> = createAccessControl(statement);
 
 const productFull = {
-  channel: ['read', 'connect', 'disconnect'],
+  channel: ['read', 'connect', 'disconnect', 'assign'],
   config: ['read', 'update'],
   catalog: ['read', 'import', 'update'],
   lead: ['read', 'read_all', 'update', 'assign'],
@@ -48,10 +50,11 @@ export const admin = ac.newRole({
   invitation: ['create', 'cancel'],
 });
 
-// "Los suyos o todos" depende de la configuración de la empresa: read_all se evalúa en servicios.
+// Ve solo las conversaciones de los números que tiene asignados (channel_members), salvo que la empresa
+// active inbox.sellers_see_all_channels: eso lo evalúan ConversationScope y la RLS (0015), no este rol.
 export const seller = ac.newRole({
-  lead: ['read', 'read_all', 'update'],
-  conversation: ['read', 'read_all', 'reply'],
+  lead: ['read', 'update'],
+  conversation: ['read', 'reply'],
   catalog: ['read'],
 });
 
@@ -60,3 +63,17 @@ export const viewer = ac.newRole({
 });
 
 export const tenantRoles = { owner, admin, seller, viewer };
+
+type Statement = typeof statement;
+/** Un permiso: { recurso: [acciones] }. */
+export type TenantPermission = { [R in keyof Statement]?: Statement[R][number][] };
+
+/**
+ * ¿El rol tiene el permiso? La misma regla para la API (que decide) y el panel (que solo oculta).
+ * Un rol desconocido no tiene ningún permiso.
+ */
+export function roleCan(role: string | null | undefined, permission: TenantPermission): boolean {
+  if (!role || !Object.hasOwn(tenantRoles, role)) return false;
+  const definition = tenantRoles[role as TenantRole];
+  return definition.authorize(permission as Parameters<typeof definition.authorize>[0]).success;
+}

@@ -4,7 +4,7 @@ paths: ['apps/web/**']
 
 - Angular con componentes standalone y signals. SPA (sin SSR) detrás del login. Zoneless y `OnPush` en todos los componentes.
 - **El front solo oculta lo que no corresponde; quien decide es el backend.** Guards, menú y botones usan los permisos de `libs/shared` para no mostrar lo que el rol no puede hacer, pero cada endpoint valida por su cuenta. Nunca confiar en que algo "no se ve" como control de acceso.
-- Hasta que la API exponga OpenAPI (tarea 014), los tipos de las respuestas van en `libs/shared` (`@ventas/shared/auth` y similares) y los servicios HTTP se escriben a mano, chicos y tipados. En la 014 se suma el generador de cliente.
+- Los tipos y las llamadas a la API salen del cliente generado desde el OpenAPI (`apps/web/src/app/api/generated/`, `npm run api:generate`; nunca se edita a mano) y se usan desde servicios chicos como `api/inbox-api.ts`. Un endpoint nuevo se describe en los contratos zod de la API (`*.contracts.ts`). `libs/shared` queda para permisos y `/api/me/*`.
 - En el navegador se importa de los subpaths livianos de `libs/shared` (por ejemplo `@ventas/shared/auth`), no del índice: el índice arrastra zod y las configuraciones de la IA.
 - Nunca guardar tokens ni datos de la sesión en `localStorage`/`sessionStorage`: la sesión es solo la cookie `HttpOnly`. En `localStorage` solo van preferencias visuales (el tema).
 - Prohibido `innerHTML`/`outerHTML` y `bypassSecurityTrust*`: los mensajes de WhatsApp y todo lo que viene del servidor es contenido no confiable y se muestra como texto. Lo controla ESLint (`tools/eslint/security-plugin.mjs`).

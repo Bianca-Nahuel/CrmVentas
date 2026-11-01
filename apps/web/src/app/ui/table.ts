@@ -9,9 +9,9 @@ export interface SortState {
 }
 
 /**
- * Encabezado ordenable para cdk-table. El orden lo aplica quien carga los datos (en la 014, el servidor):
- * este componente solo muestra el estado y avisa el cambio.
- *   <th cdk-header-cell *cdkHeaderCellDef [attr.aria-sort]="ariaSort(sort, 'score')">
+ * Encabezado ordenable para una tabla (nativa en Leads, decisión #81; o cdk-table). El orden lo aplica quien
+ * carga los datos (en la 014, el servidor): este componente solo muestra el estado y avisa el cambio.
+ *   <th scope="col" [attr.aria-sort]="ariaSort(sort, 'score')">
  *     <app-sort-header column="score" label="Puntaje" [sort]="sort()" (sortChange)="…" />
  */
 @Component({

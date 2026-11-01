@@ -99,6 +99,34 @@
       "when": 1793050438378,
       "tag": "0013_catalog_url_ascii",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1793365743661,
+      "tag": "0014_inbox_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1793365748557,
+      "tag": "0015_inbox_permissions_rls",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1793406206181,
+      "tag": "0016_conversation_reads",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1793406212343,
+      "tag": "0017_conversation_reads_rls",
+      "breakpoints": true
     }
   ]
 }

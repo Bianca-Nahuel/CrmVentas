@@ -6,6 +6,8 @@ import { toSignal } from '@angular/core/rxjs-interop';
 import { RouterOutlet } from '@angular/router';
 import { Menu, X } from 'lucide';
 import { map } from 'rxjs';
+import { InboxSummary } from '../../core/inbox-summary';
+import { pollWhileVisible } from '../../core/poll';
 import { BrandMark } from '../../ui/brand-mark';
 import { Icon } from '../../ui/icon';
 import { SideNav } from './side-nav';
@@ -104,6 +106,14 @@ export class Shell {
   );
 
   protected readonly menuIcon = Menu;
+
+  constructor() {
+    // El número de derivadas sin atender del menú, hasta el tiempo real (025).
+    const summary = inject(InboxSummary);
+    summary.refresh();
+    pollWhileVisible(() => summary.refresh());
+  }
+
   protected readonly closeIcon = X;
 
   protected openDrawer() {

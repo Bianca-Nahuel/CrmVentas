@@ -14,10 +14,12 @@ import { APP_DB, type AppDatabase } from '../db/database.module.js';
 import { memberships, tenants } from '../db/schema/auth.js';
 import { setDbContext } from '../db/tenant-context.js';
 import type { Auth } from './auth.js';
-import { NO_TENANT_KEY, PUBLIC_KEY } from './decorators.js';
+import { roleCan, type TenantPermission } from '@ventas/shared';
+import { NO_TENANT_KEY, PERMISSION_KEY, PUBLIC_KEY } from './decorators.js';
 import type { AuthenticatedRequest } from './request.js';
 
-// Guard global. Orden: sesión (401) → empresa activa (403) → membresía activa en esa empresa (403).
+// Guard global. Orden: sesión (401) → empresa activa (403) → membresía activa en esa empresa (403) →
+// permiso del rol si el endpoint tiene @RequirePermission (403).
 // La membresía se lee como ventas_app, con RLS, en una transacción corta con el contexto seteado.
 // La transacción del request la abre después TenantTransactionInterceptor (un guard no puede
 // envolver la ejecución del handler).
@@ -61,6 +63,14 @@ export class TenantGuard implements CanActivate {
     if (membership.tenantStatus !== 'active') throw new ForbiddenException({ code: 'TENANT_SUSPENDED' });
 
     request.tenantContext = { userId, tenantId, role: membership.role };
+
+    const permission = this.reflector.getAllAndOverride<TenantPermission | undefined>(
+      PERMISSION_KEY,
+      targets,
+    );
+    if (permission && !roleCan(membership.role, permission)) {
+      throw new ForbiddenException({ code: 'FORBIDDEN_ROLE' });
+    }
     return true;
   }
 }

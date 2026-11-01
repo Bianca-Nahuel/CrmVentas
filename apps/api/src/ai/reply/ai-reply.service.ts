@@ -409,7 +409,10 @@ export class AiReplyService {
     return { outboundId: result.outboundId, created: result.created, rejected: result.status === 'rejected' };
   }
 
-  /** Deriva: marca la conversación y manda el texto fijo de la empresa, una sola vez por conversación. */
+  /**
+   * Deriva: marca la conversación y manda el texto fijo de la empresa, una sola vez por conversación y por
+   * reactivación (tarea 014): después de volver a activar la IA, una derivación nueva lo vuelve a mandar.
+   */
   private async handOff(
     tx: AppTx,
     job: AiReplyJob,
@@ -428,7 +431,7 @@ export class AiReplyService {
         conversationId: job.conversationId,
         body: isOpen ? config.handoff.message_in_hours : config.handoff.message_after_hours,
         senderType: 'app',
-        idempotencyKey: `handoff:${job.conversationId}`,
+        idempotencyKey: `handoff:${job.conversationId}:${await this.reactivations(tx, job.conversationId)}`,
         typingSince,
       },
       tx,
@@ -451,7 +454,7 @@ export class AiReplyService {
           conversationId: job.conversationId,
           body: media.message,
           senderType: 'app',
-          idempotencyKey: `media-ask:${job.conversationId}`,
+          idempotencyKey: `media-ask:${job.conversationId}:${await this.reactivations(tx, job.conversationId)}`,
         },
         tx,
       );
@@ -658,9 +661,24 @@ export class AiReplyService {
     return result.rows.length > 0;
   }
 
+  /** Corridas con esa decisión desde la última reactivación de la IA (o desde el principio). */
   private async countRuns(tx: AppTx, conversationId: string, decision: string): Promise<number> {
     const result = await tx.execute<{ n: number }>(sql`
-      SELECT count(*)::int AS n FROM ai_runs WHERE conversation_id = ${conversationId} AND decision = ${decision}
+      SELECT count(*)::int AS n FROM ai_runs
+      WHERE conversation_id = ${conversationId} AND decision = ${decision}
+        AND created_at > COALESCE((
+          SELECT max(e.created_at) FROM conversation_events e
+          WHERE e.conversation_id = ${conversationId} AND e.type = 'ai_reactivated'
+        ), '-infinity')
+    `);
+    return result.rows[0]?.n ?? 0;
+  }
+
+  /** Cuántas veces se reactivó la IA en la conversación: va en las claves de los textos fijos. */
+  private async reactivations(tx: AppTx, conversationId: string): Promise<number> {
+    const result = await tx.execute<{ n: number }>(sql`
+      SELECT count(*)::int AS n FROM conversation_events
+      WHERE conversation_id = ${conversationId} AND type = 'ai_reactivated'
     `);
     return result.rows[0]?.n ?? 0;
   }

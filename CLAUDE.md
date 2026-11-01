@@ -19,7 +19,8 @@ cerámicos (Lecer), pero **nada de un negocio puntual va en el código**: todo s
 - Instalar: `npm install` (raíz; workspaces `apps/*`, `libs/*`)
 - API en desarrollo: `npm run dev:api` (http://localhost:3000/api) · build: `npm run build` (API + panel)
 - Panel en desarrollo: `npm run dev:web` (http://localhost:4200, proxy `/api` → :3000; sistema de diseño en `/dev/diseno`, solo desarrollo) · `npm run build:web` · `npm run test:web` (Vitest) · `npm run e2e:web` (Playwright contra la API real con el seed)
-- Calidad: `npm run test` (e2e de la API contra el Postgres local + unitarios del panel) · `npm run lint` (incluye el chequeo de las reglas de seguridad del panel) · `npm run typecheck` · `npm run format`
+- Cliente de la API: `npm run api:generate` (OpenAPI desde los contratos zod de la API → cliente del panel en `apps/web/src/app/api/generated/`)
+- Calidad: `npm run test` (e2e de la API contra el Postgres local + unitarios del panel) · `npm run lint` (incluye el chequeo de las reglas de seguridad del panel y que el cliente de la API esté al día) · `npm run typecheck` · `npm run format`
 - Base: `npm run db:generate` (nueva migración desde el schema de Drizzle; `-- --custom` para SQL a mano) · `npm run db:migrate` (corre como `ventas_owner`) · `npm run db:seed` (datos de prueba, nunca en producción)
 - El `.env` de la raíz lo cargan solos la app, los tests, el seed y drizzle-kit (`apps/api/src/config/load-env.ts`), salvo con `NODE_ENV=production`
 

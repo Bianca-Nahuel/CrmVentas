@@ -1,19 +1,25 @@
-import { tenantRoles, type TenantRole, type statement } from '@ventas/shared/auth';
-import { Bot, ChartColumn, Gauge, MessagesSquare, Package, RadioTower, Users, type IconNode } from 'lucide';
+import { roleCan, type TenantPermission, type TenantRole } from '@ventas/shared/auth';
+import {
+  Bot,
+  ChartColumn,
+  Gauge,
+  MessagesSquare,
+  Package,
+  RadioTower,
+  UserCog,
+  Users,
+  type IconNode,
+} from 'lucide';
 
-type Statement = typeof statement;
 /** Un permiso de libs/shared: { recurso: [acciones] }. */
-export type Permission = { [R in keyof Statement]?: Statement[R][number][] };
+export type Permission = TenantPermission;
 
 /**
  * ¿El rol tiene el permiso? Usa los mismos roles de Better Auth que la API (libs/shared). Solo sirve para
  * ocultar lo que no corresponde: quien decide es el backend.
  */
 export function can(role: TenantRole | null | undefined, permission: Permission): boolean {
-  if (!role) return false;
-  const definition = tenantRoles[role];
-  if (!definition) return false;
-  return definition.authorize(permission as Parameters<typeof definition.authorize>[0]).success;
+  return roleCan(role, permission);
 }
 
 export interface NavItem {
@@ -46,6 +52,13 @@ export const NAV_ITEMS: readonly NavItem[] = [
     icon: RadioTower,
     permission: { channel: ['read'] },
     soon: 'Acá vas a conectar los números de WhatsApp de la empresa.',
+  },
+  {
+    path: 'numeros',
+    label: 'Números y vendedores',
+    icon: UserCog,
+    permission: { channel: ['assign'] },
+    soon: 'Acá elegís qué vendedores atienden cada número.',
   },
   {
     path: 'catalogo',

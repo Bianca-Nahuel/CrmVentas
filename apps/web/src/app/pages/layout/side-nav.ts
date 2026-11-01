@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, inject, output } from '@angular/core';
 import { RouterLink, RouterLinkActive } from '@angular/router';
 import { AuthService } from '../../core/auth/auth.service';
+import { InboxSummary } from '../../core/inbox-summary';
 import { navFor } from '../../core/nav';
 import { Icon } from '../../ui/icon';
 
@@ -23,6 +24,14 @@ import { Icon } from '../../ui/icon';
             >
               <app-icon [icon]="item.icon" [size]="19" />
               <span class="truncate">{{ item.label }}</span>
+              @if (item.path === 'leads' && pending() > 0) {
+                <span
+                  class="tabular ml-auto rounded-full bg-warning-soft px-2 text-xs font-bold text-warning"
+                  data-testid="pending-handoffs"
+                  ><span aria-hidden="true">{{ pending() }}</span
+                  ><span class="sr-only">, {{ pendingText() }}</span></span
+                >
+              }
             </a>
           </li>
         }
@@ -46,4 +55,8 @@ export class SideNav {
   /** Se eligió una sección (el cajón del celular se cierra). */
   readonly navigate = output();
   protected readonly items = computed(() => navFor(this.auth.role()));
+  protected readonly pending = inject(InboxSummary).pendingHandoffs;
+  protected readonly pendingText = computed(() =>
+    this.pending() === 1 ? '1 derivada sin atender' : `${this.pending()} derivadas sin atender`,
+  );
 }

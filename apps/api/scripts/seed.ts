@@ -3,7 +3,8 @@
 // contraseñas se hashean igual que en un registro real y las empresas se crean como acción de sistema
 // (los usuarios comunes no pueden crear empresas). Los datos de mensajería (un canal, un contacto, una
 // conversación y dos mensajes por empresa) van por el pool de ventas_app con app.tenant_id, como lo
-// hará el webhook. Es idempotente.
+// hará el webhook. Cerámicos suma un segundo número, leads de demo para la bandeja y multi@ asignado al
+// número principal (tarea 014). Es idempotente.
 //
 // Credenciales y números SOLO de desarrollo (dominio reservado .test, teléfonos ficticios). Nunca
 // usar datos reales.
@@ -44,6 +45,7 @@ const USERS = [
   { email: 'owner.inmobiliaria@example.test', name: 'Owner Inmobiliaria' },
   { email: 'multi@example.test', name: 'Usuario Dos Empresas' },
   { email: 'baja@example.test', name: 'Usuario Dado De Baja' },
+  { email: 'vendedor.sin.numeros@example.test', name: 'Vendedor Sin Números' },
 ] as const;
 
 // [email, slug, rol, status]. El owner de cada empresa queda como owner al crearla.
@@ -52,6 +54,8 @@ const EXTRA_MEMBERSHIPS = [
   ['multi@example.test', 'ceramicos-demo', 'seller', 'active'],
   ['multi@example.test', 'inmobiliaria-demo', 'viewer', 'active'],
   ['baja@example.test', 'ceramicos-demo', 'seller', 'disabled'],
+  // Seller sin números asignados: para el estado vacío de la bandeja (tarea 014).
+  ['vendedor.sin.numeros@example.test', 'ceramicos-demo', 'seller', 'active'],
 ] as const;
 
 // Canal de WhatsApp (sesión de WAHA) y cliente de prueba por empresa. Números ficticios.
@@ -176,6 +180,230 @@ async function ensureMessaging(slug: keyof typeof MESSAGING, tenantId: string, o
   });
 }
 
+// Bandeja de Cerámicos (tarea 014): un segundo número, leads con puntajes y estados variados, y multi@
+// asignado solo al número principal. Las conversaciones se crean una vez, pero el estado de cada lead
+// (puntaje, derivación, pausa) se vuelve a poner en cada corrida: los e2e del panel lo cambian.
+type SeedMessage = {
+  from: 'contact' | 'ai' | 'user';
+  text: string | null;
+  type?: string;
+  minutesAgo: number;
+};
+interface SeedLead {
+  waId: string;
+  name: string;
+  channel: 'principal' | 'sucursal';
+  score: number | null;
+  tier: 'hot' | 'warm' | 'cold' | null;
+  handoff?: { reason: string; summary: string };
+  pausedHours?: number;
+  extracted?: Record<string, string | number>;
+  messages: SeedMessage[];
+}
+
+const DAY = 24 * 60;
+const SUCURSAL = { name: 'sucursal-norte', phone: '+5491100000002', session: 'ceramicos-sucursal' };
+const DEMO_LEADS: SeedLead[] = [
+  {
+    waId: '+5491100000201',
+    name: 'Ana Gómez',
+    channel: 'principal',
+    score: 82,
+    tier: 'hot',
+    handoff: {
+      reason: 'asks_human',
+      summary:
+        'Busca porcelanato 60x60 gris para el living, unos 45 m². Quiere retirar esta semana. Falta confirmar la zona.',
+    },
+    extracted: { producto_ambiente: 'living', m2: 45, entrega: 'retiro' },
+    messages: [
+      { from: 'contact', text: 'Hola! Tienen porcelanato 60x60 gris?', minutesAgo: DAY + 50 },
+      {
+        from: 'ai',
+        text: '¡Hola! Sí, trabajamos porcelanatos. ¿Para qué ambiente es?',
+        minutesAgo: DAY + 49,
+      },
+      { from: 'contact', text: 'Para el living, son unos 45 m2', minutesAgo: 30 },
+      { from: 'contact', text: 'Puedo hablar con alguien?', minutesAgo: 6 },
+    ],
+  },
+  {
+    waId: '+5491100000202',
+    name: 'Juan Pérez',
+    channel: 'principal',
+    score: 64,
+    tier: 'warm',
+    extracted: { producto_ambiente: 'baño' },
+    messages: [
+      { from: 'contact', text: 'Buenas, quería ver revestimientos para el baño', minutesAgo: 3 * DAY },
+      { from: 'ai', text: '¡Hola Juan! ¿Cuántos m² necesitás, más o menos?', minutesAgo: 3 * DAY - 1 },
+      { from: 'contact', text: 'Unos 12 creo\nTe paso las medidas después', minutesAgo: 70 },
+    ],
+  },
+  {
+    waId: '+5491100000203',
+    name: 'Prueba <b>HTML</b>',
+    channel: 'principal',
+    score: 35,
+    tier: 'cold',
+    messages: [
+      {
+        from: 'contact',
+        text: '<img src=x onerror=alert(1)> y *negrita* https://example.test',
+        minutesAgo: 120,
+      },
+    ],
+  },
+  {
+    waId: '+5491100000204',
+    name: 'Marta Díaz',
+    channel: 'principal',
+    score: 71,
+    tier: 'hot',
+    pausedHours: 10,
+    messages: [
+      { from: 'contact', text: '¿Hacen envíos a Quilmes?', minutesAgo: 200 },
+      { from: 'user', text: 'Hola Marta, sí. ¿Me pasás la dirección?', minutesAgo: 190 },
+      { from: 'contact', text: null, type: 'audio', minutesAgo: 185 },
+    ],
+  },
+  {
+    waId: '+5491100000205',
+    name: 'Lucas Romero',
+    channel: 'sucursal',
+    score: 55,
+    tier: 'warm',
+    messages: [{ from: 'contact', text: 'Hola, ¿abren el sábado?', minutesAgo: 15 }],
+  },
+  {
+    waId: '+5491100000206',
+    name: 'Sofía Herrera',
+    channel: 'sucursal',
+    score: 90,
+    tier: 'hot',
+    handoff: {
+      reason: 'payment_or_reservation',
+      summary: 'Quiere reservar 30 cajas y pagar con transferencia.',
+    },
+    messages: [{ from: 'contact', text: 'Quiero reservar 30 cajas, ¿cómo pago?', minutesAgo: 45 }],
+  },
+];
+
+async function ensureInboxDemo(tenantId: string, ownerId: string, sellerId: string) {
+  await appDatabase.db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT set_config('app.tenant_id', ${tenantId}, true)`);
+    const [principal] = await tx
+      .select({ id: channels.id })
+      .from(channels)
+      .where(eq(channels.phoneNumber, MESSAGING['ceramicos-demo'].channelPhone));
+    let [sucursal] = await tx
+      .select({ id: channels.id })
+      .from(channels)
+      .where(eq(channels.phoneNumber, SUCURSAL.phone));
+    if (!sucursal) {
+      const now = new Date();
+      [sucursal] = await tx
+        .insert(channels)
+        .values({
+          tenantId,
+          name: SUCURSAL.name,
+          phoneNumber: SUCURSAL.phone,
+          provider: 'waha',
+          connectionType: 'unofficial',
+          externalId: SUCURSAL.session,
+          status: 'connected',
+          riskAcceptedAt: now,
+          riskAcceptedBy: ownerId,
+        })
+        .returning({ id: channels.id });
+    }
+    const channelIds = { principal: principal!.id, sucursal: sucursal!.id };
+
+    for (const lead of DEMO_LEADS) {
+      const channelId = channelIds[lead.channel];
+      const [contact] = await tx
+        .insert(contacts)
+        .values({
+          tenantId,
+          waId: lead.waId,
+          profileName: lead.name,
+          firstSeenAt: new Date(),
+          lastSeenAt: new Date(),
+        })
+        .onConflictDoUpdate({ target: [contacts.tenantId, contacts.waId], set: { profileName: lead.name } })
+        .returning({ id: contacts.id });
+      let [conversation] = await tx
+        .select({ id: conversations.id })
+        .from(conversations)
+        .where(and(eq(conversations.contactId, contact!.id), eq(conversations.channelId, channelId)));
+      if (!conversation) {
+        [conversation] = await tx
+          .insert(conversations)
+          .values({ tenantId, channelId, contactId: contact!.id, lastMessageAt: new Date() })
+          .returning({ id: conversations.id });
+        await tx.insert(messages).values(
+          lead.messages.map((message, index) => ({
+            tenantId,
+            conversationId: conversation!.id,
+            channelId,
+            externalId: `seed-${lead.waId}-${index}`,
+            direction: message.from === 'contact' ? 'inbound' : 'outbound',
+            senderType: message.from,
+            sentByUserId: message.from === 'user' ? ownerId : null,
+            type: message.type ?? 'text',
+            body: message.text,
+            status: message.from === 'contact' ? 'received' : 'read',
+            raw: { seed: true },
+            sentAt: new Date(Date.now() - message.minutesAgo * 60_000),
+          })),
+        );
+      }
+      const lastMinutes = Math.min(...lead.messages.map((message) => message.minutesAgo));
+      // El estado del lead (lo escriben el worker de la IA y el panel) vuelve al de demo en cada corrida.
+      await tx.execute(sql`
+        UPDATE conversations SET
+          lead_score = ${lead.score}, lead_score_peak = ${lead.score}, lead_tier = ${lead.tier},
+          lead_score_at = now(), qualification_turns = 2, hot_turns = 0,
+          extracted_data = ${JSON.stringify(lead.extracted ?? {})}::jsonb,
+          handed_off_at = ${lead.handoff ? sql`now() - interval '5 minutes'` : sql`NULL`},
+          handoff_reason = ${lead.handoff?.reason ?? null},
+          handoff_summary = ${lead.handoff?.summary ?? null},
+          ai_paused_until = ${lead.pausedHours ? sql`now() + make_interval(hours => ${lead.pausedHours})` : sql`NULL`},
+          last_message_at = now() - make_interval(mins => ${lastMinutes}),
+          last_inbound_at = now() - make_interval(mins => ${lastMinutes})
+        WHERE id = ${conversation!.id}
+      `);
+    }
+
+    // multi@ (seller) atiende solo el número principal.
+    await tx.execute(sql`
+      INSERT INTO channel_members (tenant_id, channel_id, user_id, created_by)
+      VALUES (${tenantId}, ${channelIds.principal}, ${sellerId}, ${ownerId})
+      ON CONFLICT DO NOTHING
+    `);
+    await tx.execute(sql`
+      DELETE FROM channel_members WHERE channel_id = ${channelIds.sucursal} AND user_id = ${sellerId}
+    `);
+  });
+}
+
+// Los leads de demo vuelven a estar "sin ver" para los usuarios del seed (los e2e los abren). La RLS de
+// conversation_reads solo deja tocar las filas propias: se hace con el contexto de cada usuario.
+async function resetDemoReads(tenantId: string, userIds: string[]) {
+  const waIds = DEMO_LEADS.map((lead) => lead.waId);
+  for (const userId of userIds) {
+    await appDatabase.db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT set_config('app.tenant_id', ${tenantId}, true)`);
+      await tx.execute(sql`SELECT set_config('app.user_id', ${userId}, true)`);
+      await tx.execute(sql`
+        UPDATE conversation_reads r SET last_read_at = '-infinity'
+        FROM conversations c JOIN contacts ct ON ct.id = c.contact_id
+        WHERE r.conversation_id = c.id AND ct.wa_id = ANY (${sql.param(waIds)}::text[])
+      `);
+    });
+  }
+}
+
 try {
   const userIds = new Map<string, string>();
   for (const user of USERS) userIds.set(user.email, await ensureUser(user.email, user.name));
@@ -201,8 +429,15 @@ try {
     userIds.get(USERS[1].email)!,
   );
 
+  await ensureInboxDemo(
+    tenantIds.get('ceramicos-demo')!,
+    userIds.get(USERS[0].email)!,
+    userIds.get('multi@example.test')!,
+  );
+  await resetDemoReads(tenantIds.get('ceramicos-demo')!, [...userIds.values()]);
+
   console.log(
-    `Seed listo: ${tenantIds.size} empresas, ${userIds.size} usuarios, un canal con una conversación en cada empresa.`,
+    `Seed listo: ${tenantIds.size} empresas, ${userIds.size} usuarios, conversaciones de prueba y leads de demo en Cerámicos.`,
   );
   console.log('Usuarios de prueba (contraseña: SEED_PASSWORD en apps/api/scripts/seed.ts):');
   for (const user of USERS) console.log(`  - ${user.email}`);

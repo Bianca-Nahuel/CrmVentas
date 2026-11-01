@@ -1,6 +1,8 @@
 import { ChangeDetectionStrategy, Component, Injectable, inject, signal } from '@angular/core';
-import { WifiOff, X } from 'lucide';
+import { CircleCheck, WifiOff, X, type IconNode } from 'lucide';
 import { Icon } from './icon';
+
+export type NotifyTone = 'warning' | 'success';
 
 /**
  * Avisos no intrusivos (por ejemplo, sin conexión). Solo textos fijos de la interfaz: nunca el cuerpo de
@@ -9,16 +11,22 @@ import { Icon } from './icon';
 @Injectable({ providedIn: 'root' })
 export class NotifyService {
   readonly message = signal<string | null>(null);
+  readonly tone = signal<NotifyTone>('warning');
   private timer: ReturnType<typeof setTimeout> | undefined;
 
-  show(message: string, durationMs = 6000) {
+  show(message: string, durationMs = 6000, tone: NotifyTone = 'warning') {
     this.message.set(message);
+    this.tone.set(tone);
     clearTimeout(this.timer);
     this.timer = setTimeout(() => this.message.set(null), durationMs);
   }
 
   networkError() {
     this.show('No pudimos conectar con el servidor. Revisá tu conexión y probá de nuevo.');
+  }
+
+  success(message: string) {
+    this.show(message, 5000, 'success');
   }
 
   dismiss() {
@@ -41,7 +49,12 @@ export class NotifyService {
         <div
           class="card pointer-events-auto flex max-w-md items-start gap-3 px-4 py-3 text-sm text-text shadow-2"
         >
-          <app-icon [icon]="icon" class="mt-0.5 text-warning" />
+          <app-icon
+            [icon]="icons[notify.tone()]"
+            class="mt-0.5"
+            [class.text-warning]="notify.tone() === 'warning'"
+            [class.text-success]="notify.tone() === 'success'"
+          />
           <p class="flex-1">{{ message }}</p>
           <button
             type="button"
@@ -58,6 +71,6 @@ export class NotifyService {
 })
 export class Toast {
   protected readonly notify = inject(NotifyService);
-  protected readonly icon = WifiOff;
+  protected readonly icons: Record<NotifyTone, IconNode> = { warning: WifiOff, success: CircleCheck };
   protected readonly closeIcon = X;
 }

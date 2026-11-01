@@ -16,6 +16,8 @@ export default tseslint.config(
       'apps/web/.angular/**',
       'apps/web/test-results/**',
       'apps/web/playwright-report/**',
+      // Cliente generado desde apps/api/openapi.json (npm run api:generate).
+      'apps/web/src/app/api/generated/**',
     ],
   },
   js.configs.recommended,

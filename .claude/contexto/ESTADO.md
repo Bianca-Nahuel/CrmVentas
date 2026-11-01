@@ -1,11 +1,18 @@
 # Estado del proyecto
 
-_Última actualización: 2026-10-30 (tarea 023, base del panel en Angular)_
+_Última actualización: 2026-10-30 (tarea 014, bandeja y grilla de leads)_
 
-> Esta rama (`claude/panel-angular-base`) sale de `main`. El estado de la tarea 010 del agente (rama
-> `claude/hopeful-darwin-mfj88r`, decisiones #63–#67) no está acá: al mergear, juntar los dos `ESTADO.md`.
+> Esta rama (`claude/bandeja-y-leads`) sale de `claude/panel-angular-base`, que sale de `main`. El estado de
+> la tarea 010 del agente (rama `claude/hopeful-darwin-mfj88r`, decisiones #63–#67) no está acá: al mergear,
+> juntar los dos `ESTADO.md`.
 
 ## Hecho
+
+- Tarea 014 (bandeja y grilla de leads): hecha el 2026-10-30 en la rama `claude/bandeja-y-leads`. Ver el "Resultado" en `docs/tareas/hechas/014-bandeja-y-grilla-de-leads.md` y las decisiones #76 a #82.
+  - **Qué hay:** grilla de leads, bandeja con la conversación (solo lectura), reactivar la IA, números y vendedores, visibilidad por número (servicio + RLS) y cliente OpenAPI generado.
+  - **Verificación:** API 626/626, panel 72/72, e2e 65/65, y lint, typecheck y build OK. Bundle inicial de 491,7 kB, con tabla nativa (#81). Los dos revisores aprobaron y el usuario aprobó las capturas.
+  - **Al commitear:** dejar afuera `tools/panel-pruebas/empresas.local.json` y `.claude/launch.json`.
+  - **Al mergear con la rama de la 010:** renumerar las migraciones 0014 a 0017 de esta rama para que vayan después de `0014_outbound_superseded`.
 
 - Tarea 023 (base del panel en Angular, era el archivo `010-panel-angular-base.md`): hecha el 2026-10-30 en la rama `claude/panel-angular-base`. Ver el "Resultado" en `docs/tareas/hechas/023-panel-angular-base.md` y las decisiones #68 a #75.
   - **Stack del panel:** Angular 22 (zoneless) en `apps/web`, Angular CDK + Tailwind v4 y componentes propios.
@@ -53,6 +60,8 @@ _Última actualización: 2026-10-30 (tarea 023, base del panel en Angular)_
 
 ## Siguiente
 
+- **Commit de la 014** (propuesto, sin hacer) y después la 024 (responder desde el panel; puede usar `ConversationScope`, ya exportado) y la 025 (tiempo real; reemplaza el refresco de 30 s).
+
 - **Commit de la 023:**
   - va con `package-lock.json`, que lleva las dependencias nuevas del panel;
   - sin `tools/panel-pruebas/empresas.local.json`, que no está ignorado en esta rama.
@@ -66,9 +75,6 @@ _Última actualización: 2026-10-30 (tarea 023, base del panel en Angular)_
   - nonce de la CSP de estilos, que se valida al configurar Caddy;
   - sacar el bloque `db` de `/api/me/context`;
   - pantalla de "reintentar" cuando la API está caída.
-- **Tarea 014:**
-  - generador de cliente desde OpenAPI;
-  - grilla de leads con `app-score`, `app-tag-list`, `cdk-table` y el paginador, paginada en el servidor.
 
 - `.claude/settings.json` quedó afuera del commit de la 006 (cambio del usuario): el revisor de seguridad sugirió volver a "preguntar" `node *`, `docker compose *` y `npm run db:*`.
 - Tarea 007: commiteada y pusheada en `claude/vibrant-dirac-ujisy4`; falta mergearla a `main`. `package-lock.json` quedó modificado solo por `npm install` (saca `"dev": true` de los binarios de esbuild): no va en el commit.
@@ -76,7 +82,6 @@ _Última actualización: 2026-10-30 (tarea 023, base del panel en Angular)_
 - Empresa de prueba: actualizar o desactivar el disparador `custom_recomendacion` ("todavía no hay catálogo"); evaluar `availability_source: web` (la web muestra "PRODUCTO SIN STOCK"). El Excel real trae filas partidas y "�" en lugar de "á": pedirle a la empresa un archivo limpio.
 - Proponer al usuario actualizar la línea de disponibilidad de `CLAUDE.md` (decisión #56).
 - Tarea 008 (créditos): reemplazar `NoopBudgetGuard`; ver la deuda de la 006 (doble llamada si falla la T2, tope de corridas por conversación, límite de gasto en la clave de OpenRouter).
-- Tarea 014: volver a activar la IA en una conversación derivada (hoy se cierra a mano en la base para probar) y mostrar el resumen como "automático, no verificado".
 - Antes de `npm run test`, bajar `npm run dev:api` (comparten la cola de pg-boss).
 - Evals: siempre con `--max-usd`. Una corrida completa de la 006 con DeepSeek cuesta ~USD 0,07 y los 26 de catálogo ~USD 0,06. Correr sin `--rubro` ni `--case` también incluye los de catálogo. En Windows, TaskStop corta el shell pero no el proceso node: terminarlo por PID (para `dev:api`, el que escucha en el 3000) y esperar a que venza su registro en `pgboss.instance` antes de `npm run test`.
 - Tarea de endurecimiento de seguridad: ver las secciones de "Deuda" en `docs/decisiones.md`.

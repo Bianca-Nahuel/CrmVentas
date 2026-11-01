@@ -8,6 +8,7 @@ describe('navegación por rol (permisos de libs/shared)', () => {
       'conversaciones',
       'leads',
       'canales',
+      'numeros',
       'catalogo',
       'agente',
       'consumo',
@@ -16,7 +17,15 @@ describe('navegación por rol (permisos de libs/shared)', () => {
   });
 
   it('admin ve todo menos Consumo', () => {
-    expect(paths('admin')).toEqual(['conversaciones', 'leads', 'canales', 'catalogo', 'agente', 'metricas']);
+    expect(paths('admin')).toEqual([
+      'conversaciones',
+      'leads',
+      'canales',
+      'numeros',
+      'catalogo',
+      'agente',
+      'metricas',
+    ]);
   });
 
   it('seller ve Conversaciones y Leads, sin Canales, Catálogo, Agente ni Consumo', () => {

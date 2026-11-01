@@ -72,6 +72,63 @@ for (const theme of THEMES) {
         await shot(page, '07-layout-seller-selector');
       });
 
+      // Tarea 014: grilla, bandeja, conversación derivada, números y vendedores, y el estado vacío.
+      test('leads', async ({ page }) => {
+        await login(page, USERS.ownerCeramicos);
+        await expectInLayout(page, 'Cerámicos Demo');
+        await page.goto('/leads');
+        await expect(page.getByText('Ana Gómez').locator('visible=true').first()).toBeVisible();
+        await shot(page, '09-leads', true);
+      });
+
+      test('bandeja y conversación derivada', async ({ page }) => {
+        await login(page, USERS.ownerCeramicos);
+        await expectInLayout(page, 'Cerámicos Demo');
+        await page.goto('/conversaciones');
+        await expect(page.getByTestId('inbox-item').first()).toBeVisible();
+        await shot(page, '10-bandeja');
+        await page.getByTestId('inbox-item').filter({ hasText: 'Ana Gómez' }).click();
+        await expect(page.getByTestId('handoff-panel')).toBeVisible();
+        await expect(page.getByTestId('message').first()).toBeVisible();
+        await shot(page, '11-conversacion-derivada', size.width < 1024);
+        if (size.width < 1024) {
+          await page.getByText('Resumen automático, no verificado').click();
+          await expect(page.getByTestId('handoff-summary')).toBeVisible();
+          await shot(page, '11b-conversacion-resumen-abierto', true);
+        }
+      });
+
+      test('reactivar la IA (confirmación)', async ({ page }) => {
+        await login(page, USERS.ownerCeramicos);
+        await expectInLayout(page, 'Cerámicos Demo');
+        await page.goto('/conversaciones');
+        await page.getByTestId('inbox-item').filter({ hasText: 'Ana Gómez' }).click();
+        if (size.width < 1024) await page.getByText('Resumen automático, no verificado').click();
+        await page.getByRole('button', { name: 'Volver a activar la IA' }).click();
+        await expect(page.getByRole('alertdialog')).toBeVisible();
+        await shot(page, '12-reactivar-confirmacion');
+        await page.getByRole('alertdialog').getByRole('button', { name: 'Cancelar' }).click();
+      });
+
+      test('números y vendedores', async ({ page }) => {
+        await login(page, USERS.ownerCeramicos);
+        await expectInLayout(page, 'Cerámicos Demo');
+        await page.goto('/numeros');
+        await expect(page.getByTestId('channel-card').first()).toBeVisible();
+        await shot(page, '13-numeros');
+        await page.getByRole('button', { name: 'Asignar vendedores' }).first().click();
+        await expect(page.getByRole('listbox')).toBeVisible();
+        await shot(page, '14-numeros-asignar');
+      });
+
+      test('leads: seller sin números', async ({ page }) => {
+        await login(page, 'vendedor.sin.numeros@example.test');
+        await expectInLayout(page, 'Cerámicos Demo');
+        await page.goto('/leads');
+        await expect(page.getByTestId('leads-empty')).toBeVisible();
+        await shot(page, '15-leads-sin-numeros');
+      });
+
       test('sistema de diseño', async ({ page }) => {
         await page.goto('/dev/diseno');
         await expect(page.getByRole('heading', { name: 'Sistema de diseño' })).toBeVisible();

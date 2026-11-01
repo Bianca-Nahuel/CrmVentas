@@ -146,6 +146,8 @@ export const conversations = pgTable(
   (t) => [
     // Destino de la FK de messages (incluye channel_id para atar el mensaje al canal de la conversación).
     unique('conversations_tenant_id_channel_unique').on(t.tenantId, t.id, t.channelId),
+    // Destino de la FK de conversation_events (tarea 014).
+    unique('conversations_tenant_id_id_unique').on(t.tenantId, t.id),
     foreignKey({
       name: 'conversations_channel_fk',
       columns: [t.tenantId, t.channelId],
@@ -160,6 +162,12 @@ export const conversations = pgTable(
       .on(t.channelId, t.contactId)
       .where(sql`${t.status} = 'open'`),
     index('conversations_tenant_last_message_idx').on(t.tenantId, t.lastMessageAt.desc()),
+    // Grilla de leads (tarea 014): orden por puntaje.
+    index('conversations_tenant_score_idx').on(
+      t.tenantId,
+      t.leadScore.desc().nullsLast(),
+      t.lastMessageAt.desc(),
+    ),
     index('conversations_tenant_assigned_idx').on(t.tenantId, t.assignedUserId),
     // Para las cascadas y el historial (el UNIQUE parcial solo cubre las abiertas).
     index('conversations_tenant_channel_idx').on(t.tenantId, t.channelId),

@@ -219,6 +219,12 @@ export const tenantConfigSchema = z
       .strict(),
     // Catálogo (tarea 007). Sin esta sección, el agente no tiene herramientas ni precios.
     catalog: catalogConfigSchema.optional(),
+    // Bandeja (tarea 014). Sin esta sección, cada seller ve solo los números que tiene asignados.
+    // La misma opción la lee app_sees_all_channels() en la base (migración 0015).
+    inbox: z
+      .object({ sellers_see_all_channels: z.boolean().default(false) })
+      .strict()
+      .optional(),
   })
   .strict()
   .superRefine((config, ctx) => {
