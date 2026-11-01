@@ -16,3 +16,12 @@ export const Public = () => SetMetadata(PUBLIC_KEY, true);
 
 /** Endpoint autenticado que no requiere empresa activa (perfil, elegir empresa, aceptar invitación). */
 export const NoTenant = () => SetMetadata(NO_TENANT_KEY, true);
+
+export const NO_TRANSACTION_KEY = 'ventas:no-transaction';
+
+/**
+ * Endpoint autenticado que NO corre dentro de la transacción del request: un stream de larga duración
+ * (SSE) dejaría una conexión de la base tomada mientras está abierto. El guard valida igual; el handler
+ * abre sus propias transacciones cortas con withTenantTransaction.
+ */
+export const NoTransaction = () => SetMetadata(NO_TRANSACTION_KEY, true);

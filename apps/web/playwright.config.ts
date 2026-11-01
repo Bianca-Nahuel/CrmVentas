@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { defineConfig, devices } from '@playwright/test';
 
 // Tests de punta a punta del panel contra la API real (con el seed cargado) a través del proxy de Angular.
@@ -8,6 +9,11 @@ function inheritedEnv(): Record<string, string> {
     Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined),
   );
 }
+
+// Clave HMAC del webhook de WAHA para esta corrida (tarea 025: los e2e simulan entrantes con el webhook
+// firmado). Se genera al azar y se le pasa a la API; los tests la leen del entorno, que heredan los workers.
+// Nunca es la clave de desarrollo.
+process.env['E2E_WAHA_HMAC_KEY'] ??= randomBytes(32).toString('hex');
 
 export default defineConfig({
   testDir: './e2e',
@@ -33,7 +39,13 @@ export default defineConfig({
       // sale nada real). Nunca reusa una API ya levantada, que podría estar conectada a WAHA: si el
       // puerto 3000 está ocupado, falla (bajar el dev:api antes).
       reuseExistingServer: false,
-      env: { ...inheritedEnv(), WHATSAPP_FAKE_PROVIDER: 'true' },
+      // La IA apagada: un entrante simulado encola ai-reply y nada tiene que salir a OpenRouter.
+      env: {
+        ...inheritedEnv(),
+        WHATSAPP_FAKE_PROVIDER: 'true',
+        WAHA_WEBHOOK_HMAC_KEY: process.env['E2E_WAHA_HMAC_KEY'],
+        AI_ENABLED: 'false',
+      },
       timeout: 120_000,
     },
     {

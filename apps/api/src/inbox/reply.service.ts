@@ -8,6 +8,7 @@ import {
   supersedeQueuedAiReplies,
   type RejectReason,
 } from '../messaging/outbound/outbound.service.js';
+import { publishConversationEvent } from '../realtime/publish.js';
 import { ConversationScope, scopeCondition } from './conversation-scope.js';
 import type { MessageDto, SendMessageBody } from './inbox.contracts.js';
 import { InboxService } from './inbox.service.js';
@@ -44,8 +45,8 @@ export class ReplyService {
    */
   async send(tx: AppTx, context: TenantContext, id: string, input: SendMessageBody): Promise<MessageDto> {
     const scope = await this.scopes.resolve(tx, context);
-    const visible = await tx.execute(sql`
-      SELECT 1 FROM conversations c WHERE c.id = ${id} AND ${scopeCondition(scope, sql`c.channel_id`)}
+    const visible = await tx.execute<{ channel_id: string }>(sql`
+      SELECT c.channel_id FROM conversations c WHERE c.id = ${id} AND ${scopeCondition(scope, sql`c.channel_id`)}
       FOR UPDATE
     `);
     if (visible.rows.length === 0) throw new NotFoundException({ code: 'NOT_FOUND' });
@@ -75,6 +76,12 @@ export class ReplyService {
     if (result.created) {
       await pauseAiAfterHuman(tx, id);
       await supersedeQueuedAiReplies(tx, id);
+      // La IA quedó pausada (el envío nuevo ya lo avisó enqueueText).
+      await publishConversationEvent(tx, 'conversation.updated', {
+        tenantId: context.tenantId,
+        channelId: visible.rows[0]!.channel_id,
+        conversationId: id,
+      });
     }
     return this.inbox.outboundAsMessage(tx, id, result.outboundId);
   }

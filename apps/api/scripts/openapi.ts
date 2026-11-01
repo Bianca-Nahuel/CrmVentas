@@ -8,6 +8,7 @@ import { OpenAPIRegistry, OpenApiGeneratorV31 } from '@asteasolutions/zod-to-ope
 import type { ApiRoute } from '../src/http/api-route.js';
 import { channelRoutes } from '../src/inbox/channels.contracts.js';
 import { inboxRoutes } from '../src/inbox/inbox.contracts.js';
+import { eventsRoute } from '../src/realtime/events.contracts.js';
 
 const OUTPUT = fileURLToPath(new URL('../openapi.json', import.meta.url));
 const ROUTES: ApiRoute[] = [...inboxRoutes, ...channelRoutes];
@@ -27,6 +28,21 @@ const errorSchema = {
 
 export function buildDocument() {
   const registry = new OpenAPIRegistry();
+  // Stream SSE (tarea 025): lo abre EventSource, no el cliente generado; se documenta para tener los tipos
+  // de sus mensajes (InboxEvent, StreamEnd).
+  registry.registerPath({
+    method: 'get',
+    path: eventsRoute.path,
+    operationId: eventsRoute.operationId,
+    tags: ['panel'],
+    summary: eventsRoute.summary,
+    responses: {
+      200: { description: 'Stream SSE', content: { 'text/event-stream': { schema: eventsRoute.message } } },
+      401: errorSchema,
+      403: errorSchema,
+      429: errorSchema,
+    },
+  });
   for (const route of ROUTES) {
     registry.registerPath({
       method: route.method,

@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { sql, type SQL } from 'drizzle-orm';
 import { TenantConfigService } from '../ai/config/tenant-config.service.js';
 import type { AppTx, TenantContext } from '../db/tenant-context.js';
+import { publishConversationEvent } from '../realtime/publish.js';
 import { ConversationScope, scopeCondition, type Scope } from './conversation-scope.js';
 import { SEND_REJECT_REASON } from '../messaging/outbound/outbound.service.js';
 import type {
@@ -154,13 +155,20 @@ export class InboxService {
 
   /** Marca la conversación como vista hasta ahora para el usuario del request ("sin ver" es por persona). */
   async markRead(tx: AppTx, context: TenantContext, id: string): Promise<void> {
-    await this.assertVisible(tx, context, id);
+    const channelId = await this.assertVisible(tx, context, id);
     await tx.execute(sql`
       INSERT INTO conversation_reads (tenant_id, conversation_id, user_id, last_read_at)
       VALUES (app_tenant_id(), ${id}, ${context.userId}, now())
       ON CONFLICT (conversation_id, user_id)
       DO UPDATE SET last_read_at = GREATEST(conversation_reads.last_read_at, EXCLUDED.last_read_at)
     `);
+    // Solo a los streams de este usuario (sus otras pestañas): "sin ver" es por persona.
+    await publishConversationEvent(tx, 'conversation.read', {
+      tenantId: context.tenantId,
+      channelId,
+      conversationId: id,
+      userId: context.userId,
+    });
   }
 
   async summary(tx: AppTx, context: TenantContext) {
@@ -311,6 +319,7 @@ export class InboxService {
   async reactivateAi(tx: AppTx, context: TenantContext, id: string): Promise<ConversationDetail> {
     const scope = await this.scopes.resolve(tx, context);
     const result = await tx.execute<{
+      channel_id: string;
       handed_off_at: string | null;
       handoff_reason: string | null;
       ai_paused_until: string | null;
@@ -318,7 +327,7 @@ export class InboxService {
       qualification_turns: number;
       hot_turns: number;
     }>(sql`
-      SELECT ${iso(sql`c.handed_off_at`)} AS handed_off_at, c.handoff_reason,
+      SELECT c.channel_id, ${iso(sql`c.handed_off_at`)} AS handed_off_at, c.handoff_reason,
              ${iso(sql`c.ai_paused_until`)} AS ai_paused_until,
              COALESCE(c.ai_paused_until > now(), false) AS paused, c.qualification_turns, c.hot_turns
       FROM conversations c
@@ -348,16 +357,25 @@ export class InboxService {
         VALUES (app_tenant_id(), ${id}, 'ai_reactivated', ${context.userId}, ${JSON.stringify(data)}::jsonb,
                 clock_timestamp())
       `);
+      await publishConversationEvent(tx, 'conversation.updated', {
+        tenantId: context.tenantId,
+        channelId: row.channel_id,
+        conversationId: id,
+      });
     }
     return this.getConversation(tx, context, id);
   }
 
-  private async assertVisible(tx: AppTx, context: TenantContext, id: string) {
+  /** 404 si no existe o no se ve; si se ve, su número (canal). */
+  private async assertVisible(tx: AppTx, context: TenantContext, id: string): Promise<string> {
     const scope = await this.scopes.resolve(tx, context);
-    const result = await tx.execute(sql`
-      SELECT 1 FROM conversations c WHERE c.id = ${id} AND ${scopeCondition(scope, sql`c.channel_id`)}
+    const result = await tx.execute<{ channel_id: string }>(sql`
+      SELECT c.channel_id FROM conversations c
+      WHERE c.id = ${id} AND ${scopeCondition(scope, sql`c.channel_id`)}
     `);
-    if (result.rows.length === 0) throw new NotFoundException({ code: 'NOT_FOUND' });
+    const row = result.rows[0];
+    if (!row) throw new NotFoundException({ code: 'NOT_FOUND' });
+    return row.channel_id;
   }
 
   private leadFilters(scope: Scope, query: LeadListQuery): SQL {

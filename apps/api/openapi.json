@@ -11,6 +11,64 @@
   ],
   "components": {
     "schemas": {
+      "ConversationEvent": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "message.created",
+              "message.updated",
+              "conversation.updated",
+              "conversation.read"
+            ]
+          },
+          "conversationId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "type",
+          "conversationId"
+        ]
+      },
+      "ChannelEvent": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "channel.updated"
+            ]
+          },
+          "channelId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "type",
+          "channelId"
+        ]
+      },
+      "StreamEnd": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "enum": [
+              "unauthenticated",
+              "forbidden",
+              "tenant_changed",
+              "restart"
+            ]
+          }
+        },
+        "required": [
+          "reason"
+        ]
+      },
       "LeadList": {
         "type": "object",
         "properties": {
@@ -724,6 +782,91 @@
     "parameters": {}
   },
   "paths": {
+    "/events": {
+      "get": {
+        "operationId": "streamEvents",
+        "tags": [
+          "panel"
+        ],
+        "summary": "Stream SSE de cambios de la bandeja (solo tipos e identificadores; 429 con demasiados streams)",
+        "responses": {
+          "200": {
+            "description": "Stream SSE",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ConversationEvent"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ChannelEvent"
+                    },
+                    {
+                      "$ref": "#/components/schemas/StreamEnd"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/leads": {
       "get": {
         "operationId": "listLeads",

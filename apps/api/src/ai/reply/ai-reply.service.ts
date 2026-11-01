@@ -16,6 +16,7 @@ import type { Env } from '../../config/env.js';
 import { APP_DB, type AppDatabase } from '../../db/database.module.js';
 import { aiRuns, type NewAiRun } from '../../db/schema/ai.js';
 import { withTenantTransaction, type AppTx } from '../../db/tenant-context.js';
+import { publishConversationEvent } from '../../realtime/publish.js';
 import { OutboundService } from '../../messaging/outbound/outbound.service.js';
 import { PresenceService } from '../../messaging/outbound/presence.service.js';
 import { TenantConfigService } from '../config/tenant-config.service.js';
@@ -325,6 +326,13 @@ export class AiReplyService {
         discovered_notes = ${JSON.stringify(evaluation.discovered)}::jsonb
       WHERE id = ${job.conversationId}
     `);
+    // Tiempo real: puntaje, nivel o derivación (se entrega con el commit de la T2). Solo avisa: no cambia
+    // ninguna regla del agente.
+    await publishConversationEvent(tx, 'conversation.updated', {
+      tenantId: job.tenantId,
+      channelId: snapshot.channelId,
+      conversationId: job.conversationId,
+    });
 
     let outboundId: string | null = null;
     let decisionName: string;
@@ -422,10 +430,19 @@ export class AiReplyService {
     isOpen: boolean,
     typingSince: Date | null = null,
   ): Promise<string> {
-    await tx.execute(sql`
+    const handedOff = await tx.execute<{ channel_id: string }>(sql`
       UPDATE conversations SET handed_off_at = now(), handoff_reason = ${reason}, handoff_summary = ${summary}
       WHERE id = ${job.conversationId} AND handed_off_at IS NULL
+      RETURNING channel_id
     `);
+    // Tiempo real: también en la derivación por un medio no soportado, que no pasa por apply().
+    for (const row of handedOff.rows) {
+      await publishConversationEvent(tx, 'conversation.updated', {
+        tenantId: job.tenantId,
+        channelId: row.channel_id,
+        conversationId: job.conversationId,
+      });
+    }
     const result = await this.outbound.enqueueText(
       {
         conversationId: job.conversationId,

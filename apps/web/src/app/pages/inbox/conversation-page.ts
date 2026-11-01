@@ -2,15 +2,18 @@ import { HttpErrorResponse } from '@angular/common/http';
 import {
   ChangeDetectionStrategy,
   Component,
+  DestroyRef,
+  type ElementRef,
   computed,
   effect,
   inject,
   input,
   signal,
   untracked,
+  viewChild,
 } from '@angular/core';
 import { RouterLink } from '@angular/router';
-import { ArrowLeft, Bot, ChevronDown, FileQuestion, RefreshCw, RotateCw, ShieldAlert } from 'lucide';
+import { ArrowDown, ArrowLeft, Bot, ChevronDown, FileQuestion, RotateCw, ShieldAlert } from 'lucide';
 import { filter, switchMap } from 'rxjs';
 import { InboxApi } from '../../api/inbox-api';
 import type { ConversationDetail, Message } from '../../api/generated';
@@ -18,8 +21,9 @@ import { AuthService } from '../../core/auth/auth.service';
 import { DOCUMENT } from '@angular/common';
 import { InboxSummary } from '../../core/inbox-summary';
 import { can } from '../../core/nav';
-import { pollWhileVisible } from '../../core/poll';
+import { pollWhileNoRealtime } from '../../core/poll';
 import { query } from '../../core/query';
+import { onInboxChanges } from '../../core/realtime';
 import { ConfirmService } from '../../ui/confirm-dialog';
 import { Icon } from '../../ui/icon';
 import { Score } from '../../ui/score';
@@ -46,7 +50,8 @@ const DESKTOP = '(min-width: 1024px)';
 /**
  * Conversación (tarea 014) con la respuesta desde el panel (024). Todo lo que viene de WhatsApp y el
  * resumen de la IA son contenido no confiable: se muestran por interpolación (texto), sin links ni formato.
- * El estado de los mensajes se actualiza con el refresco de 30 s o con Actualizar (el tiempo real es la 025).
+ * Tiempo real (025): los mensajes nuevos se suman abajo y los estados de los envíos se actualizan solos. Si
+ * el usuario está leyendo más arriba, no se mueve nada y aparece "↓ N mensajes nuevos".
  */
 @Component({
   selector: 'app-conversation-page',
@@ -91,15 +96,6 @@ const DESKTOP = '(min-width: 1024px)';
             </p>
           </div>
           <div class="flex items-center gap-2">
-            <button
-              type="button"
-              class="btn btn-ghost btn-sm"
-              data-testid="refresh"
-              [disabled]="firstPage.isLoading()"
-              (click)="refresh()"
-            >
-              <app-icon [icon]="refreshIcon" [size]="16" /> Actualizar
-            </button>
             <span
               class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-sm font-semibold"
               [class]="
@@ -196,8 +192,23 @@ const DESKTOP = '(min-width: 1024px)';
         </aside>
 
         <div
+          #chat
           class="flex flex-col-reverse lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:px-5 lg:pb-4 xl:col-start-1 xl:row-start-2 xl:pt-3"
+          (scroll)="onChatScroll()"
         >
+          <!-- En una columna invertida, lo primero queda abajo: la pastilla flota sobre el último mensaje. -->
+          @if (unseenNew() > 0) {
+            <div class="pointer-events-none sticky bottom-24 z-10 flex justify-center lg:bottom-2">
+              <button
+                type="button"
+                class="pointer-events-auto inline-flex items-center gap-1.5 rounded-full bg-primary px-3.5 py-1.5 text-sm font-semibold text-on-primary shadow-2"
+                data-testid="new-messages"
+                (click)="scrollToLatest()"
+              >
+                <app-icon [icon]="downIcon" [size]="15" /> {{ unseenText() }}
+              </button>
+            </div>
+          }
           <div>
             @if (olderCursor()) {
               <div class="flex justify-center py-2">
@@ -313,6 +324,14 @@ export class ConversationPage {
   private readonly summary = inject(InboxSummary);
   private readonly reads = inject(InboxReads);
   private readonly document = inject(DOCUMENT);
+  private readonly chat = viewChild<ElementRef<HTMLElement>>('chat');
+  /** Mensajes que ya vio la pantalla (para contar los que llegan por el tiempo real) y de qué conversación. */
+  private known: { id: string; ids: Set<string> } | null = null;
+  /** Mensajes nuevos que llegaron mientras el usuario leía más arriba. */
+  protected readonly unseenNew = signal(0);
+  protected readonly unseenText = computed(() =>
+    this.unseenNew() === 1 ? '1 mensaje nuevo' : `${this.unseenNew()} mensajes nuevos`,
+  );
   /** Conversación y último mensaje del cliente ya marcados como vistos (para no repetir el pedido). */
   private markedKey = '';
 
@@ -370,7 +389,7 @@ export class ConversationPage {
   protected readonly alertIcon = ShieldAlert;
   protected readonly chevronIcon = ChevronDown;
   protected readonly notFoundIcon = FileQuestion;
-  protected readonly refreshIcon = RefreshCw;
+  protected readonly downIcon = ArrowDown;
   protected readonly retryIcon = RotateCw;
   protected readonly deliveryHelp = deliveryHelp;
   protected readonly fullWhen = fullWhen;
@@ -408,7 +427,60 @@ export class ConversationPage {
         this.api.markRead(id).subscribe({ next: () => this.reads.markedRead(id), error: () => undefined });
       });
     });
-    pollWhileVisible(() => this.refresh());
+    // Mensajes que llegan por el tiempo real: si el usuario está abajo, se queda abajo; si está leyendo más
+    // arriba, no se mueve nada y se cuentan para la pastilla.
+    effect(() => {
+      if (!this.firstPage.hasValue()) return;
+      const items = this.firstPage.value().items;
+      const id = this.id();
+      untracked(() => {
+        if (this.known?.id !== id) {
+          this.known = { id, ids: new Set(items.map((m) => m.id)) };
+          this.unseenNew.set(0);
+          return;
+        }
+        const ids = this.known.ids;
+        const arrived = items.filter((m) => !ids.has(m.id));
+        for (const m of arrived) ids.add(m.id);
+        if (arrived.length === 0) return;
+        if (this.atBottom()) setTimeout(() => this.scrollToLatest());
+        else this.unseenNew.update((n) => n + arrived.length);
+      });
+    });
+    onInboxChanges((changes) => {
+      if (this.notFound()) return;
+      if (changes.resync) return this.refresh();
+      const id = this.id();
+      const onlyRead = [...changes.types].every((type) => type === 'conversation.read');
+      if (changes.conversations.has(id) && !onlyRead) this.refresh();
+      else if (this.conversation() && changes.channels.has(this.conversation()!.channel.id))
+        this.detail.reload();
+    });
+    pollWhileNoRealtime(() => this.refresh());
+    const view = this.document.defaultView;
+    const onWindowScroll = () => this.onChatScroll();
+    view?.addEventListener('scroll', onWindowScroll, { passive: true });
+    inject(DestroyRef).onDestroy(() => view?.removeEventListener('scroll', onWindowScroll));
+  }
+
+  /** ¿Se ve el último mensaje? Escritorio: el chat scrollea (columna invertida, 0 = abajo). Celular: la página. */
+  private atBottom(): boolean {
+    const chat = this.chat()?.nativeElement;
+    if (chat && chat.scrollHeight > chat.clientHeight + 1) return chat.scrollTop > -80;
+    const view = this.document.defaultView;
+    if (!view) return true;
+    return view.innerHeight + view.scrollY >= this.document.documentElement.scrollHeight - 160;
+  }
+
+  protected onChatScroll() {
+    if (this.unseenNew() > 0 && this.atBottom()) this.unseenNew.set(0);
+  }
+
+  protected scrollToLatest() {
+    this.unseenNew.set(0);
+    const chat = this.chat()?.nativeElement;
+    if (chat && chat.scrollHeight > chat.clientHeight + 1) chat.scrollTo({ top: 0 });
+    else this.document.defaultView?.scrollTo({ top: this.document.documentElement.scrollHeight });
   }
 
   protected refresh() {
@@ -419,6 +491,9 @@ export class ConversationPage {
 
   /** Recién encolado: se ve al instante y se pide de nuevo la primera página (y el estado de la IA). */
   protected onSent(message: Message) {
+    // Lo mandó este usuario: no cuenta como "mensaje nuevo".
+    this.known?.ids.add(message.id);
+    this.scrollToLatest();
     this.firstPage.update((page) =>
       page && !page.items.some((m) => m.id === message.id)
         ? { ...page, items: [...page.items, message] }

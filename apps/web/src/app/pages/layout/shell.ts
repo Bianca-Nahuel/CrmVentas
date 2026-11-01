@@ -1,13 +1,25 @@
 import { BreakpointObserver } from '@angular/cdk/layout';
 import { Dialog, DialogRef } from '@angular/cdk/dialog';
 import { Overlay } from '@angular/cdk/overlay';
-import { ChangeDetectionStrategy, Component, inject, type TemplateRef, viewChild } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  Injector,
+  ViewContainerRef,
+  afterNextRender,
+  effect,
+  inject,
+  runInInjectionContext,
+  signal,
+  type TemplateRef,
+  type Type,
+  viewChild,
+} from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { RouterOutlet } from '@angular/router';
 import { Menu, X } from 'lucide';
 import { map } from 'rxjs';
 import { InboxSummary } from '../../core/inbox-summary';
-import { pollWhileVisible } from '../../core/poll';
 import { BrandMark } from '../../ui/brand-mark';
 import { Icon } from '../../ui/icon';
 import { SideNav } from './side-nav';
@@ -38,6 +50,9 @@ const DESKTOP = '(min-width: 1024px)';
       >
         <div class="px-3 pb-5"><app-brand-mark /></div>
         <app-side-nav />
+        <div class="mt-auto border-t border-border pt-2">
+          <ng-container #desktopIndicator />
+        </div>
       </aside>
     }
 
@@ -58,6 +73,9 @@ const DESKTOP = '(min-width: 1024px)';
           </button>
         }
         <app-tenant-switcher class="flex-1" />
+        @if (!isDesktop()) {
+          <ng-container #mobileIndicator />
+        }
         <app-user-menu />
       </header>
 
@@ -107,11 +125,33 @@ export class Shell {
 
   protected readonly menuIcon = Menu;
 
+  /** Indicador del tiempo real: llega con el chunk del tiempo real, después del primer render. */
+  private readonly liveIndicator = signal<Type<unknown> | null>(null);
+  private readonly desktopSlot = viewChild('desktopIndicator', { read: ViewContainerRef });
+  private readonly mobileSlot = viewChild('mobileIndicator', { read: ViewContainerRef });
+
   constructor() {
-    // El número de derivadas sin atender del menú, hasta el tiempo real (025).
-    const summary = inject(InboxSummary);
-    summary.refresh();
-    pollWhileVisible(() => summary.refresh());
+    // El número de derivadas sin atender del menú. Después lo recarga el tiempo real.
+    inject(InboxSummary).refresh();
+    // Tiempo real (025): el servicio y el indicador van en un chunk aparte (no suman al bundle inicial) y
+    // corren en el contexto del layout, así se detienen cuando el layout se destruye.
+    const injector = inject(Injector);
+    afterNextRender(() => {
+      void import('./realtime-boot').then((lazy) => {
+        runInInjectionContext(injector, lazy.bootRealtime);
+        this.liveIndicator.set(lazy.LiveIndicator);
+      });
+    });
+    // El indicador va en la barra lateral (escritorio) o en la barra de arriba (celular): se crea en el
+    // lugar que esté a la vista cuando llega el chunk o cuando cambia el ancho.
+    effect(() => {
+      const indicator = this.liveIndicator();
+      if (!indicator) return;
+      const desktop = this.desktopSlot();
+      if (desktop && desktop.length === 0) desktop.createComponent(indicator);
+      const mobile = this.mobileSlot();
+      if (mobile && mobile.length === 0) mobile.createComponent(indicator).setInput('variant', 'compact');
+    });
   }
 
   protected readonly closeIcon = X;

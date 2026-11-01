@@ -209,6 +209,21 @@ npm run dev:web     # panel en http://localhost:4200
 > Igual que con `npm run test`: si ya hay una `dev:api` corriendo con otro código, bajala antes de los e2e.
 > Dos APIs comparten la cola de pg-boss y se reparten los trabajos (entrantes, envíos, IA).
 
+- **Tiempo real (tarea 025):** el panel abre un stream SSE en `GET /api/events` (una conexión por pestaña
+  visible).
+  - **Proxy de desarrollo:** `apps/web/proxy.conf.json` lo reenvía sin cambios. El proxy de Vite no junta
+    los bytes ni tiene timeout, y cuando el navegador corta, corta también la conexión con la API (lo cubren
+    los e2e de `realtime.spec.ts`).
+  - **Límite del navegador:** sin HTTP/2 (como en `localhost:4200`), el navegador abre como mucho 6
+    conexiones por origen. Con muchas pestañas visibles de la bandeja pueden faltar conexiones para el
+    resto de los pedidos. Las pestañas ocultas cierran su stream a los 10 s. En producción (HTTP/2 con
+    Caddy) no pasa.
+  - **Variables opcionales** (en `.env.example`): `REALTIME_HEARTBEAT_SECONDS` (latido, 25),
+    `REALTIME_REVALIDATE_SECONDS` (revalidación de sesión y números, 15) y `REALTIME_MAX_STREAMS_PER_USER`
+    (5 por instancia).
+  - **Cuidado con los e2e:** simulan entrantes con el webhook firmado (`e2e/helpers.ts`, `inbound`).
+    Cada corrida suma conversaciones "Prueba …" con números inventados en Cerámicos Demo.
+
 ### Producción (pendiente: se configura con el despliegue)
 
 Front y API van **en el mismo dominio** detrás de Caddy: Caddy sirve los archivos de `apps/web/dist/web/browser`
@@ -219,11 +234,25 @@ Esbozo, a validar al configurar el servidor:
 
 ```caddy
 panel.ejemplo.com {
-  encode zstd gzip
+  # Tiempo real (tarea 025): el stream SSE va antes que el resto y SIN encode (gzip junta los bytes y
+  # retrasa los eventos). flush_interval -1: cada evento sale al instante (Caddy ya lo hace solo con
+  # text/event-stream, pero queda explícito). stream_close_delay: al recargar la configuración, los
+  # streams abiertos siguen 5 minutos en vez de cortarse todos a la vez (el panel reconectaría en masa).
+  # Sin read/write_timeout en el servidor: el latido de la API (25 s) mantiene viva la conexión y queda
+  # por debajo de cualquier timeout de inactividad de un proxy intermedio.
+  @events path /api/events
+  handle @events {
+    reverse_proxy 127.0.0.1:3000 {
+      flush_interval -1
+      stream_close_delay 5m
+    }
+  }
   handle /api/* {
+    encode zstd gzip
     reverse_proxy 127.0.0.1:3000
   }
   handle {
+    encode zstd gzip
     root * /srv/panel
     try_files {path} /index.html
     file_server

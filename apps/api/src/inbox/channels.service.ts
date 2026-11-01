@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { sql } from 'drizzle-orm';
 import type { z } from 'zod';
 import type { AppTx, TenantContext } from '../db/tenant-context.js';
+import { publishNotice } from '../realtime/publish.js';
 import type { channelWithMembersSchema } from './channels.contracts.js';
 
 type ChannelWithMembers = z.infer<typeof channelWithMembersSchema>;
@@ -73,6 +74,9 @@ export class ChannelsService {
         ON CONFLICT (channel_id, user_id) DO NOTHING
       `);
     }
+    // Tiempo real: los streams de la empresa recalculan qué números ven (a un seller sin el número se le
+    // cortan sus eventos). Se entrega con el commit; si algo falla después, no se avisa nada.
+    await publishNotice(tx, { kind: 'access', tenantId: context.tenantId });
     const updated = (await this.list(tx)).find((item) => item.id === channelId);
     return updated!;
   }

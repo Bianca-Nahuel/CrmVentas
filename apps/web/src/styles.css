@@ -233,6 +233,32 @@
     white-space: nowrap;
     border: 0;
   }
+
+  /* Tiempo real (tarea 025): fila que entró a la lista (borde de acento + chip "Nueva") y fila que acaba de
+     cambiar (resaltado que se apaga solo). En <tr> el borde va en la primera celda. */
+  .live-new:not(tr),
+  tr.live-new > :first-child {
+    box-shadow: inset 3px 0 0 var(--primary);
+  }
+  .live-flash:not(tr),
+  tr.live-flash > * {
+    animation: live-flash 2s ease-out;
+  }
+  @keyframes live-flash {
+    from {
+      background-color: var(--primary-soft);
+    }
+  }
+  .live-chip {
+    flex-shrink: 0;
+    border-radius: 9999px;
+    background: var(--primary-soft);
+    color: var(--primary-strong);
+    padding: 0 0.5rem;
+    font-size: 0.75rem;
+    font-weight: 700;
+    line-height: 1.25rem;
+  }
 }
 
 /* Fondo de los overlays de la CDK (cajón del celular, diálogos). */

@@ -55,7 +55,8 @@ test.describe('login y empresa activa', () => {
     await login(page, USERS.ownerCeramicos);
     await expectInLayout(page, 'Cerámicos Demo');
     // Una segunda sección deja una página protegida en el historial (/conversaciones).
-    await page.getByRole('link', { name: 'Leads' }).click();
+    // El del menú: con más de 50 conversaciones la bandeja suma "Ver todas en Leads".
+    await navLinks(page).filter({ hasText: /^Leads/ }).click();
     await expect(page).toHaveURL('/leads');
     const oldCookies = (await context.cookies()).map((c) => `${c.name}=${c.value}`).join('; ');
 

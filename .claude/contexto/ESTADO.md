@@ -1,12 +1,22 @@
 # Estado del proyecto
 
-_Última actualización: 2026-10-30 (tarea 014, bandeja y grilla de leads)_
+_Última actualización: 2026-11-01 (tarea 025, tiempo real de la bandeja)_
 
 > Esta rama (`claude/bandeja-y-leads`) sale de `claude/panel-angular-base`, que sale de `main`. El estado de
 > la tarea 010 del agente (rama `claude/hopeful-darwin-mfj88r`, decisiones #63–#67) no está acá: al mergear,
 > juntar los dos `ESTADO.md`.
 
 ## Hecho
+
+- **Tarea 025 (tiempo real de la bandeja, SSE):** hecha el 2026-11-01 en la rama `claude/tiempo-real-bandeja` (sale de `claude/responder-desde-panel`). Ver el "Resultado" en `docs/tareas/hechas/025-tiempo-real-bandeja.md` y las decisiones #88 a #93. El usuario aprobó las capturas. **Sin commitear todavía.**
+  - **Qué hay:**
+    - LISTEN/NOTIFY dentro de la transacción de cada cambio y `GET /api/events` filtrado por empresa y número, que se revalida y se corta con logout, sesión revocada, membresía, cambio de empresa o número quitado;
+    - en el panel: `RealtimeService`, indicador de conexión, filas que se actualizan en su lugar, chip "Nueva", pastilla "↑ N nuevas" y "↓ N mensajes nuevos";
+    - el refresco de 30 s queda solo como respaldo.
+  - **Verificación:** API 673/673, panel 96/96, e2e 103/103 (desde un seed limpio), y lint, typecheck y build OK (497,94 kB). Los dos revisores aprobaron.
+  - **Stash `025: formato de Prettier fuera de la tarea`:** `npm run format` reformateó archivos ajenos (`.claude/`, `CLAUDE.md`, evals, docs). Se guardaron en ese stash, sin commitear; decide el usuario.
+  - **Los e2e ensucian la base de desarrollo** con conversaciones "Prueba …" que el seed no borra.
+  - **Al commitear:** dejar afuera `tools/panel-pruebas/empresas.local.json` y `.claude/launch.json`.
 
 - **Tarea 024 (responder desde el panel):** hecha el 2026-11-01 en la rama `claude/responder-desde-panel`, que sale de `claude/bandeja-y-leads` con la 014 commiteada (`e0ed17a`). Ver el "Resultado" en `docs/tareas/hechas/024-responder-desde-el-panel.md` y las decisiones #83 a #87.
   - **Qué hay:**
@@ -74,7 +84,7 @@ _Última actualización: 2026-10-30 (tarea 014, bandeja y grilla de leads)_
 
 ## Siguiente
 
-- **Commit de la 024** (propuesto) y la prueba real con WAHA, con el OK del usuario. Después, la 025 (tiempo real; reemplaza el refresco de 30 s y el botón Actualizar). El prompt de la 025 ya se le pasó al usuario.
+- **Commit de la 025** (mensaje propuesto en la sesión). Pendiente de antes: commit de la 024 y la prueba real con WAHA (con el OK del usuario). Limpiar los datos de los e2e en la base de desarrollo (con el OK del usuario).
 - **Seguimiento de la 024 (BAJO de seguridad):** con `dev:api` normal (WAHA real), responder a un lead del seed podría salir a un número inventado. Opción: que el seed deje el canal principal desconectado salvo que se pida otra cosa.
 
 - **Commit de la 023:**

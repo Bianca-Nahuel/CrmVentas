@@ -20,7 +20,7 @@ import type { AuthenticatedRequest } from './request.js';
 
 // Guard global. Orden: sesión (401) → empresa activa (403) → membresía activa en esa empresa (403) →
 // permiso del rol si el endpoint tiene @RequirePermission (403).
-// La membresía se lee como ventas_app, con RLS, en una transacción corta con el contexto seteado.
+// La membresía se lee con loadMembership (ventas_app, con RLS, en una transacción corta).
 // La transacción del request la abre después TenantTransactionInterceptor (un guard no puede
 // envolver la ejecución del handler).
 @Injectable()
@@ -47,16 +47,7 @@ export class TenantGuard implements CanActivate {
     const tenantId = session.session.activeOrganizationId;
     if (!tenantId) throw new ForbiddenException({ code: 'NO_ACTIVE_TENANT' });
 
-    const [membership] = await this.database.db.transaction(async (tx) => {
-      await setDbContext(tx, { userId, tenantId });
-      return tx
-        .select({ role: memberships.role, status: memberships.status, tenantStatus: tenants.status })
-        .from(memberships)
-        .innerJoin(tenants, eq(tenants.id, memberships.tenantId))
-        .where(and(eq(memberships.tenantId, tenantId), eq(memberships.userId, userId)))
-        .limit(1);
-    });
-
+    const membership = await loadMembership(this.database, userId, tenantId);
     if (!membership || membership.status !== 'active') {
       throw new ForbiddenException({ code: 'MEMBERSHIP_INACTIVE' });
     }
@@ -73,4 +64,22 @@ export class TenantGuard implements CanActivate {
     }
     return true;
   }
+}
+
+/**
+ * Rol y estado de la membresía del usuario en la empresa, y el estado de la empresa. La lee ventas_app,
+ * con RLS, en una transacción corta con el contexto seteado. La usan TenantGuard y la revalidación de los
+ * streams de tiempo real.
+ */
+export async function loadMembership(database: AppDatabase, userId: string, tenantId: string) {
+  const [membership] = await database.db.transaction(async (tx) => {
+    await setDbContext(tx, { userId, tenantId });
+    return tx
+      .select({ role: memberships.role, status: memberships.status, tenantStatus: tenants.status })
+      .from(memberships)
+      .innerJoin(tenants, eq(tenants.id, memberships.tenantId))
+      .where(and(eq(memberships.tenantId, tenantId), eq(memberships.userId, userId)))
+      .limit(1);
+  });
+  return membership;
 }

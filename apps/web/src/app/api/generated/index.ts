@@ -7,11 +7,13 @@ export { RequestBuilder } from './request-builder';
 export type { StrictHttpResponse } from './strict-http-response';
 export { ApiClient } from './api-client';
 
+export type { ChannelEvent } from './models/channel-event';
 export type { ChannelList } from './models/channel-list';
 export type { ChannelRef } from './models/channel-ref';
 export type { ChannelWithMembers } from './models/channel-with-members';
 export type { ContactRef } from './models/contact-ref';
 export type { ConversationDetail } from './models/conversation-detail';
+export type { ConversationEvent } from './models/conversation-event';
 export type { Delivery } from './models/delivery';
 export type { LeadList } from './models/lead-list';
 export type { LeadRow } from './models/lead-row';
@@ -28,7 +30,10 @@ export type { SellerOptions } from './models/seller-options';
 export type { SenderType } from './models/sender-type';
 export type { SendMessageBody } from './models/send-message-body';
 export type { SetChannelMembers } from './models/set-channel-members';
+export type { StreamEnd } from './models/stream-end';
 
+export type { StreamEvents$Params as StreamEvents$Params } from './fn/panel/stream-events';
+export { streamEvents as streamEvents } from './fn/panel/stream-events';
 export type { ListLeads$Params as ListLeads$Params } from './fn/panel/list-leads';
 export { listLeads as listLeads } from './fn/panel/list-leads';
 export type { GetLeadSummary$Params as GetLeadSummary$Params } from './fn/panel/get-lead-summary';

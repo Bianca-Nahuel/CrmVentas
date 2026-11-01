@@ -2,21 +2,25 @@ import {
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
+  type ElementRef,
   computed,
   effect,
   inject,
   signal,
   untracked,
+  viewChild,
 } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, NavigationEnd, Router, RouterLink, RouterOutlet } from '@angular/router';
-import { Clock, RefreshCw, Search } from 'lucide';
+import { ArrowUp, Clock, RefreshCw, Search } from 'lucide';
 import { filter, map } from 'rxjs';
 import { InboxApi } from '../../api/inbox-api';
 import type { LeadRow } from '../../api/generated';
 import { InboxSummary } from '../../core/inbox-summary';
-import { pollWhileVisible } from '../../core/poll';
+import { isNearTop, liveList } from '../../core/live-merge';
+import { pollWhileNoRealtime } from '../../core/poll';
 import { query } from '../../core/query';
+import { onInboxChanges } from '../../core/realtime';
 import { Icon } from '../../ui/icon';
 import { Score } from '../../ui/score';
 import { contactName, previewText, shortWhen, waitingFor } from './format';
@@ -37,7 +41,9 @@ const FILTERS: readonly { value: Attention; label: string }[] = [
  * Bandeja (tarea 014): lista de conversaciones por prioridad (decisión #82: primero las que esperan a una
  * persona del equipo; después calor y espera por igual) y la conversación elegida. Filtros "Sin responder"
  * y "Sin ver" (por usuario). En el escritorio, dos paneles; en el celular, la lista o la conversación a
- * pantalla completa. Se refresca sola cada 30 s con la pestaña visible (el tiempo real llega en la 025).
+ * pantalla completa. Tiempo real (025): las conversaciones que ya están se actualizan en su lugar; una
+ * nueva entra arriba marcada si el usuario está arriba de todo y, si no, aparece la pastilla "↑ N nuevas".
+ * El orden real se aplica con la pastilla, Actualizar o al cambiar un filtro.
  */
 @Component({
   selector: 'app-inbox-page',
@@ -59,6 +65,7 @@ const FILTERS: readonly { value: Attention; label: string }[] = [
           <button
             type="button"
             class="btn btn-ghost btn-sm"
+            data-testid="inbox-refresh"
             (click)="refresh()"
             [disabled]="list.isLoading()"
           >
@@ -100,7 +107,23 @@ const FILTERS: readonly { value: Attention; label: string }[] = [
           }
         </div>
 
-        <div class="mt-3 min-h-0 flex-1 lg:overflow-y-auto" [attr.aria-busy]="list.isLoading()">
+        <div
+          #scroller
+          class="relative mt-3 min-h-0 flex-1 lg:overflow-y-auto"
+          [attr.aria-busy]="list.isLoading()"
+        >
+          @if (live.pendingCount() > 0) {
+            <div class="pointer-events-none sticky top-2 z-10 flex justify-center max-lg:top-20">
+              <button
+                type="button"
+                class="pointer-events-auto inline-flex items-center gap-1.5 rounded-full bg-primary px-3.5 py-1.5 text-sm font-semibold text-on-primary shadow-2"
+                data-testid="new-pill"
+                (click)="showNew()"
+              >
+                <app-icon [icon]="upIcon" [size]="15" /> {{ pendingText() }}
+              </button>
+            </div>
+          }
           @if (list.loadFailed()) {
             <div class="p-4">
               <p class="font-semibold text-text">No pudimos cargar las conversaciones.</p>
@@ -128,12 +151,18 @@ const FILTERS: readonly { value: Attention; label: string }[] = [
                   <a
                     class="flex flex-col gap-1 p-3.5 hover:bg-surface-2 max-lg:rounded-lg max-lg:border max-lg:border-border max-lg:bg-surface max-lg:shadow-1"
                     [class.bg-primary-soft]="row.id === selectedId()"
+                    [class.live-new]="live.newIds().has(row.id)"
+                    [class.live-flash]="live.flashIds().has(row.id)"
+                    (click)="live.seen(row.id)"
                     [attr.aria-current]="row.id === selectedId() ? 'page' : null"
                     [routerLink]="['/conversaciones', row.id]"
                     data-testid="inbox-item"
                   >
                     <span class="flex items-center justify-between gap-2">
                       <span class="flex min-w-0 items-center gap-2">
+                        @if (live.newIds().has(row.id)) {
+                          <span class="live-chip" data-testid="new-chip">Nueva</span>
+                        }
                         @if (row.unread) {
                           <span
                             class="size-2 shrink-0 rounded-full bg-primary"
@@ -209,18 +238,26 @@ export class InboxPage {
   protected readonly attention = signal<Attention>('all');
   private searchTimer: ReturnType<typeof setTimeout> | undefined;
 
-  protected readonly list = query(
-    () => {
-      const q = this.query().trim();
-      return {
-        sort: 'priority' as const,
-        dir: 'desc' as const,
-        pageSize: LIST_SIZE,
-        ...(q.length >= 2 ? { q } : {}),
-        ...(this.attention() === 'all' ? {} : { attention: this.attention() as 'unanswered' | 'unread' }),
-      };
-    },
+  private readonly listParams = () => {
+    const q = this.query().trim();
+    return {
+      sort: 'priority' as const,
+      dir: 'desc' as const,
+      pageSize: LIST_SIZE,
+      ...(q.length >= 2 ? { q } : {}),
+      ...(this.attention() === 'all' ? {} : { attention: this.attention() as 'unanswered' | 'unread' }),
+    };
+  };
+  protected readonly list = query(this.listParams, (params) => this.api.leads(params));
+  private readonly scroller = viewChild<ElementRef<HTMLElement>>('scroller');
+  protected readonly live = liveList(
+    this.list,
+    this.listParams,
     (params) => this.api.leads(params),
+    () => isNearTop(this.scroller()?.nativeElement),
+  );
+  protected readonly pendingText = computed(() =>
+    this.live.pendingCount() === 1 ? '1 nueva' : `${this.live.pendingCount()} nuevas`,
   );
   protected readonly rows = computed<LeadRow[]>(() => (this.list.hasValue() ? this.list.value().items : []));
 
@@ -242,13 +279,15 @@ export class InboxPage {
   protected readonly clockIcon = Clock;
   protected readonly waiting = (iso: string) => waitingFor(iso);
   protected readonly refreshIcon = RefreshCw;
+  protected readonly upIcon = ArrowUp;
   protected readonly searchIcon = Search;
   protected readonly name = (row: LeadRow) => contactName(row.contact);
   protected readonly preview = (row: LeadRow) => previewText(row.lastMessage);
   protected readonly when = (iso: string) => shortWhen(iso);
 
   constructor() {
-    pollWhileVisible(() => this.refresh());
+    onInboxChanges(() => this.live.refresh());
+    pollWhileNoRealtime(() => this.live.refresh());
     inject(DestroyRef).onDestroy(() => clearTimeout(this.searchTimer));
     // Al abrir una conversación se marca como vista: se le saca el "sin ver" sin volver a pedir la lista
     // (con el filtro "Sin ver" queda hasta el próximo refresco, para no mover la lista bajo el cursor).
@@ -268,9 +307,17 @@ export class InboxPage {
     });
   }
 
+  /** Actualizar: el orden real del servidor (con el tiempo real, las filas ya se actualizan solas). */
   protected refresh() {
-    this.list.reload();
+    this.live.reorder();
     this.summary.refresh();
+  }
+
+  protected showNew() {
+    this.live.reorder();
+    const scroller = this.scroller()?.nativeElement;
+    if (scroller && scroller.scrollHeight > scroller.clientHeight + 1) scroller.scrollTo({ top: 0 });
+    else scroller?.ownerDocument.defaultView?.scrollTo({ top: 0 });
   }
 
   protected onSearch(value: string) {

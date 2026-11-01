@@ -6,7 +6,7 @@ import { can } from './nav';
 
 /**
  * Derivadas sin atender (el número del ítem Leads del menú) y números que ve el usuario (el filtro
- * "Número"). Lo refresca el layout cada 30 s mientras la pestaña está visible, y la bandeja al reactivar.
+ * "Número"). Lo refresca el layout con los eventos de tiempo real (o cada 30 s si no hay), y la bandeja al reactivar.
  * Cambiar de empresa recarga la página (decisión #69): no queda el número de otra empresa en memoria.
  * Va en el bundle inicial (lo usa el layout): por eso es un GET simple con el tipo del cliente generado y
  * no carga el resto del cliente (InboxApi va con las páginas, que son lazy).

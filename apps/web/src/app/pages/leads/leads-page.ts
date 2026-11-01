@@ -8,14 +8,17 @@ import {
   signal,
   untracked,
 } from '@angular/core';
+import { DOCUMENT } from '@angular/common';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
-import { RefreshCw, Search, Users } from 'lucide';
+import { ArrowUp, RefreshCw, Search, Users } from 'lucide';
 import { InboxApi } from '../../api/inbox-api';
 import type { LeadRow } from '../../api/generated';
 import { InboxSummary } from '../../core/inbox-summary';
-import { pollWhileVisible } from '../../core/poll';
+import { isNearTop, liveList } from '../../core/live-merge';
+import { pollWhileNoRealtime } from '../../core/poll';
 import { query } from '../../core/query';
+import { onInboxChanges } from '../../core/realtime';
 import { Icon } from '../../ui/icon';
 import { Score } from '../../ui/score';
 import { Paginator, SortHeader, ariaSort, type SortState } from '../../ui/table';
@@ -45,7 +48,9 @@ const MOBILE_SORTS = [
 
 /**
  * Grilla de leads (tarea 014). Ordena, filtra y pagina el servidor; el estado vive en la URL. En el
- * escritorio, tabla nativa (decisión #81); en el celular, tarjetas. Se refresca sola cada 30 s con la pestaña visible.
+ * escritorio, tabla nativa (decisión #81); en el celular, tarjetas. Tiempo real (025): las filas que ya se ven
+ * se actualizan en su lugar; una nueva entra arriba marcada solo en la primera página y con el usuario
+ * arriba de todo y, si no, aparece la pastilla "↑ N nuevas". El orden real llega con la pastilla o Actualizar.
  */
 @Component({
   selector: 'app-leads-page',
@@ -54,7 +59,13 @@ const MOBILE_SORTS = [
   template: `
     <div class="flex items-center justify-between gap-3">
       <h1 class="text-2xl sm:text-[28px] sm:leading-[34px]">Leads</h1>
-      <button type="button" class="btn btn-ghost btn-sm" (click)="refresh()" [disabled]="leads.isLoading()">
+      <button
+        type="button"
+        class="btn btn-ghost btn-sm"
+        data-testid="leads-refresh"
+        (click)="refresh()"
+        [disabled]="leads.isLoading()"
+      >
         <app-icon [icon]="refreshIcon" [size]="16" />
         <span class="max-sm:sr-only">Actualizar</span>
       </button>
@@ -142,7 +153,19 @@ const MOBILE_SORTS = [
     </form>
 
     <p class="sr-only" aria-live="polite">{{ statusText() }}</p>
-    <section class="mt-5" [attr.aria-busy]="leads.isLoading()">
+    <section class="relative mt-5" [attr.aria-busy]="leads.isLoading()">
+      @if (live.pendingCount() > 0) {
+        <div class="pointer-events-none sticky top-20 z-10 -mb-9 flex justify-center">
+          <button
+            type="button"
+            class="pointer-events-auto inline-flex items-center gap-1.5 rounded-full bg-primary px-3.5 py-1.5 text-sm font-semibold text-on-primary shadow-2"
+            data-testid="new-pill"
+            (click)="showNew()"
+          >
+            <app-icon [icon]="upIcon" [size]="15" /> {{ pendingText() }}
+          </button>
+        </div>
+      }
       @if (leads.loadFailed()) {
         <div class="card flex flex-col items-start gap-3 p-5" data-testid="leads-error">
           <p class="font-semibold text-text">No pudimos cargar los leads.</p>
@@ -210,15 +233,22 @@ const MOBILE_SORTS = [
                 <!-- Toda la fila abre la conversación con el mouse; con teclado, el link del nombre. -->
                 <tr
                   class="h-[var(--row-height)] cursor-pointer border-b border-border last:border-0 hover:bg-surface-2"
+                  [class.live-new]="live.newIds().has(lead.id)"
+                  [class.live-flash]="live.flashIds().has(lead.id)"
                   data-testid="lead-row"
                   (click)="openRow($event, lead.id)"
                 >
                   <td class="px-4 py-2.5">
-                    <a
-                      class="block max-w-48 truncate font-semibold text-text hover:text-primary hover:underline"
-                      [routerLink]="['/conversaciones', lead.id]"
-                      >{{ name(lead) }}</a
-                    >
+                    <span class="flex items-center gap-2">
+                      @if (live.newIds().has(lead.id)) {
+                        <span class="live-chip" data-testid="new-chip">Nueva</span>
+                      }
+                      <a
+                        class="block max-w-48 truncate font-semibold text-text hover:text-primary hover:underline"
+                        [routerLink]="['/conversaciones', lead.id]"
+                        >{{ name(lead) }}</a
+                      >
+                    </span>
                     <span class="tabular block max-w-48 truncate text-subtle">{{ lead.contact.waId }}</span>
                   </td>
                   <td class="px-4">
@@ -253,11 +283,18 @@ const MOBILE_SORTS = [
             <li>
               <a
                 class="card flex flex-col gap-1.5 p-3.5 hover:border-border-strong"
+                [class.live-new]="live.newIds().has(lead.id)"
+                [class.live-flash]="live.flashIds().has(lead.id)"
                 [routerLink]="['/conversaciones', lead.id]"
                 data-testid="lead-card"
               >
                 <span class="flex items-center justify-between gap-3">
-                  <span class="truncate font-semibold text-text">{{ name(lead) }}</span>
+                  <span class="flex min-w-0 items-center gap-2">
+                    @if (live.newIds().has(lead.id)) {
+                      <span class="live-chip" data-testid="new-chip">Nueva</span>
+                    }
+                    <span class="truncate font-semibold text-text">{{ name(lead) }}</span>
+                  </span>
                   <app-score [score]="lead.score" [level]="lead.tier" variant="compact" />
                 </span>
                 <span class="flex flex-wrap items-center gap-2 text-sm text-muted">
@@ -291,12 +328,20 @@ export class LeadsPage {
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
   protected readonly summary = inject(InboxSummary);
+  private readonly document = inject(DOCUMENT);
 
   private readonly params = toSignal(this.route.queryParamMap, { requireSync: true });
   protected readonly query = computed(() => parseLeadQuery(this.params()));
-  protected readonly leads = query(
-    () => toApiParams(this.query()),
+  private readonly apiParams = () => toApiParams(this.query());
+  protected readonly leads = query(this.apiParams, (params) => this.api.leads(params));
+  protected readonly live = liveList(
+    this.leads,
+    this.apiParams,
     (params) => this.api.leads(params),
+    () => this.query().page === 0 && isNearTop(undefined, this.document.defaultView ?? undefined),
+  );
+  protected readonly pendingText = computed(() =>
+    this.live.pendingCount() === 1 ? '1 nueva' : `${this.live.pendingCount()} nuevas`,
   );
 
   /** Lo que se ve mientras se escribe (la URL se actualiza después de una pausa). */
@@ -318,6 +363,7 @@ export class LeadsPage {
   protected readonly mobileSorts = MOBILE_SORTS;
   protected readonly stateLabels = STATE_LABELS;
   protected readonly refreshIcon = RefreshCw;
+  protected readonly upIcon = ArrowUp;
   protected readonly searchIcon = Search;
   protected readonly usersIcon = Users;
   protected readonly ariaSort = ariaSort;
@@ -334,7 +380,12 @@ export class LeadsPage {
   });
 
   constructor() {
-    pollWhileVisible(() => this.refresh());
+    onInboxChanges((changes) => {
+      // "Sin ver" no es una columna de Leads: lo que es solo una lectura no pide nada.
+      if (changes.resync || [...changes.types].some((type) => type !== 'conversation.read'))
+        this.live.refresh();
+    });
+    pollWhileNoRealtime(() => this.live.refresh());
     // "Atrás" cambia q en la URL: el campo lo sigue, salvo mientras se está escribiendo.
     effect(() => {
       const q = this.query().q;
@@ -345,9 +396,15 @@ export class LeadsPage {
     inject(DestroyRef).onDestroy(() => clearTimeout(this.searchTimer));
   }
 
+  /** Actualizar: el orden real del servidor (con el tiempo real, las filas ya se actualizan solas). */
   protected refresh() {
-    this.leads.reload();
+    this.live.reorder();
     this.summary.refresh();
+  }
+
+  protected showNew() {
+    this.live.reorder();
+    this.document.defaultView?.scrollTo({ top: 0 });
   }
 
   protected onSearch(value: string) {

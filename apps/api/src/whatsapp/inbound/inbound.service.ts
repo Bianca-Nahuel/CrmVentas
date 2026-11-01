@@ -14,6 +14,7 @@ import type { AiReplyJob } from '../../ai/reply/ai-reply.job.js';
 import { APP_DB, type AppDatabase } from '../../db/database.module.js';
 import { channels, contacts, conversations, messages, outboundMessages } from '../../db/schema/messaging.js';
 import { withTenantTransaction, type AppTx } from '../../db/tenant-context.js';
+import { publishConversationEvent, publishNotice } from '../../realtime/publish.js';
 import { BOSS, QUEUES } from '../../jobs/jobs.module.js';
 import { ECHO_RECHECK_MAX, ECHO_RECONCILE_WINDOW_MS } from '../../messaging/outbound/outbound.constants.js';
 import { pauseAiAfterHuman } from '../../messaging/outbound/outbound.service.js';
@@ -135,6 +136,7 @@ export class InboundService {
       startAfter: AI_DEBOUNCE_SECONDS,
       db: fromDrizzle(tx, sql),
     });
+    await publishConversationEvent(tx, 'message.created', { ...ids(channel), conversationId });
     return 'guardado';
   }
 
@@ -288,6 +290,8 @@ export class InboundService {
           .update(outboundMessages)
           .set({ status: 'sent', externalId, messageId, lastError: null })
           .where(eq(outboundMessages.id, unknown.id));
+        // El envío pasa a 'sent' aunque el mensaje ya estuviera guardado: el panel lo tiene que ver.
+        await publishConversationEvent(tx, 'message.updated', { ...ids(channel), conversationId });
         if (!messageId) return 'duplicado';
         // Igual se pausa: si en realidad lo escribió una persona con el mismo texto (un "Gracias"), la IA
         // no tiene que responderle encima. Equivocarse acá solo pausa la IA.
@@ -302,6 +306,7 @@ export class InboundService {
     });
     if (!messageId) return 'duplicado';
     await pauseAiAfterHuman(tx, conversationId);
+    await publishConversationEvent(tx, 'message.created', { ...ids(channel), conversationId });
     return 'pausado';
   }
 
@@ -367,7 +372,13 @@ export class InboundService {
           inArray(messages.status, allowedFrom[event.status]),
         ),
       )
-      .returning({ id: messages.id });
+      .returning({ id: messages.id, conversationId: messages.conversationId });
+    for (const row of updated) {
+      await publishConversationEvent(tx, 'message.updated', {
+        ...ids(channel),
+        conversationId: row.conversationId,
+      });
+    }
     return updated.length > 0 ? 'actualizado' : 'sin_cambios';
   }
 
@@ -388,6 +399,14 @@ export class InboundService {
         ),
       )
       .returning({ id: channels.id });
+    if (updated.length > 0) {
+      await publishNotice(tx, { kind: 'channel', type: 'channel.updated', ...ids(channel) });
+    }
     return updated.length > 0 ? 'actualizado' : 'sin_cambios';
   }
+}
+
+/** Empresa y número de un evento, para los avisos de tiempo real (se publican dentro de la transacción). */
+function ids(channel: ResolvedChannel): { tenantId: string; channelId: string } {
+  return { tenantId: channel.tenantId, channelId: channel.channelId };
 }

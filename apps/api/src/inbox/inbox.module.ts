@@ -9,7 +9,7 @@ import { ReplyService } from './reply.service.js';
 
 /**
  * Bandeja y leads (tarea 014): grilla, conversación de solo lectura, reactivar la IA y asignar números a
- * vendedores; responder desde el panel (024). ConversationScope se exporta para el tiempo real (025).
+ * vendedores; responder desde el panel (024). ConversationScope lo usa también el tiempo real (025).
  */
 @Module({
   imports: [AiModule, OutboundModule],

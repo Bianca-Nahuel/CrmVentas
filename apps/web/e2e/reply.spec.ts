@@ -32,11 +32,8 @@ test.describe('responder desde el panel', () => {
     await expect(bubble.getByTestId('delivery')).toHaveAttribute('data-state', /queued|sending|sent/);
     await expect(page.getByTestId('ai-state')).toContainText('IA pausada');
 
-    // El estado se actualiza con "Actualizar" (sin tiempo real hasta la 025).
-    await expect(async () => {
-      await page.getByTestId('refresh').click();
-      await expect(bubble.getByTestId('delivery')).toHaveAttribute('data-state', 'sent', { timeout: 1_000 });
-    }).toPass({ timeout: 25_000 });
+    // El estado llega solo por el tiempo real (tarea 025), sin recargar ni tocar nada.
+    await expect(bubble.getByTestId('delivery')).toHaveAttribute('data-state', 'sent', { timeout: 25_000 });
     await expect(bubble.getByTestId('delivery')).toContainText('Enviado');
     await expect(page.getByTestId('message').filter({ hasText: text })).toHaveCount(1);
   });

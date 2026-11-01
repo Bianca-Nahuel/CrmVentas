@@ -3,6 +3,7 @@ import { and, eq, inArray, sql } from 'drizzle-orm';
 import { fromDrizzle, type PgBoss } from 'pg-boss';
 import { channels, conversations, outboundMessages } from '../../db/schema/messaging.js';
 import { currentTx, type AppTx } from '../../db/tenant-context.js';
+import { publishConversationEvent, publishNotice } from '../../realtime/publish.js';
 import { BOSS, QUEUES } from '../../jobs/jobs.module.js';
 import type { ProviderFailure, SeenMessage } from '../../whatsapp/provider.js';
 import { AI_PAUSE_AFTER_HUMAN_HOURS, REPLY_WINDOW_HOURS } from './outbound.constants.js';
@@ -213,6 +214,13 @@ export class OutboundService {
       return sameRequest(winner, input, sentByUserId);
     }
 
+    // Tiempo real: el envío aparece "En cola" (o rechazado) en el panel cuando la transacción hace commit.
+    await publishConversationEvent(tx, 'message.created', {
+      tenantId: inserted.tenantId,
+      channelId: context.channelId,
+      conversationId: context.conversationId,
+    });
+
     if (status === 'queued') {
       const job: OutboundJob = {
         outboundId: inserted.id,
@@ -322,22 +330,28 @@ export async function applyChannelFailure(
   channelId: string,
   failure: ProviderFailure,
 ): Promise<boolean> {
+  let changed: { tenantId: string }[];
   if (failure.error === 'blocked_risk') {
-    await tx
+    changed = await tx
       .update(channels)
       .set({
         sendingPausedUntil: sql`'infinity'::timestamptz`,
         sendingPausedReason: `blocked_risk:${failure.code}`,
       })
-      .where(eq(channels.id, channelId));
-    return true;
-  }
-  if (failure.error === 'session_down') {
-    await tx
+      .where(eq(channels.id, channelId))
+      .returning({ tenantId: channels.tenantId });
+  } else if (failure.error === 'session_down') {
+    changed = await tx
       .update(channels)
       .set({ status: 'disconnected' })
-      .where(and(eq(channels.id, channelId), inArray(channels.status, ['pending', 'connected'])));
-    return true;
+      .where(and(eq(channels.id, channelId), inArray(channels.status, ['pending', 'connected'])))
+      .returning({ tenantId: channels.tenantId });
+  } else {
+    return false;
   }
-  return false;
+  // El panel muestra por qué no se puede responder (tiempo real).
+  for (const row of changed) {
+    await publishNotice(tx, { kind: 'channel', type: 'channel.updated', tenantId: row.tenantId, channelId });
+  }
+  return true;
 }

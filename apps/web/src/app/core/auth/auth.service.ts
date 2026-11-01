@@ -34,6 +34,11 @@ export class AuthService {
   private readonly document = inject(DOCUMENT);
 
   readonly status = signal<AuthStatus>('unknown');
+  /**
+   * Se está cerrando la sesión o cambiando de empresa (este mismo panel ya navega): el tiempo real no tiene
+   * que reaccionar al corte de su stream (tarea 025).
+   */
+  readonly leaving = signal(false);
   readonly context = signal<MeContext | null>(null);
   readonly tenants = signal<MeTenantOption[]>([]);
 
@@ -87,6 +92,7 @@ export class AuthService {
       return { ok: false, message: GENERIC_ERROR };
     }
     this.reset();
+    this.leaving.set(false);
     await this.load();
     return { ok: true };
   }
@@ -117,14 +123,19 @@ export class AuthService {
    */
   async switchTenant(tenantId: string): Promise<boolean> {
     if (tenantId === this.tenant()?.id) return true;
+    this.leaving.set(true);
     const result = await this.client.organization.setActive({ organizationId: tenantId });
-    if (result.error) return false;
+    if (result.error) {
+      this.leaving.set(false);
+      return false;
+    }
     this.reset();
     this.document.location.assign('/');
     return true;
   }
 
   async signOut(): Promise<void> {
+    this.leaving.set(true);
     try {
       await this.client.signOut();
     } finally {
