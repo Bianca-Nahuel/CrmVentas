@@ -1,15 +1,18 @@
-import { Inject, Injectable, Logger, type OnApplicationBootstrap } from '@nestjs/common';
+import { Inject, Injectable, Logger, type OnApplicationBootstrap, Optional } from '@nestjs/common';
 import type { WhatsAppProviderId } from '@ventas/shared';
 import { eq } from 'drizzle-orm';
 import type { PgBoss } from 'pg-boss';
 import { APP_DB, type AppDatabase } from '../../db/database.module.js';
 import { channels } from '../../db/schema/messaging.js';
 import { withTenantTransaction } from '../../db/tenant-context.js';
-import { BOSS, QUEUES } from '../../jobs/jobs.module.js';
+import { ENV } from '../../config/config.module.js';
+import type { Env } from '../../config/env.js';
+import { BOSS, pollingSeconds, QUEUES } from '../../jobs/jobs.module.js';
 import { WHATSAPP_PROVIDER_REGISTRY, type WhatsAppProviderRegistry } from '../provider.js';
 import type { SessionCloseJob } from './session-close.job.js';
 
-const WORK_OPTIONS = { localConcurrency: 1, pollingIntervalSeconds: 2 } as const;
+const WORK_OPTIONS = { localConcurrency: 1 } as const;
+type WorkOptions = typeof WORK_OPTIONS & { pollingIntervalSeconds: number };
 const REJECTED = new Set(['phone_mismatch', 'number_in_use']);
 
 // Worker de whatsapp-session-close. Desvincula la sesión de un escaneo rechazado; si mientras tanto
@@ -18,6 +21,8 @@ const REJECTED = new Set(['phone_mismatch', 'number_in_use']);
 @Injectable()
 export class SessionCloseWorker implements OnApplicationBootstrap {
   private readonly logger = new Logger('SessionCloseWorker');
+  // Inyección por propiedad: los tests que crean el worker a mano no la pasan (queda el valor por defecto).
+  @Optional() @Inject(ENV) private readonly env?: Env;
 
   constructor(
     @Inject(BOSS) private readonly boss: PgBoss,
@@ -25,8 +30,12 @@ export class SessionCloseWorker implements OnApplicationBootstrap {
     @Inject(WHATSAPP_PROVIDER_REGISTRY) private readonly providers: WhatsAppProviderRegistry,
   ) {}
 
+  private workOptions(): WorkOptions {
+    return { ...WORK_OPTIONS, pollingIntervalSeconds: pollingSeconds(this.env, 2) };
+  }
+
   async onApplicationBootstrap(): Promise<void> {
-    await this.boss.work<SessionCloseJob>(QUEUES.whatsappSessionClose, WORK_OPTIONS, async (jobs) => {
+    await this.boss.work<SessionCloseJob>(QUEUES.whatsappSessionClose, this.workOptions(), async (jobs) => {
       for (const job of jobs) await this.handle(job.data);
     });
   }

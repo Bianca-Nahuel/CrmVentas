@@ -2,7 +2,7 @@
 // manda WAHA, con la clave de esta corrida: playwright.config.ts) y el cambio aparece sin recargar. Corta la
 // red del navegador y, al volver, el panel se pone al día. Números ficticios; la IA está apagada.
 import { expect, test, type Page } from '@playwright/test';
-import { USERS, expectInLayout, inbound, login, randomPhone, uid } from './helpers';
+import { expectInLayout, inbound, loginAs, randomPhone, uid, USERS } from './helpers';
 
 // Criterio de la tarea: el entrante aparece en menos de 3 s.
 const REALTIME_MS = 3_000;
@@ -10,7 +10,7 @@ const REALTIME_MS = 3_000;
 const indicator = (page: Page) => page.getByTestId('live-indicator').locator('visible=true');
 
 async function openOwner(page: Page, path: string) {
-  await login(page, USERS.ownerCeramicos);
+  await loginAs(page, USERS.ownerCeramicos);
   await expectInLayout(page, 'Cerámicos Demo');
   await page.goto(path);
   await expect(indicator(page)).toHaveAttribute('data-status', 'live');

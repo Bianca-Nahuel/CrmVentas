@@ -1,13 +1,16 @@
-import { Inject, Injectable, Logger, type OnApplicationBootstrap } from '@nestjs/common';
+import { Inject, Injectable, Logger, type OnApplicationBootstrap, Optional } from '@nestjs/common';
 import type { PgBoss } from 'pg-boss';
 import { errorCode } from '../../jobs/error-code.js';
-import { BOSS, QUEUES } from '../../jobs/jobs.module.js';
+import { ENV } from '../../config/config.module.js';
+import type { Env } from '../../config/env.js';
+import { BOSS, pollingSeconds, QUEUES } from '../../jobs/jobs.module.js';
 import { WHATSAPP_PROVIDER_REGISTRY, type WhatsAppProviderRegistry } from '../provider.js';
 import { ECHO_RECHECK_DELAY_SECONDS } from '../../messaging/outbound/outbound.constants.js';
 import type { InboundJob } from './inbound-job.js';
 import { InboundService } from './inbound.service.js';
 
-const WORK_OPTIONS = { localConcurrency: 2, pollingIntervalSeconds: 1, includeMetadata: true } as const;
+const WORK_OPTIONS = { localConcurrency: 2, includeMetadata: true } as const;
+type WorkOptions = typeof WORK_OPTIONS & { pollingIntervalSeconds: number };
 
 /** Datos del intento que usa el worker (los da pg-boss con includeMetadata). */
 export interface JobAttempt {
@@ -24,6 +27,8 @@ export interface JobAttempt {
 @Injectable()
 export class InboundWorker implements OnApplicationBootstrap {
   private readonly logger = new Logger('InboundWorker');
+  // Inyección por propiedad: los tests que crean el worker a mano no la pasan (queda el valor por defecto).
+  @Optional() @Inject(ENV) private readonly env?: Env;
 
   constructor(
     @Inject(BOSS) private readonly boss: PgBoss,
@@ -31,10 +36,14 @@ export class InboundWorker implements OnApplicationBootstrap {
     private readonly inbound: InboundService,
   ) {}
 
+  private workOptions(): WorkOptions {
+    return { ...WORK_OPTIONS, pollingIntervalSeconds: pollingSeconds(this.env) };
+  }
+
   async onApplicationBootstrap(): Promise<void> {
-    await this.boss.work<InboundJob, unknown, typeof WORK_OPTIONS>(
+    await this.boss.work<InboundJob, unknown, WorkOptions>(
       QUEUES.whatsappInbound,
-      WORK_OPTIONS,
+      this.workOptions(),
       async (jobs) => {
         for (const job of jobs) await this.handle(job.data, job);
       },

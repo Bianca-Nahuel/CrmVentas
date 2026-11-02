@@ -65,6 +65,9 @@ const envSchema = z.object({
     .enum(['true', 'false'])
     .default('false')
     .transform((value) => value === 'true'),
+  // Cada cuánto buscan trabajos los workers de pg-boss (0,5 es el mínimo de pg-boss). Los tests lo bajan a
+  // 0,5 para no esperar de más.
+  JOBS_POLLING_SECONDS: z.coerce.number().min(0.5).max(10).default(1),
   // Tiempo real (tarea 025): latido de los streams SSE (por debajo del timeout de inactividad de los
   // proxies), cada cuánto se revalida la sesión y la visibilidad de cada stream, y streams por usuario.
   REALTIME_HEARTBEAT_SECONDS: z.coerce.number().int().min(1).max(55).default(25),

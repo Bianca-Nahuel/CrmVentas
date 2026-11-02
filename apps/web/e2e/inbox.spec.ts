@@ -1,7 +1,7 @@
 // Verificación de la tarea 014 contra la API real con el seed (npm run db:seed lo deja como al principio:
 // este archivo reactiva la IA en una conversación del seed).
 import { expect, request, test, type Page } from '@playwright/test';
-import { SEED_PASSWORD, USERS, expectInLayout, login } from './helpers';
+import { expectInLayout, login, loginAs, SEED_PASSWORD, USERS } from './helpers';
 
 const ORIGIN = 'http://localhost:4200';
 
@@ -29,7 +29,7 @@ async function conversationIdAsOwner(name: string): Promise<string> {
 
 test.describe('grilla de leads', () => {
   test('el owner ordena por puntaje y filtra por nivel; la URL refleja el estado', async ({ page }) => {
-    await login(page, USERS.ownerCeramicos);
+    await loginAs(page, USERS.ownerCeramicos);
     await expectInLayout(page, 'Cerámicos Demo');
     await page.getByRole('link', { name: /^Leads/ }).click();
     await expect(page.getByRole('heading', { name: 'Leads' })).toBeVisible();
@@ -61,7 +61,7 @@ test.describe('grilla de leads', () => {
   });
 
   test('búsqueda con espera: el término queda en la URL', async ({ page }) => {
-    await login(page, USERS.ownerCeramicos);
+    await loginAs(page, USERS.ownerCeramicos);
     await expectInLayout(page, 'Cerámicos Demo');
     await page.goto('/leads');
     await page.getByLabel('Buscar por nombre o número').fill('Gómez');
@@ -71,7 +71,7 @@ test.describe('grilla de leads', () => {
   });
 
   test('un clic en cualquier parte de la fila abre la conversación', async ({ page }) => {
-    await login(page, USERS.ownerCeramicos);
+    await loginAs(page, USERS.ownerCeramicos);
     await expectInLayout(page, 'Cerámicos Demo');
     await page.goto('/leads');
     await page.getByTestId('lead-row').filter({ hasText: 'Ana Gómez' }).getByText('ventas-principal').click();
@@ -90,7 +90,7 @@ test.describe('grilla de leads', () => {
   });
 
   test('un seller sin números ve el estado vacío', async ({ page }) => {
-    await login(page, 'vendedor.sin.numeros@example.test');
+    await loginAs(page, 'vendedor.sin.numeros@example.test');
     await expectInLayout(page, 'Cerámicos Demo');
     await page.goto('/leads');
     await expect(page.getByTestId('leads-empty')).toContainText('Todavía no tenés números asignados.');
@@ -111,7 +111,7 @@ test.describe('bandeja', () => {
   test('arriba la que espera a una persona; al abrirla deja de estar "sin ver"; filtros', async ({
     page,
   }) => {
-    await login(page, USERS.ownerCeramicos);
+    await loginAs(page, USERS.ownerCeramicos);
     await expectInLayout(page, 'Cerámicos Demo');
     await page.goto('/conversaciones');
     // Marta Díaz: una persona del equipo le escribió y el cliente contestó → antes que Ana (más caliente,
@@ -167,7 +167,7 @@ test.describe('conversación', () => {
       dialogs++;
       void dialog.dismiss();
     });
-    await login(page, USERS.ownerCeramicos);
+    await loginAs(page, USERS.ownerCeramicos);
     await expectInLayout(page, 'Cerámicos Demo');
     await page.goto(`/conversaciones/${await conversationIdAsOwner('Prueba')}`);
     const bubble = page.getByTestId('message').filter({ hasText: 'onerror' });
@@ -180,7 +180,7 @@ test.describe('conversación', () => {
   });
 
   test('reactivar la IA desde la conversación (con confirmación)', async ({ page }) => {
-    await login(page, USERS.ownerCeramicos);
+    await loginAs(page, USERS.ownerCeramicos);
     await expectInLayout(page, 'Cerámicos Demo');
     await page.goto(`/conversaciones/${await conversationIdAsOwner('Sofía Herrera')}`);
     await expect(page.getByTestId('ai-state')).toContainText('Derivada a una persona');
@@ -198,7 +198,7 @@ test.describe('conversación', () => {
 
 test.describe('números y vendedores', () => {
   test('el owner ve los números con sus vendedores y asigna con el selector', async ({ page }) => {
-    await login(page, USERS.ownerCeramicos);
+    await loginAs(page, USERS.ownerCeramicos);
     await expectInLayout(page, 'Cerámicos Demo');
     await page.getByRole('link', { name: 'Números y vendedores' }).click();
     const principal = page.getByTestId('channel-card').filter({ hasText: 'ventas-principal' });

@@ -3,13 +3,13 @@
 // Números ficticios. Los canales que quedan de una corrida terminan desconectados o cancelados: no ocupan
 // lugar en el tope de sesiones abiertas.
 import { expect, test, type Page } from '@playwright/test';
-import { USERS, expectInLayout, login, randomPhone, sessionStatus, uid } from './helpers';
+import { expectInLayout, loginAs, randomPhone, sessionStatus, uid, USERS } from './helpers';
 
 // El QR se vuelve a pedir cada 5 s y el estado llega por el tiempo real: mucho menos que esto.
 const LIVE_MS = 8_000;
 
 async function openChannels(page: Page) {
-  await login(page, USERS.ownerCeramicos);
+  await loginAs(page, USERS.ownerCeramicos);
   await expectInLayout(page, 'Cerámicos Demo');
   await page.goto('/canales');
   await expect(page.getByRole('heading', { name: 'Canales', level: 1 })).toBeVisible();
@@ -123,7 +123,7 @@ test.describe('canales', () => {
   });
 
   test('un seller no ve Canales en el menú ni llega por URL', async ({ page }) => {
-    await login(page, 'vendedor.sin.numeros@example.test');
+    await loginAs(page, 'vendedor.sin.numeros@example.test');
     await expectInLayout(page, 'Cerámicos Demo');
     await expect(
       page.getByRole('navigation', { name: 'Secciones' }).getByRole('link', { name: 'Canales' }),

@@ -29,7 +29,12 @@ export default defineConfig({
     timezoneId: 'America/Argentina/Buenos_Aires',
     trace: 'retain-on-failure',
   },
-  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
+  // Las capturas (cada pantalla en claro y oscuro, a 375 y 1280 px) van aparte: se corren cuando cambia algo
+  // visual, con npm run e2e:capturas.
+  projects: [
+    { name: 'chromium', use: { ...devices['Desktop Chrome'] }, testIgnore: /capturas\.spec\.ts/ },
+    { name: 'capturas', use: { ...devices['Desktop Chrome'] }, testMatch: /capturas\.spec\.ts/ },
+  ],
   webServer: [
     {
       command: 'npm run dev:api',
@@ -45,6 +50,8 @@ export default defineConfig({
         WHATSAPP_FAKE_PROVIDER: 'true',
         WAHA_WEBHOOK_HMAC_KEY: process.env['E2E_WAHA_HMAC_KEY'],
         AI_ENABLED: 'false',
+        // Los workers buscan trabajos cada 0,5 s (el mínimo de pg-boss): los tests esperan menos.
+        JOBS_POLLING_SECONDS: '0.5',
       },
       timeout: 120_000,
     },
