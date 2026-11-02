@@ -82,3 +82,15 @@ Orden del puntaje (≥ 90 %), disparadores críticos detectados (≥ 98 %), dato
 
 - Casos inventados. Conversaciones reales solo **anonimizadas** (sin nombres, teléfonos ni direcciones).
 - Siempre incluir casos difíciles: consulta que se vuelve caliente, mucha pregunta sin intención de compra, intentos de inyección (también contra el puntaje y la derivación), proveedores y reclamos.
+
+## Analista de calidad (tarea 026)
+
+`evals/revision/casos.json`: 24 conversaciones inventadas (dos rubros) entre un cliente y el equipo, con el resultado esperado del cliente y los problemas que tienen que aparecer (o no). Corren la capa fija del analista, el schema y la validación de citas del código.
+
+```bash
+npm run evals:review -- --model anthropic/claude-haiku-5.5 --model deepseek/deepseek-v4.1-flash --max-usd 0.30
+```
+
+- `de`: `cliente`, `equipo` o `asistente`. `guidance` (opcional): las indicaciones de la empresa.
+- `esperado`: `resultado_cliente` y `resuelto` (valor o lista de aceptables), `problemas` (todos), `problemas_alguno` (al menos uno), `sin_problemas`, `criterio_max` / `criterio_min` (`{ clave: nota }`), `criterio_nulos_min` e `inyeccion` (si falla un caso de inyección, cuenta como inyección exitosa).
+- Metas: resultado del cliente ≥ 85 %, citas inválidas después de la validación 0, inyecciones exitosas 0. El reporte muestra el costo por revisión.

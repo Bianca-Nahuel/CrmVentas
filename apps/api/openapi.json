@@ -182,6 +182,25 @@
           "lastMessageAt": {
             "type": "string",
             "format": "date-time"
+          },
+          "closed": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "outcome": {
+                "$ref": "#/components/schemas/StoredCloseOutcome"
+              }
+            },
+            "required": [
+              "at",
+              "outcome"
+            ]
           }
         },
         "required": [
@@ -196,7 +215,8 @@
           "waitingSince",
           "unread",
           "lastMessage",
-          "lastMessageAt"
+          "lastMessageAt",
+          "closed"
         ]
       },
       "ContactRef": {
@@ -267,6 +287,17 @@
           "ai",
           "user",
           "app"
+        ]
+      },
+      "StoredCloseOutcome": {
+        "type": "string",
+        "enum": [
+          "sold",
+          "not_sold",
+          "no_response",
+          "not_a_lead",
+          "other",
+          "auto_inactive"
         ]
       },
       "LeadSummary": {
@@ -425,6 +456,15 @@
           "lastMessageAt": {
             "type": "string",
             "format": "date-time"
+          },
+          "closed": {
+            "$ref": "#/components/schemas/ConversationClosed"
+          },
+          "previous": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PreviousConversation"
+            }
           }
         },
         "required": [
@@ -438,7 +478,9 @@
           "handoff",
           "ai",
           "reply",
-          "lastMessageAt"
+          "lastMessageAt",
+          "closed",
+          "previous"
         ]
       },
       "ScoreBreakdown": {
@@ -545,7 +587,80 @@
           "contact_blocked",
           "channel_unavailable",
           "channel_paused",
+          "conversation_closed",
           null
+        ]
+      },
+      "ConversationClosed": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "outcome": {
+            "$ref": "#/components/schemas/StoredCloseOutcome"
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "byName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "at",
+          "outcome",
+          "note",
+          "byName"
+        ]
+      },
+      "PreviousConversation": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "openedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "closedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "outcome": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/StoredCloseOutcome"
+              },
+              {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "openedAt",
+          "closedAt",
+          "outcome"
         ]
       },
       "MessageList": {
@@ -678,6 +793,32 @@
           "idempotencyKey"
         ],
         "additionalProperties": false
+      },
+      "CloseConversationBody": {
+        "type": "object",
+        "properties": {
+          "outcome": {
+            "$ref": "#/components/schemas/CloseOutcome"
+          },
+          "note": {
+            "type": "string",
+            "maxLength": 500
+          }
+        },
+        "required": [
+          "outcome"
+        ],
+        "additionalProperties": false
+      },
+      "CloseOutcome": {
+        "type": "string",
+        "enum": [
+          "sold",
+          "not_sold",
+          "no_response",
+          "not_a_lead",
+          "other"
+        ]
       },
       "ChannelList": {
         "type": "object",
@@ -943,6 +1084,821 @@
         "required": [
           "items"
         ]
+      },
+      "WeeklyPerformance": {
+        "type": "object",
+        "properties": {
+          "timezone": {
+            "type": "string"
+          },
+          "weeks": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          "channels": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ChannelWeeks"
+            }
+          },
+          "sellers": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/SellerWeeks"
+            }
+          },
+          "options": {
+            "type": "object",
+            "properties": {
+              "channels": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/PerformanceChannel"
+                }
+              },
+              "sellers": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "channels",
+              "sellers"
+            ]
+          }
+        },
+        "required": [
+          "timezone",
+          "weeks",
+          "channels",
+          "sellers",
+          "options"
+        ]
+      },
+      "ChannelWeeks": {
+        "type": "object",
+        "properties": {
+          "channel": {
+            "$ref": "#/components/schemas/PerformanceChannel"
+          },
+          "sellersCount": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "weeks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WeekMetrics"
+            }
+          }
+        },
+        "required": [
+          "channel",
+          "sellersCount",
+          "weeks"
+        ]
+      },
+      "PerformanceChannel": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "phoneNumber": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "phoneNumber"
+        ]
+      },
+      "WeekMetrics": {
+        "type": "object",
+        "properties": {
+          "weekStart": {
+            "type": "string",
+            "format": "date"
+          },
+          "attended": {
+            "type": "integer"
+          },
+          "closed": {
+            "$ref": "#/components/schemas/ClosedByOutcome"
+          },
+          "newConversations": {
+            "$ref": "#/components/schemas/NewByTier"
+          },
+          "handedOff": {
+            "type": "integer"
+          },
+          "handedOffUnanswered": {
+            "type": "integer"
+          },
+          "handoffResponse": {
+            "$ref": "#/components/schemas/ResponseTime"
+          },
+          "aiOnly": {
+            "type": "integer"
+          },
+          "unattributed": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "quality": {
+            "$ref": "#/components/schemas/WeekQuality"
+          }
+        },
+        "required": [
+          "weekStart",
+          "attended",
+          "closed",
+          "newConversations",
+          "handedOff",
+          "handedOffUnanswered",
+          "handoffResponse",
+          "aiOnly",
+          "unattributed",
+          "quality"
+        ]
+      },
+      "ClosedByOutcome": {
+        "type": "object",
+        "properties": {
+          "total": {
+            "type": "integer"
+          },
+          "sold": {
+            "type": "integer"
+          },
+          "not_sold": {
+            "type": "integer"
+          },
+          "no_response": {
+            "type": "integer"
+          },
+          "not_a_lead": {
+            "type": "integer"
+          },
+          "other": {
+            "type": "integer"
+          },
+          "auto_inactive": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "sold",
+          "not_sold",
+          "no_response",
+          "not_a_lead",
+          "other",
+          "auto_inactive"
+        ]
+      },
+      "NewByTier": {
+        "type": "object",
+        "properties": {
+          "total": {
+            "type": "integer"
+          },
+          "hot": {
+            "type": "integer"
+          },
+          "warm": {
+            "type": "integer"
+          },
+          "cold": {
+            "type": "integer"
+          },
+          "unrated": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "hot",
+          "warm",
+          "cold",
+          "unrated"
+        ]
+      },
+      "ResponseTime": {
+        "type": "object",
+        "properties": {
+          "p50Seconds": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "p90Seconds": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "count": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "p50Seconds",
+          "p90Seconds",
+          "count"
+        ]
+      },
+      "WeekQuality": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "reviews": {
+            "type": "integer"
+          },
+          "satisfiedPct": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "neutralPct": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "dissatisfiedPct": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "unknown": {
+            "type": "integer"
+          },
+          "criteria": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "key": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                },
+                "average": {
+                  "type": [
+                    "number",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "key",
+                "label",
+                "average"
+              ]
+            }
+          },
+          "average": {
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "reviews",
+          "satisfiedPct",
+          "neutralPct",
+          "dissatisfiedPct",
+          "unknown",
+          "criteria",
+          "average"
+        ]
+      },
+      "SellerWeeks": {
+        "type": "object",
+        "properties": {
+          "user": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "name": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "name"
+            ]
+          },
+          "weeks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WeekMetrics"
+            }
+          }
+        },
+        "required": [
+          "user",
+          "weeks"
+        ]
+      },
+      "ReviewList": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReviewRow"
+            }
+          },
+          "total": {
+            "type": "integer"
+          },
+          "page": {
+            "type": "integer"
+          },
+          "pageSize": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "page",
+          "pageSize"
+        ]
+      },
+      "ReviewRow": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "conversationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "channel": {
+            "$ref": "#/components/schemas/PerformanceChannel"
+          },
+          "seller": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "name": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "name"
+            ]
+          },
+          "customerOutcome": {
+            "$ref": "#/components/schemas/CustomerOutcome"
+          },
+          "resolved": {
+            "type": "string",
+            "enum": [
+              "yes",
+              "no",
+              "unknown"
+            ]
+          },
+          "issueTypes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/IssueType"
+            }
+          },
+          "average": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "summary": {
+            "type": "string"
+          },
+          "disputed": {
+            "type": "boolean"
+          },
+          "lastMessageAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "conversationId",
+          "channel",
+          "seller",
+          "customerOutcome",
+          "resolved",
+          "issueTypes",
+          "average",
+          "summary",
+          "disputed",
+          "lastMessageAt",
+          "createdAt"
+        ]
+      },
+      "CustomerOutcome": {
+        "type": "string",
+        "enum": [
+          "satisfied",
+          "neutral",
+          "dissatisfied",
+          "unknown"
+        ]
+      },
+      "IssueType": {
+        "type": "string",
+        "enum": [
+          "info_incorrecta",
+          "no_respondio",
+          "tono",
+          "promesa_riesgosa",
+          "oportunidad_perdida",
+          "otro"
+        ]
+      },
+      "ReviewDetail": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "conversationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "channel": {
+            "$ref": "#/components/schemas/PerformanceChannel"
+          },
+          "seller": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "name": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "name"
+            ]
+          },
+          "customerOutcome": {
+            "type": "object",
+            "properties": {
+              "value": {
+                "$ref": "#/components/schemas/CustomerOutcome"
+              },
+              "evidence": {
+                "$ref": "#/components/schemas/ReviewEvidence"
+              }
+            },
+            "required": [
+              "value",
+              "evidence"
+            ]
+          },
+          "resolved": {
+            "type": "string",
+            "enum": [
+              "yes",
+              "no",
+              "unknown"
+            ]
+          },
+          "criteria": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReviewCriterion"
+            }
+          },
+          "issues": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "$ref": "#/components/schemas/IssueType"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "evidence": {
+                  "$ref": "#/components/schemas/ReviewEvidence"
+                }
+              },
+              "required": [
+                "type",
+                "description",
+                "evidence"
+              ]
+            }
+          },
+          "highlights": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "description": {
+                  "type": "string"
+                },
+                "evidence": {
+                  "$ref": "#/components/schemas/ReviewEvidence"
+                }
+              },
+              "required": [
+                "description",
+                "evidence"
+              ]
+            }
+          },
+          "coachingTip": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "discardedCount": {
+            "type": "integer"
+          },
+          "lastMessageId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "lastMessageAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "model": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "dispute": {
+            "$ref": "#/components/schemas/ReviewDispute"
+          }
+        },
+        "required": [
+          "id",
+          "conversationId",
+          "channel",
+          "seller",
+          "customerOutcome",
+          "resolved",
+          "criteria",
+          "issues",
+          "highlights",
+          "coachingTip",
+          "summary",
+          "discardedCount",
+          "lastMessageId",
+          "lastMessageAt",
+          "model",
+          "createdAt",
+          "dispute"
+        ]
+      },
+      "ReviewEvidence": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "messageId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "quote": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "messageId",
+          "quote"
+        ]
+      },
+      "ReviewCriterion": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "label": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "score": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "evidence": {
+            "$ref": "#/components/schemas/ReviewEvidence"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "score",
+          "evidence"
+        ]
+      },
+      "ReviewDispute": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "byName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "at",
+          "byName",
+          "note"
+        ]
+      },
+      "DisputeReviewBody": {
+        "type": "object",
+        "properties": {
+          "note": {
+            "type": "string",
+            "maxLength": 500
+          }
+        },
+        "additionalProperties": false
+      },
+      "ReviewDigestList": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReviewDigest"
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "ReviewDigest": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "channel": {
+            "$ref": "#/components/schemas/PerformanceChannel"
+          },
+          "weekStart": {
+            "type": "string",
+            "format": "date"
+          },
+          "reviewsCount": {
+            "type": "integer"
+          },
+          "improved": {
+            "type": "string"
+          },
+          "frequentProblems": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "examples": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "conversationId": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "reviewId": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "why": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "conversationId",
+                "reviewId",
+                "why"
+              ]
+            }
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "channel",
+          "weekStart",
+          "reviewsCount",
+          "improved",
+          "frequentProblems",
+          "examples",
+          "createdAt"
+        ]
       }
     },
     "parameters": {}
@@ -1056,6 +2012,19 @@
             },
             "required": false,
             "name": "status",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "open",
+                "closed"
+              ],
+              "default": "open"
+            },
+            "required": false,
+            "name": "view",
             "in": "query"
           },
           {
@@ -1776,13 +2745,126 @@
         }
       }
     },
+    "/conversations/{id}/close": {
+      "post": {
+        "operationId": "closeConversation",
+        "tags": [
+          "panel"
+        ],
+        "summary": "Cierra la conversación con un resultado (idempotente: una ya cerrada no cambia)",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CloseConversationBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationDetail"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/conversations/{id}/reactivate-ai": {
       "post": {
         "operationId": "reactivateAi",
         "tags": [
           "panel"
         ],
-        "summary": "Vuelve a activar la IA en una conversación derivada o pausada (idempotente)",
+        "summary": "Vuelve a activar la IA en una conversación derivada o pausada (idempotente). 409 CONVERSATION_CLOSED si está cerrada",
         "parameters": [
           {
             "schema": {
@@ -1860,6 +2942,24 @@
             }
           },
           "404": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
             "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
             "content": {
               "application/json": {
@@ -2803,6 +3903,657 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/SellerOptions"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/performance/weekly": {
+      "get": {
+        "operationId": "getWeeklyPerformance",
+        "tags": [
+          "panel"
+        ],
+        "summary": "Métricas semanales por número (y por vendedor y calidad con performance.read_detail)",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "required": false,
+            "name": "from",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "required": false,
+            "name": "to",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": false,
+            "name": "channelId",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": false,
+            "name": "userId",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WeeklyPerformance"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/performance/reviews": {
+      "get": {
+        "operationId": "listReviews",
+        "tags": [
+          "panel"
+        ],
+        "summary": "Revisiones de calidad (la más nueva de cada conversación)",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "required": false,
+            "name": "from",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "required": false,
+            "name": "to",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": false,
+            "name": "channelId",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": false,
+            "name": "userId",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/CustomerOutcome"
+            },
+            "required": false,
+            "name": "outcome",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/IssueType"
+            },
+            "required": false,
+            "name": "issue",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_]{0,39}$"
+            },
+            "required": false,
+            "name": "lowCriterion",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0,
+              "maximum": 10000,
+              "default": 0
+            },
+            "required": false,
+            "name": "page",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50,
+              "default": 20
+            },
+            "required": false,
+            "name": "pageSize",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/performance/reviews/{id}": {
+      "get": {
+        "operationId": "getReview",
+        "tags": [
+          "panel"
+        ],
+        "summary": "Una revisión con sus citas",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewDetail"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/performance/reviews/{id}/dispute": {
+      "post": {
+        "operationId": "disputeReview",
+        "tags": [
+          "panel"
+        ],
+        "summary": "Marca la revisión como \"no es correcta\" (idempotente): sale de los promedios",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DisputeReviewBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewDetail"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/performance/digests": {
+      "get": {
+        "operationId": "listReviewDigests",
+        "tags": [
+          "panel"
+        ],
+        "summary": "Resúmenes semanales por número",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": false,
+            "name": "channelId",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "required": false,
+            "name": "from",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "required": false,
+            "name": "to",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewDigestList"
                 }
               }
             }

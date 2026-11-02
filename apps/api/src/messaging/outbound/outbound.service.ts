@@ -15,6 +15,7 @@ export type RejectReason =
   | 'contact_blocked'
   | 'channel_unavailable'
   | 'channel_paused'
+  | 'conversation_closed'
   | 'superseded';
 export type OutboundStatus = 'queued' | 'sending' | 'sent' | 'failed' | 'rejected';
 
@@ -88,6 +89,7 @@ export class InvalidOutboundError extends Error {
  * si se puede. La usan loadSendContext y el detalle de la conversación del panel (que explica el motivo).
  */
 export const SEND_REJECT_REASON = sql`CASE
+  WHEN c.status <> 'open' THEN 'conversation_closed'
   WHEN c.last_inbound_at IS NULL THEN 'no_inbound'
   WHEN c.last_inbound_at <= now() - make_interval(hours => ${REPLY_WINDOW_HOURS}) THEN 'window_expired'
   WHEN ct.blocked THEN 'contact_blocked'

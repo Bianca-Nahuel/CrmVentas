@@ -8,10 +8,11 @@ import { OpenAPIRegistry, OpenApiGeneratorV31 } from '@asteasolutions/zod-to-ope
 import type { ApiRoute } from '../src/http/api-route.js';
 import { channelRoutes } from '../src/inbox/channels.contracts.js';
 import { inboxRoutes } from '../src/inbox/inbox.contracts.js';
+import { performanceRoutes } from '../src/performance/performance.contracts.js';
 import { eventsRoute } from '../src/realtime/events.contracts.js';
 
 const OUTPUT = fileURLToPath(new URL('../openapi.json', import.meta.url));
-const ROUTES: ApiRoute[] = [...inboxRoutes, ...channelRoutes];
+const ROUTES: ApiRoute[] = [...inboxRoutes, ...channelRoutes, ...performanceRoutes];
 
 const errorSchema = {
   description: 'Error con un código estable (code) y, en las validaciones, la ruta de cada campo',

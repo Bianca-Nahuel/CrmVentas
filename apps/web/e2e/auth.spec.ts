@@ -13,6 +13,7 @@ test.describe('login y empresa activa', () => {
       /^Leads/,
       'Canales',
       'Números y vendedores',
+      'Rendimiento',
       'Catálogo',
       'Configuración del agente',
       'Consumo',
@@ -32,8 +33,8 @@ test.describe('login y empresa activa', () => {
     await page.getByTestId('tenant-switcher').click();
     await page.getByRole('menuitemradio', { name: /Inmobiliaria Demo/ }).click();
     await expectInLayout(page, 'Inmobiliaria Demo');
-    // En Inmobiliaria es viewer: entra a Métricas, la única sección que puede ver.
-    await expect(page).toHaveURL('/metricas');
+    // En Inmobiliaria es viewer: entra a Rendimiento (solo los totales por número).
+    await expect(page).toHaveURL('/rendimiento');
     const after = await page.request.get('/api/me/context');
     const body = await after.json();
     expect(body.tenant.name).toBe('Inmobiliaria Demo');
@@ -56,7 +57,9 @@ test.describe('login y empresa activa', () => {
     await expectInLayout(page, 'Cerámicos Demo');
     // Una segunda sección deja una página protegida en el historial (/conversaciones).
     // El del menú: con más de 50 conversaciones la bandeja suma "Ver todas en Leads".
-    await navLinks(page).filter({ hasText: /^Leads/ }).click();
+    await navLinks(page)
+      .filter({ hasText: /^Leads/ })
+      .click();
     await expect(page).toHaveURL('/leads');
     const oldCookies = (await context.cookies()).map((c) => `${c.name}=${c.value}`).join('; ');
 
@@ -95,11 +98,11 @@ test.describe('login y empresa activa', () => {
     }
   });
 
-  test('6b. viewer ve solo Métricas', async ({ page }) => {
+  test('6b. viewer ve solo Rendimiento y Métricas', async ({ page }) => {
     await login(page, USERS.multi);
     await page.getByRole('button', { name: /Inmobiliaria Demo/ }).click();
-    await expect(page).toHaveURL('/metricas');
-    await expect(navLinks(page)).toHaveText(['Métricas']);
+    await expect(page).toHaveURL('/rendimiento');
+    await expect(navLinks(page)).toHaveText(['Rendimiento', 'Métricas']);
     await page.goto('/leads');
     await expect(page).toHaveURL('/sin-acceso');
   });

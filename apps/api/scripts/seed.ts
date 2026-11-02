@@ -4,7 +4,8 @@
 // (los usuarios comunes no pueden crear empresas). Los datos de mensajería (un canal, un contacto, una
 // conversación y dos mensajes por empresa) van por el pool de ventas_app con app.tenant_id, como lo
 // hará el webhook. Cerámicos suma un segundo número, leads de demo para la bandeja y multi@ asignado al
-// número principal (tarea 014), y leads para responder desde el panel con la sucursal pausada (tarea 024).
+// número principal (tarea 014), leads para responder desde el panel con la sucursal pausada (tarea 024) y
+// seis semanas de historial con métricas y revisiones de calidad (tarea 026).
 // Es idempotente.
 //
 // Credenciales y números SOLO de desarrollo (dominio reservado .test, teléfonos ficticios). Nunca
@@ -24,6 +25,7 @@ const { createAuth } = await import('../src/auth/auth.js');
 const { memberships, tenants, users } = await import('../src/db/schema/auth.js');
 const { channels, contacts, conversations, messages, outboundMessages } =
   await import('../src/db/schema/messaging.js');
+const { refreshConversationMetrics } = await import('../src/performance/conversation-metrics.js');
 
 export const SEED_PASSWORD = 'dev-only-Password-123';
 
@@ -462,6 +464,214 @@ async function ensureInboxDemo(tenantId: string, ownerId: string, sellerId: stri
   });
 }
 
+// Rendimiento (tarea 026): seis semanas de historial cerrado en Cerámicos (no aparece en la grilla ni en la
+// bandeja), las métricas de todas las conversaciones y revisiones de calidad de ejemplo con citas que están
+// en los mensajes (una conversación tiene HTML: el panel lo muestra como texto). Las revisiones no llaman
+// al modelo: la salida es fija. Se crea una vez; las métricas se recalculan en cada corrida.
+const HISTORY_WEEKS = 6;
+const historyWaId = (week: number, index: number) => `+549110000${String(300 + week * 10 + index)}`;
+
+async function ensurePerformanceDemo(tenantId: string) {
+  await appDatabase.db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT set_config('app.tenant_id', ${tenantId}, true)`);
+    const [principal] = await tx
+      .select({ id: channels.id })
+      .from(channels)
+      .where(eq(channels.phoneNumber, MESSAGING['ceramicos-demo'].channelPhone));
+    const [sucursal] = await tx
+      .select({ id: channels.id })
+      .from(channels)
+      .where(eq(channels.phoneNumber, SUCURSAL.phone));
+    const [done] = await tx
+      .select({ id: contacts.id })
+      .from(contacts)
+      .where(eq(contacts.waId, historyWaId(0, 1)));
+    const reviewTargets: { conversationId: string; channelId: string; week: number; ids: string[] }[] = [];
+
+    if (!done) {
+      for (let week = 0; week < HISTORY_WEEKS; week++) {
+        // Dos días antes de hoy en cada semana hacia atrás, a las 11 (hora de Argentina): dentro del horario de
+        // atención, así los tiempos de respuesta no dan 0.
+        const day = new Date(Date.now() - (2 + week * 7) * DAY * 60_000);
+        day.setUTCHours(14, 0, 0, 0);
+        const start = day.getTime();
+        const at = (minutes: number) => new Date(start + minutes * 60_000);
+        const plans = [
+          // a: derivada, respondida por una persona y cerrada (vendida o no).
+          {
+            index: 1,
+            channelId: principal!.id,
+            handoffAt: 6,
+            outcome: week % 2 === 0 ? 'sold' : 'not_sold',
+            messages: [
+              { from: 'contact', text: 'Hola, busco porcelanato para la cocina, unos 20 m2', at: 0 },
+              { from: 'ai', text: '¡Hola! ¿Para cuándo lo necesitás?', at: 1 },
+              { from: 'contact', text: 'Para la semana que viene, ¿me atiende alguien?', at: 5 },
+              {
+                from: 'user',
+                text: 'Hola, soy del equipo. Para 20 m² te recomiendo el 60x60 gris, te paso fotos y el presupuesto.',
+                at: 15 + week * 7,
+              },
+              {
+                from: 'contact',
+                text:
+                  week === 0
+                    ? 'Genial <img src=x onerror=alert(1)> gracias por todo'
+                    : 'Perfecto, gracias por la atención',
+                at: 30 + week * 7,
+              },
+            ],
+          },
+          // b: derivada; en las semanas pares nadie respondió.
+          {
+            index: 2,
+            channelId: principal!.id,
+            handoffAt: 3,
+            outcome: 'no_response',
+            messages: [
+              { from: 'contact', text: '¿Tienen stock del símil madera?', at: 0 },
+              ...(week % 2 === 0 ? [] : [{ from: 'user', text: 'Hola, sí, ¿cuántos m² necesitás?', at: 45 }]),
+            ],
+          },
+          // c: la resolvió la IA, sin derivar.
+          {
+            index: 3,
+            channelId: principal!.id,
+            handoffAt: null,
+            outcome: 'not_a_lead',
+            messages: [
+              { from: 'contact', text: '¿A qué hora abren los sábados?', at: 0 },
+              { from: 'ai', text: 'Los sábados abrimos de 8:30 a 13.', at: 1 },
+            ],
+          },
+          // d: la sucursal (sin vendedores asignados) responde desde el teléfono: no se puede atribuir.
+          {
+            index: 4,
+            channelId: sucursal!.id,
+            handoffAt: null,
+            outcome: 'other',
+            messages: [
+              { from: 'contact', text: 'Hola, ¿hacen envíos a Quilmes?', at: 0 },
+              { from: 'user', text: 'Hola, sí, los martes y jueves.', at: 20 },
+            ],
+          },
+        ] as const;
+
+        for (const plan of plans) {
+          const [contact] = await tx
+            .insert(contacts)
+            .values({
+              tenantId,
+              waId: historyWaId(week, plan.index),
+              profileName: `Historial ${week + 1}-${plan.index}`,
+              firstSeenAt: at(0),
+              lastSeenAt: at(0),
+            })
+            .returning({ id: contacts.id });
+          const last = Math.max(...plan.messages.map((message) => message.at));
+          const [conversation] = await tx
+            .insert(conversations)
+            .values({
+              tenantId,
+              channelId: plan.channelId,
+              contactId: contact!.id,
+              lastMessageAt: at(last),
+              lastInboundAt: at(0),
+              createdAt: at(0),
+              leadScore: plan.index === 1 ? 80 : 45,
+              leadScorePeak: plan.index === 1 ? 80 : 45,
+              leadTier: plan.index === 1 ? 'hot' : 'warm',
+              handedOffAt: plan.handoffAt === null ? null : at(plan.handoffAt),
+              handoffReason: plan.handoffAt === null ? null : 'asks_human',
+              status: 'closed',
+              closedAt: at(2 * DAY),
+              closeOutcome: plan.outcome,
+            })
+            .returning({ id: conversations.id });
+          const inserted = await tx
+            .insert(messages)
+            .values(
+              plan.messages.map((message, index) => ({
+                tenantId,
+                conversationId: conversation!.id,
+                channelId: plan.channelId,
+                externalId: `seed-history-${week}-${plan.index}-${index}`,
+                direction: message.from === 'contact' ? 'inbound' : 'outbound',
+                senderType: message.from,
+                type: 'text',
+                body: message.text,
+                status: message.from === 'contact' ? 'received' : 'read',
+                raw: { seed: true },
+                sentAt: at(message.at),
+              })),
+            )
+            .returning({ id: messages.id });
+          if (plan.index === 1 && week < 4) {
+            reviewTargets.push({
+              conversationId: conversation!.id,
+              channelId: plan.channelId,
+              week,
+              ids: inserted.map((row) => row.id),
+            });
+          }
+        }
+      }
+    }
+
+    // Métricas de todas las conversaciones de la empresa (también las de la bandeja).
+    const all = await tx.select({ id: conversations.id }).from(conversations);
+    for (const row of all) await refreshConversationMetrics(tx, row.id);
+
+    for (const target of reviewTargets) {
+      const evidence = (message: number, quote: string) => ({
+        message,
+        quote,
+        messageId: target.ids[message]!,
+      });
+      const recommend = evidence(3, 'te recomiendo el 60x60 gris');
+      const output = {
+        customer_outcome: {
+          value: 'satisfied',
+          evidence: evidence(4, target.week === 0 ? 'gracias por todo' : 'gracias por la atención'),
+        },
+        resolved: 'yes',
+        criteria: {
+          tone: { score: 4, evidence: evidence(3, 'Hola, soy del equipo.') },
+          clarity: { score: 4, evidence: recommend },
+          answers_question: { score: target.week % 2 === 0 ? 5 : 3, evidence: recommend },
+          proactivity: {
+            score: target.week % 2 === 0 ? 4 : 2,
+            evidence: evidence(3, 'te paso fotos y el presupuesto'),
+          },
+          follow_up: { score: null, evidence: null },
+        },
+        issues:
+          target.week % 2 === 0
+            ? []
+            : [
+                {
+                  type: 'oportunidad_perdida',
+                  description: 'No ofreció pegamento ni pastina para la obra.',
+                  evidence: recommend,
+                },
+              ],
+        highlights: [{ description: 'Recomienda un producto concreto para la medida.', evidence: recommend }],
+        coaching_tip: 'Podrían sumar los complementarios (pegamento y pastina) al recomendar el porcelanato.',
+        summary: 'Atención correcta: respondió con una recomendación concreta y el cliente quedó conforme.',
+      };
+      await tx.execute(sql`
+        INSERT INTO conversation_reviews (tenant_id, conversation_id, channel_id, last_message_id, last_message_at,
+          prompt_version, config_version, model, cost_usd, customer_outcome, resolved, output, discarded,
+          attributed_user_id)
+        SELECT ${tenantId}, ${target.conversationId}, ${target.channelId}, m.id, m.sent_at, 'review-v1', 0,
+          'seed', 0, 'satisfied', 'yes', ${JSON.stringify(output)}::jsonb, '[]'::jsonb, cm.attributed_user_id
+        FROM messages m LEFT JOIN conversation_metrics cm ON cm.conversation_id = m.conversation_id
+        WHERE m.id = ${target.ids.at(-1)!}
+      `);
+    }
+  });
+}
+
 // Los leads de demo vuelven a estar "sin ver" para los usuarios del seed (los e2e los abren). La RLS de
 // conversation_reads solo deja tocar las filas propias: se hace con el contexto de cada usuario.
 async function resetDemoReads(tenantId: string, userIds: string[]) {
@@ -510,6 +720,7 @@ try {
     userIds.get('multi@example.test')!,
   );
   await resetDemoReads(tenantIds.get('ceramicos-demo')!, [...userIds.values()]);
+  await ensurePerformanceDemo(tenantIds.get('ceramicos-demo')!);
 
   console.log(
     `Seed listo: ${tenantIds.size} empresas, ${userIds.size} usuarios, conversaciones de prueba y leads de demo en Cerámicos.`,

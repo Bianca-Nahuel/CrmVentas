@@ -148,6 +148,41 @@
       "when": 1793568796284,
       "tag": "0020_channels_pairing_rls",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1793593410954,
+      "tag": "0021_revision_vendedores",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1793593442684,
+      "tag": "0022_revision_vendedores_rls",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1793594457138,
+      "tag": "0023_metricas_semanas_atendidas",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1793597998817,
+      "tag": "0024_metricas_visibilidad_escritura",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1793598102259,
+      "tag": "0025_revision_unica_y_rechazo_cerrada",
+      "breakpoints": true
     }
   ]
 }

@@ -45,8 +45,8 @@ export const channelMembers = pgTable(
   ],
 );
 
-// Historial de la conversación que no es un mensaje. Hoy solo la reactivación de la IA (quién y cuándo,
-// con el estado previo en data). Solo INSERT: es un registro.
+// Historial de la conversación que no es un mensaje: la reactivación de la IA (quién y cuándo, con el
+// estado previo en data) y el cierre (tarea 026, con el resultado). Solo INSERT: es un registro.
 export const conversationEvents = pgTable(
   'conversation_events',
   {
@@ -70,7 +70,7 @@ export const conversationEvents = pgTable(
       foreignColumns: [conversations.tenantId, conversations.id],
     }).onDelete('cascade'),
     index('conversation_events_conversation_idx').on(t.conversationId, t.type, t.createdAt.desc()),
-    check('conversation_events_type_check', sql`${t.type} IN ('ai_reactivated')`),
+    check('conversation_events_type_check', sql`${t.type} IN ('ai_reactivated', 'closed')`),
     check('conversation_events_data_check', sql`jsonb_typeof(${t.data}) = 'object'`),
   ],
 );

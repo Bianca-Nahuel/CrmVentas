@@ -10,6 +10,14 @@ const WIDTHS = [
 const THEMES = ['light', 'dark'] as const;
 const DIR = 'test-results/capturas';
 
+/** Id de un número por nombre (con la sesión de la página). */
+async function channelId(page: Page, name: string): Promise<string> {
+  const weekly = (await (await page.request.get('/api/performance/weekly')).json()) as {
+    options: { channels: { id: string; name: string }[] };
+  };
+  return weekly.options.channels.find((channel) => channel.name === name)!.id;
+}
+
 for (const theme of THEMES) {
   for (const size of WIDTHS) {
     test.describe(`${theme} ${size.name}px`, () => {
@@ -285,6 +293,34 @@ for (const theme of THEMES) {
         await page.getByRole('alertdialog').getByTestId('confirm').click();
         await expect(row('Capturas').getByTestId('channel-status')).toHaveText('Desconectado');
         await shot(page, '31-canales-lista-estados', true);
+      });
+
+      // Tarea 026: cerrar, tarjetas por número, gráfico, tabla por vendedor y una revisión.
+      test('rendimiento', async ({ page }) => {
+        // Inicia sesión como el owner. Una que las capturas ya abren (abrir marca "visto": no tocar las que
+        // espera inbox.spec).
+        await openConversation(page, 'Diego Ventana');
+        await page.getByTestId('close-conversation').click();
+        await expect(page.getByRole('dialog', { name: 'Cerrar conversación' })).toBeVisible();
+        await page.getByTestId('outcome-sold').check();
+        await shot(page, '32-cerrar-dialogo');
+        await page.getByRole('button', { name: 'Cancelar' }).click();
+
+        await page.goto('/rendimiento');
+        await expect(page.getByTestId('channel-card').first()).toBeVisible();
+        await shot(page, '33-rendimiento-tarjetas');
+        await page.goto(`/rendimiento?channel=${await channelId(page, 'ventas-principal')}`);
+        await expect(
+          page.getByText('Primera respuesta después de derivar (horario de atención)', { exact: true }),
+        ).toBeVisible();
+        await page.getByRole('region', { name: 'Evolución semanal' }).scrollIntoViewIfNeeded();
+        await shot(page, '34-rendimiento-grafico');
+        await page.getByRole('heading', { name: /Por vendedor/ }).scrollIntoViewIfNeeded();
+        await shot(page, '35-rendimiento-vendedores');
+        await page.goto('/rendimiento');
+        await page.getByTestId('review-row').first().click();
+        await expect(page.getByTestId('quote-mark').first()).toBeVisible();
+        await shot(page, '36-rendimiento-revision', true);
       });
 
       test('sistema de diseño', async ({ page }) => {

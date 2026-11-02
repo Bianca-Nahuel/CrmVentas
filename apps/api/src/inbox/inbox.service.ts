@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { sql, type SQL } from 'drizzle-orm';
 import { TenantConfigService } from '../ai/config/tenant-config.service.js';
 import type { AppTx, TenantContext } from '../db/tenant-context.js';
@@ -15,6 +15,8 @@ import type {
 } from './inbox.contracts.js';
 
 const PREVIEW_CHARS = 160;
+/** Conversaciones anteriores del contacto que muestra el detalle. */
+const PREVIOUS_LIMIT = 20;
 // Solo dígitos y separadores de teléfono, con al menos 4 dígitos: se busca por número.
 const PHONE_QUERY = /^[\d\s+\-()]+$/;
 const PHONE_MIN_DIGITS = 4;
@@ -84,6 +86,8 @@ type LeadSqlRow = {
   lm_sender_type: MessageDto['senderType'] | null;
   lm_preview: string | null;
   lm_sent_at: string | null;
+  closed_at: string | null;
+  close_outcome: NonNullable<LeadRow['closed']>['outcome'] | null;
 };
 
 /** Escapa los comodines de LIKE (con ESCAPE '\'). */
@@ -138,6 +142,7 @@ export class InboxService {
              c.lead_score, c.lead_tier, ${STATE} AS state, c.pending, c.unread,
              ${iso(sql`c.waiting_since`)} AS waiting_since,
              ${iso(sql`c.last_message_at`)} AS last_message_at,
+             ${iso(sql`c.closed_at`)} AS closed_at, c.close_outcome,
              lm.type AS lm_type, lm.sender_type AS lm_sender_type,
              left(lm.body, ${PREVIEW_CHARS}) AS lm_preview, ${iso(sql`lm.sent_at`)} AS lm_sent_at
       FROM base c
@@ -179,7 +184,7 @@ export class InboxService {
     `);
     const pending = await tx.execute<{ n: number }>(sql`
       SELECT count(*)::int AS n FROM conversations c
-      WHERE c.status <> 'archived' AND ${scopeCondition(scope, sql`c.channel_id`)} AND ${PENDING}
+      WHERE c.status = 'open' AND ${scopeCondition(scope, sql`c.channel_id`)} AND ${PENDING}
     `);
     return {
       pendingHandoffs: pending.rows[0]?.n ?? 0,
@@ -211,6 +216,11 @@ export class InboxService {
       reactivated_by: string | null;
       reply_reason: ReplyBlockedReason | null;
       sending_paused_until: string | null;
+      contact_id: string;
+      closed_at: string | null;
+      close_outcome: NonNullable<ConversationDetail['closed']>['outcome'] | null;
+      close_note: string | null;
+      closed_by_name: string | null;
     }>(sql`
       SELECT c.id, ct.display_name, ct.profile_name, ct.wa_id,
              ${SEND_REJECT_REASON} AS reply_reason,
@@ -222,7 +232,9 @@ export class InboxService {
              ${iso(sql`c.ai_paused_until`)} AS ai_paused_until,
              COALESCE(c.ai_paused_until > now(), false) AS paused,
              ${iso(sql`c.last_message_at`)} AS last_message_at,
-             ${iso(sql`ev.created_at`)} AS reactivated_at, u.name AS reactivated_by
+             ${iso(sql`ev.created_at`)} AS reactivated_at, u.name AS reactivated_by,
+             c.contact_id, ${iso(sql`c.closed_at`)} AS closed_at, c.close_outcome, c.close_note,
+             cu.name AS closed_by_name
       FROM conversations c
       JOIN contacts ct ON ct.tenant_id = c.tenant_id AND ct.id = c.contact_id
       JOIN channels ch ON ch.tenant_id = c.tenant_id AND ch.id = c.channel_id
@@ -232,12 +244,28 @@ export class InboxService {
         ORDER BY e.created_at DESC LIMIT 1
       ) ev ON true
       LEFT JOIN users u ON u.id = ev.user_id
+      LEFT JOIN users cu ON cu.id = c.closed_by
       WHERE c.id = ${id} AND ${scopeCondition(scope, sql`c.channel_id`)}
     `);
     const row = result.rows[0];
     if (!row) throw new NotFoundException({ code: 'NOT_FOUND' });
 
     const labels = await this.fieldLabels(tx);
+    // Mismo contacto y mismo número: la misma visibilidad que esta conversación.
+    const previous = await tx.execute<{
+      id: string;
+      opened_at: string;
+      closed_at: string | null;
+      close_outcome: NonNullable<ConversationDetail['closed']>['outcome'] | null;
+    }>(sql`
+      SELECT p.id, ${iso(sql`p.created_at`)} AS opened_at, ${iso(sql`p.closed_at`)} AS closed_at,
+             p.close_outcome
+      FROM conversations p
+      WHERE p.channel_id = ${row.channel_id} AND p.contact_id = ${row.contact_id} AND p.id <> ${row.id}
+        AND p.created_at <= (SELECT c.created_at FROM conversations c WHERE c.id = ${row.id})
+      ORDER BY p.created_at DESC, p.id DESC
+      LIMIT ${PREVIOUS_LIMIT}
+    `);
     return {
       id: row.id,
       contact: { name: row.display_name ?? row.profile_name, waId: row.wa_id },
@@ -266,6 +294,21 @@ export class InboxService {
         pausedUntil: row.reply_reason === 'channel_paused' ? row.sending_paused_until : null,
       },
       lastMessageAt: row.last_message_at,
+      closed:
+        row.closed_at && row.close_outcome
+          ? {
+              at: row.closed_at,
+              outcome: row.close_outcome,
+              note: row.close_note,
+              byName: row.closed_by_name,
+            }
+          : null,
+      previous: previous.rows.map((prev) => ({
+        id: prev.id,
+        openedAt: prev.opened_at,
+        closedAt: prev.closed_at,
+        outcome: prev.close_outcome,
+      })),
     };
   }
 
@@ -326,8 +369,9 @@ export class InboxService {
       paused: boolean;
       qualification_turns: number;
       hot_turns: number;
+      status: string;
     }>(sql`
-      SELECT c.channel_id, ${iso(sql`c.handed_off_at`)} AS handed_off_at, c.handoff_reason,
+      SELECT c.channel_id, c.status, ${iso(sql`c.handed_off_at`)} AS handed_off_at, c.handoff_reason,
              ${iso(sql`c.ai_paused_until`)} AS ai_paused_until,
              COALESCE(c.ai_paused_until > now(), false) AS paused, c.qualification_turns, c.hot_turns
       FROM conversations c
@@ -336,6 +380,8 @@ export class InboxService {
     `);
     const row = result.rows[0];
     if (!row) throw new NotFoundException({ code: 'NOT_FOUND' });
+    // Cerrada (tarea 026): nadie la atiende; si el cliente vuelve, empieza otra.
+    if (row.status !== 'open') throw new ConflictException({ code: 'CONVERSATION_CLOSED' });
 
     if (row.handed_off_at || row.paused) {
       await tx.execute(sql`
@@ -379,7 +425,9 @@ export class InboxService {
   }
 
   private leadFilters(scope: Scope, query: LeadListQuery): SQL {
-    const conditions: SQL[] = [sql`c.status <> 'archived'`, scopeCondition(scope, sql`c.channel_id`)];
+    // Las cerradas salen de la grilla y de la bandeja; se ven con el filtro "Cerradas" (tarea 026).
+    const status = query.view === 'closed' ? 'closed' : 'open';
+    const conditions: SQL[] = [sql`c.status = ${status}`, scopeCondition(scope, sql`c.channel_id`)];
     if (query.channelId) conditions.push(sql`c.channel_id = ${query.channelId}`);
     if (query.status) conditions.push(sql`${STATE} = ${query.status}`);
     if (query.tier) {
@@ -423,7 +471,7 @@ export class InboxService {
 function leadBase(where: SQL, userId: string): SQL {
   return sql`
     SELECT c.id, c.channel_id, c.lead_score, c.lead_tier, c.last_message_at, c.handed_off_at,
-           c.ai_paused_until, ct.display_name, ct.profile_name, ct.wa_id,
+           c.ai_paused_until, c.closed_at, c.close_outcome, ct.display_name, ct.profile_name, ct.wa_id,
            ${PENDING} AS pending,
            w.waiting_since,
            (w.waiting_since IS NOT NULL AND EXISTS (
@@ -557,6 +605,7 @@ function toLeadRow(row: LeadSqlRow): LeadRow {
           }
         : null,
     lastMessageAt: row.last_message_at,
+    closed: row.closed_at && row.close_outcome ? { at: row.closed_at, outcome: row.close_outcome } : null,
   };
 }
 

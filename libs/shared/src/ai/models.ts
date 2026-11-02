@@ -102,6 +102,13 @@ export const CANDIDATE_MODELS: readonly AllowedModel[] = [
  */
 export const CATALOG_FALLBACK_MODEL_ID = 'anthropic/claude-haiku-5.5';
 
+/**
+ * Modelo del analista de calidad (tarea 026) si la empresa no elige review.model. evals:review del
+ * 2026-11-02: Haiku 24/24 (USD 0,00098 por revisión); DeepSeek V4.1 Flash 20/24, con 3 salidas cortadas por
+ * el razonamiento aun con 4000 tokens de salida.
+ */
+export const REVIEW_DEFAULT_MODEL_ID = 'anthropic/claude-haiku-5.5';
+
 export function findAllowedModel(
   id: string,
   provider: LlmProviderId = 'openrouter',

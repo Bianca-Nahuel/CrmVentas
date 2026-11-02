@@ -15,6 +15,8 @@ export type { SendMessage$Params as SendMessage$Params } from './fn/panel/send-m
 export { sendMessage as sendMessage } from './fn/panel/send-message';
 export type { MarkConversationRead$Params as MarkConversationRead$Params } from './fn/panel/mark-conversation-read';
 export { markConversationRead as markConversationRead } from './fn/panel/mark-conversation-read';
+export type { CloseConversation$Params as CloseConversation$Params } from './fn/panel/close-conversation';
+export { closeConversation as closeConversation } from './fn/panel/close-conversation';
 export type { ReactivateAi$Params as ReactivateAi$Params } from './fn/panel/reactivate-ai';
 export { reactivateAi as reactivateAi } from './fn/panel/reactivate-ai';
 export type { ListChannels$Params as ListChannels$Params } from './fn/panel/list-channels';
@@ -35,3 +37,13 @@ export type { SetChannelMembers$Params as SetChannelMembers$Params } from './fn/
 export { setChannelMembers as setChannelMembers } from './fn/panel/set-channel-members';
 export type { ListSellers$Params as ListSellers$Params } from './fn/panel/list-sellers';
 export { listSellers as listSellers } from './fn/panel/list-sellers';
+export type { GetWeeklyPerformance$Params as GetWeeklyPerformance$Params } from './fn/panel/get-weekly-performance';
+export { getWeeklyPerformance as getWeeklyPerformance } from './fn/panel/get-weekly-performance';
+export type { ListReviews$Params as ListReviews$Params } from './fn/panel/list-reviews';
+export { listReviews as listReviews } from './fn/panel/list-reviews';
+export type { GetReview$Params as GetReview$Params } from './fn/panel/get-review';
+export { getReview as getReview } from './fn/panel/get-review';
+export type { DisputeReview$Params as DisputeReview$Params } from './fn/panel/dispute-review';
+export { disputeReview as disputeReview } from './fn/panel/dispute-review';
+export type { ListReviewDigests$Params as ListReviewDigests$Params } from './fn/panel/list-review-digests';
+export { listReviewDigests as listReviewDigests } from './fn/panel/list-review-digests';

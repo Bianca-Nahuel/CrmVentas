@@ -1,6 +1,6 @@
 # Estado del proyecto
 
-_Última actualización: 2026-11-02 (tarea 011, canales y conexión por QR)_
+_Última actualización: 2026-11-02 (tarea 026, revisión de vendedores)_
 
 > Esta rama (`claude/bandeja-y-leads`) sale de `claude/panel-angular-base`, que sale de `main`. El estado de
 > la tarea 010 del agente (rama `claude/hopeful-darwin-mfj88r`, decisiones #63–#67) no está acá: al mergear,
@@ -87,7 +87,25 @@ _Última actualización: 2026-11-02 (tarea 011, canales y conexión por QR)_
 
 - Nada.
 
+## Hecho (tarea 026)
+
+- **Tarea 026 (revisión de vendedores):** hecha el 2026-11-02 en la rama `claude/test-tiempo-real`, **sin commitear**. Ver el "Resultado" en `docs/tareas/hechas/026-revision-de-vendedores.md` y las decisiones #102 a #111. Los dos revisores aprobaron y el usuario aprobó las capturas.
+  - **Verificación:** API 769/769, panel 107/107 y e2e 121/121; lint, typecheck y build OK.
+  - **Evals del analista:** Haiku 24/24 y DeepSeek 20/24.
+  - **Qué hay:**
+    - cerrar conversaciones (manual y automático), con la vista "Cerradas";
+    - métricas por conversación y semanales, en horario de atención y con atribución por vendedor;
+    - el analista de calidad con citas verificadas (Haiku por defecto);
+    - la sección Rendimiento.
+  - **Migraciones nuevas:** de la 0021 a la 0025, ya aplicadas en la base local.
+  - **Stash `026: formato de Prettier fuera de la tarea`:** `npm run format` volvió a tocar archivos ajenos; decide el usuario.
+  - **Al commitear:** dejar afuera `.claude/launch.json` y `tools/panel-pruebas/`.
+  - **Si `ng serve` muestra código viejo** después de cambiar `libs/shared`, correr `npx ng cache clean` (la caché de Vite guarda la versión anterior).
+
 ## Siguiente
+
+- **Commit de la 026** (mensaje propuesto en la sesión). Al commitear, dejar afuera `.claude/launch.json` y `tools/panel-pruebas/`. Antes de desplegar: `db:migrate` (de la 0021 a la 0025) y `npm run dev:backfill-metrics` para las conversaciones existentes.
+- **Deuda de la 026:** ver "Deuda pendiente (tarea 026)" en `docs/decisiones.md`. Lo principal: que cada vendedor vea sus propias revisiones, el calendario de feriados y que el tope diario cuente los intentos fallidos.
 
 - **Prueba real de la 011 con WAHA** (con el OK del usuario y el número de prueba): alta desde el panel, escaneo, entrante en la bandeja, desconectar y reconectar. Confirmar qué responde `/logout` en una sesión sin teléfono (se asumió 422).
 - **Antes de desplegar:** `db:migrate` sobre una base vacía (la 0020 se editó después de aplicarla en local).

@@ -6,6 +6,7 @@ import { APP_DB, type AppDatabase } from '../../db/database.module.js';
 import { conversations, messages, outboundMessages } from '../../db/schema/messaging.js';
 import { withTenantTransaction, type AppTx } from '../../db/tenant-context.js';
 import { publishConversationEvent } from '../../realtime/publish.js';
+import { refreshConversationMetrics } from '../../performance/conversation-metrics.js';
 import { errorCode } from '../../jobs/error-code.js';
 import { BOSS, QUEUES } from '../../jobs/jobs.module.js';
 import {
@@ -402,6 +403,7 @@ export class OutboundWorker implements OnApplicationBootstrap {
       .update(conversations)
       .set({ lastMessageAt: sql`GREATEST(${conversations.lastMessageAt}, ${sentAt})` })
       .where(eq(conversations.id, context.conversationId));
+    await refreshConversationMetrics(tx, context.conversationId);
     await this.publishUpdated(tx, job, context);
     return 'enviado';
   }

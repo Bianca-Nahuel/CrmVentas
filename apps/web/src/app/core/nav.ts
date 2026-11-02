@@ -6,6 +6,7 @@ import {
   MessagesSquare,
   Package,
   RadioTower,
+  TrendingUp,
   UserCog,
   Users,
   type IconNode,
@@ -61,6 +62,13 @@ export const NAV_ITEMS: readonly NavItem[] = [
     soon: 'Acá elegís qué vendedores atienden cada número.',
   },
   {
+    path: 'rendimiento',
+    label: 'Rendimiento',
+    icon: TrendingUp,
+    permission: { performance: ['read'] },
+    soon: 'Acá vas a ver cómo trabaja el equipo: atendidas, tiempos de respuesta y calidad.',
+  },
+  {
     path: 'catalogo',
     label: 'Catálogo',
     icon: Package,
@@ -94,7 +102,7 @@ export function navFor(role: TenantRole | null | undefined): NavItem[] {
   return NAV_ITEMS.filter((item) => can(role, item.permission));
 }
 
-/** Primera sección permitida: adonde va el usuario al entrar (el viewer, a Métricas). */
+/** Primera sección permitida: adonde va el usuario al entrar (el viewer, a Rendimiento). */
 export function homePathFor(role: TenantRole | null | undefined): string {
   const first = navFor(role)[0];
   return first ? `/${first.path}` : '/sin-acceso';

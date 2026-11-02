@@ -30,11 +30,13 @@ import { LeadStateBadge } from './lead-state-badge';
 const SEARCH_DELAY_MS = 300;
 const LIST_SIZE = 50;
 
-type Attention = 'all' | 'unanswered' | 'unread';
+// closed (tarea 026): la vista de cerradas, que no se mezcla con los filtros de atención.
+type Attention = 'all' | 'unanswered' | 'unread' | 'closed';
 const FILTERS: readonly { value: Attention; label: string }[] = [
   { value: 'all', label: 'Todas' },
   { value: 'unanswered', label: 'Sin responder' },
   { value: 'unread', label: 'Sin ver' },
+  { value: 'closed', label: 'Cerradas' },
 ];
 
 /**
@@ -245,7 +247,11 @@ export class InboxPage {
       dir: 'desc' as const,
       pageSize: LIST_SIZE,
       ...(q.length >= 2 ? { q } : {}),
-      ...(this.attention() === 'all' ? {} : { attention: this.attention() as 'unanswered' | 'unread' }),
+      ...(this.attention() === 'closed'
+        ? { view: 'closed' as const }
+        : this.attention() === 'all'
+          ? {}
+          : { attention: this.attention() as 'unanswered' | 'unread' }),
     };
   };
   protected readonly list = query(this.listParams, (params) => this.api.leads(params));
@@ -272,6 +278,7 @@ export class InboxPage {
   protected readonly emptyText = computed(() => {
     if (this.attention() === 'unanswered') return 'No hay conversaciones esperando respuesta.';
     if (this.attention() === 'unread') return 'No hay conversaciones sin ver.';
+    if (this.attention() === 'closed') return 'No hay conversaciones cerradas.';
     return this.query() ? 'No hay conversaciones con esa búsqueda.' : 'No hay conversaciones.';
   });
 

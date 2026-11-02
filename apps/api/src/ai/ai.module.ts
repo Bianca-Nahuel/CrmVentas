@@ -20,6 +20,7 @@ import { AiReplyWorker } from './reply/ai-reply.worker.js';
     AiReplyService,
     AiReplyWorker,
   ],
-  exports: [TenantConfigService],
+  // LLM_CLIENT_FACTORY y AI_BUDGET_GUARD también los usa el analista de calidad (tarea 026).
+  exports: [TenantConfigService, LLM_CLIENT_FACTORY, AI_BUDGET_GUARD],
 })
 export class AiModule {}

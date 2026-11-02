@@ -25,6 +25,7 @@ import { LLM_CLIENT_FACTORY, type LlmClientFactory, type LlmSelection } from '..
 import { LlmError, type LlmResult } from '../llm/llm-client.js';
 import { CatalogRefreshWorker } from '../../catalog/catalog-refresh.worker.js';
 import { CatalogService } from '../../catalog/catalog.service.js';
+import { refreshConversationMetrics } from '../../performance/conversation-metrics.js';
 import { PROMPT_VERSION, type HistoryAuthor, type HistoryMessage } from '../prompts/v2/index.js';
 import type { AgentOutput, DiscoveredNote, ExtractedValue } from '../prompts/v2/output-schema.js';
 import type { TenantLayerState } from '../prompts/v2/tenant-layer.js';
@@ -326,6 +327,7 @@ export class AiReplyService {
         discovered_notes = ${JSON.stringify(evaluation.discovered)}::jsonb
       WHERE id = ${job.conversationId}
     `);
+    await refreshConversationMetrics(tx, job.conversationId);
     // Tiempo real: puntaje, nivel o derivación (se entrega con el commit de la T2). Solo avisa: no cambia
     // ninguna regla del agente.
     await publishConversationEvent(tx, 'conversation.updated', {
@@ -435,6 +437,7 @@ export class AiReplyService {
       WHERE id = ${job.conversationId} AND handed_off_at IS NULL
       RETURNING channel_id
     `);
+    if (handedOff.rows.length > 0) await refreshConversationMetrics(tx, job.conversationId);
     // Tiempo real: también en la derivación por un medio no soportado, que no pasa por apply().
     for (const row of handedOff.rows) {
       await publishConversationEvent(tx, 'conversation.updated', {

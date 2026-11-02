@@ -16,8 +16,12 @@ export const statement = {
   catalog: ['read', 'import', 'update'],
   // read_all: las conversaciones de todos los números, no solo los asignados.
   lead: ['read', 'read_all', 'update', 'assign'],
-  conversation: ['read', 'read_all', 'reply'],
+  // close: cerrar una conversación con un resultado (tarea 026).
+  conversation: ['read', 'read_all', 'reply', 'close'],
   metrics: ['read'],
+  // Rendimiento (tarea 026): read = totales por número; read_detail = por vendedor y revisiones de calidad.
+  // La RLS de las revisiones (app_reads_reviews, 0022) repite read_detail: un test compara las dos.
+  performance: ['read', 'read_detail'],
   // Consumo y facturación de la empresa (créditos de IA, plan). Solo el owner.
   billing: ['read'],
 } as const;
@@ -30,8 +34,9 @@ const productFull = {
   config: ['read', 'update'],
   catalog: ['read', 'import', 'update'],
   lead: ['read', 'read_all', 'update', 'assign'],
-  conversation: ['read', 'read_all', 'reply'],
+  conversation: ['read', 'read_all', 'reply', 'close'],
   metrics: ['read'],
+  performance: ['read', 'read_detail'],
 } as const;
 
 export const owner = ac.newRole({
@@ -54,12 +59,14 @@ export const admin = ac.newRole({
 // active inbox.sellers_see_all_channels: eso lo evalúan ConversationScope y la RLS (0015), no este rol.
 export const seller = ac.newRole({
   lead: ['read', 'update'],
-  conversation: ['read', 'reply'],
+  conversation: ['read', 'reply', 'close'],
   catalog: ['read'],
 });
 
+// Rendimiento: solo los totales por número (sin vendedores ni revisiones).
 export const viewer = ac.newRole({
   metrics: ['read'],
+  performance: ['read'],
 });
 
 export const tenantRoles = { owner, admin, seller, viewer };

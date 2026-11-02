@@ -282,8 +282,9 @@ describe('FKs compuestas (punto 5)', () => {
       expect(
         await errorCodeIn(
           c,
-          `INSERT INTO conversations (tenant_id, channel_id, contact_id, status, last_message_at)
-           VALUES ($1, $2, $3, 'closed', now())`,
+          `INSERT INTO conversations (tenant_id, channel_id, contact_id, status, last_message_at, closed_at,
+             close_outcome)
+           VALUES ($1, $2, $3, 'closed', now(), now(), 'other')`,
           [a.tenantId, a.channelId, b.contactId],
         ),
       ).toBe(FOREIGN_KEY_VIOLATION);
@@ -292,8 +293,9 @@ describe('FKs compuestas (punto 5)', () => {
     expect(
       await pgErrorCode(
         ctx.ownerPool.query(
-          `INSERT INTO conversations (tenant_id, channel_id, contact_id, status, last_message_at)
-           VALUES ($1, $2, $3, 'closed', now())`,
+          `INSERT INTO conversations (tenant_id, channel_id, contact_id, status, last_message_at, closed_at,
+             close_outcome)
+           VALUES ($1, $2, $3, 'closed', now(), now(), 'other')`,
           [a.tenantId, a.channelId, b.contactId],
         ),
       ),
@@ -407,8 +409,11 @@ describe('restricciones', () => {
 
   it('una sola conversación abierta por canal y contacto', async () => {
     await asApp(ctx, { userId: a.ownerId, tenantId: a.tenantId }, async (c) => {
-      const insert = `INSERT INTO conversations (tenant_id, channel_id, contact_id, status, last_message_at)
-        VALUES ($1, $2, $3, $4, now())`;
+      // Cerrada con fecha y resultado (CHECK de coherencia, tarea 026).
+      const insert = `INSERT INTO conversations (tenant_id, channel_id, contact_id, status, last_message_at, closed_at,
+          close_outcome)
+        VALUES ($1, $2, $3, $4, now(), CASE WHEN $4 = 'closed' THEN now() END,
+          CASE WHEN $4 = 'closed' THEN 'other' END)`;
       expect(await errorCodeIn(c, insert, [a.tenantId, a.channelId, a.contactId, 'open'])).toBe(
         UNIQUE_VIOLATION,
       );

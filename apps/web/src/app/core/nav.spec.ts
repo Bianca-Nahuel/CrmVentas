@@ -9,6 +9,7 @@ describe('navegación por rol (permisos de libs/shared)', () => {
       'leads',
       'canales',
       'numeros',
+      'rendimiento',
       'catalogo',
       'agente',
       'consumo',
@@ -22,6 +23,7 @@ describe('navegación por rol (permisos de libs/shared)', () => {
       'leads',
       'canales',
       'numeros',
+      'rendimiento',
       'catalogo',
       'agente',
       'metricas',
@@ -32,8 +34,8 @@ describe('navegación por rol (permisos de libs/shared)', () => {
     expect(paths('seller')).toEqual(['conversaciones', 'leads']);
   });
 
-  it('viewer ve solo Métricas', () => {
-    expect(paths('viewer')).toEqual(['metricas']);
+  it('viewer ve Rendimiento (solo totales) y Métricas', () => {
+    expect(paths('viewer')).toEqual(['rendimiento', 'metricas']);
   });
 
   it('sin rol no ve nada', () => {
@@ -43,7 +45,7 @@ describe('navegación por rol (permisos de libs/shared)', () => {
 
   it('la ruta de inicio es la primera sección permitida', () => {
     expect(homePathFor('owner')).toBe('/conversaciones');
-    expect(homePathFor('viewer')).toBe('/metricas');
+    expect(homePathFor('viewer')).toBe('/rendimiento');
     expect(homePathFor(null)).toBe('/sin-acceso');
   });
 });

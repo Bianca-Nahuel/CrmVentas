@@ -20,6 +20,7 @@ const REJECT_CODES: Record<RejectReason, string> = {
   contact_blocked: 'CONTACT_BLOCKED',
   channel_unavailable: 'CHANNEL_UNAVAILABLE',
   channel_paused: 'CHANNEL_PAUSED',
+  conversation_closed: 'CONVERSATION_CLOSED',
   superseded: 'SUPERSEDED',
 };
 

@@ -84,6 +84,12 @@ const envSchema = z.object({
       .regex(/^sk-or-[A-Za-z0-9_-]{16,}$/, 'tiene que ser una clave de OpenRouter (sk-or-…)')
       .optional(),
   ),
+  // Trabajo diario de la tarea 026 (cierre por inactividad, revisiones de calidad y resumen semanal).
+  // Los tests lo apagan: comparten la base con desarrollo.
+  PERFORMANCE_DAILY_ENABLED: z
+    .enum(['true', 'false'])
+    .default('true')
+    .transform((value) => value === 'true'),
   // Modelo por defecto si la empresa no eligió otro; tiene que estar en ALLOWED_MODELS.
   AI_DEFAULT_MODEL: z
     .string()

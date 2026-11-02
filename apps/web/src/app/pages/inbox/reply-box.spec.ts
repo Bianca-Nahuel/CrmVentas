@@ -21,6 +21,8 @@ const conversation = (
     ai: { state: 'active', pausedUntil: null, lastReactivation: null },
     reply,
     lastMessageAt: new Date().toISOString(),
+    closed: null,
+    previous: [],
   }) as ConversationDetail;
 
 const queued = { id: 'm1', delivery: { state: 'queued', reason: null } } as Message;

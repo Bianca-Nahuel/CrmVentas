@@ -5,6 +5,7 @@ import type {
   MessageType,
   ReplyBlockedReason as ReplyBlockedReasonOrNull,
   SenderType,
+  StoredCloseOutcome,
 } from '../../api/generated';
 
 /** Motivo por el que no se puede responder (el tipo generado incluye null). */
@@ -16,6 +17,16 @@ export const STATE_LABELS: Record<LeadState, string> = {
   open: 'Abierta',
   handed_off: 'Derivada',
   ai_paused: 'IA pausada',
+};
+
+/** Resultado del cierre (tarea 026). */
+export const CLOSE_OUTCOME_LABELS: Record<StoredCloseOutcome, string> = {
+  sold: 'Vendida',
+  not_sold: 'No compró',
+  no_response: 'El cliente no respondió',
+  not_a_lead: 'No era un interesado',
+  other: 'Otro',
+  auto_inactive: 'Cerrada por inactividad',
 };
 
 export const AI_STATE_LABELS: Record<'active' | 'handed_off' | 'paused', string> = {
@@ -84,6 +95,8 @@ export const REPLY_BLOCKED_TEXT: Record<ReplyBlockedReason, string> = {
     'Pasaron más de 24 h desde el último mensaje del cliente. WhatsApp solo deja responder dentro de ese plazo: cuando vuelva a escribir, vas a poder contestarle.',
   no_inbound: 'El cliente todavía no escribió. Desde el panel no se inician conversaciones.',
   contact_blocked: 'Este contacto está bloqueado.',
+  conversation_closed:
+    'La conversación está cerrada. Si el cliente vuelve a escribir, empieza una conversación nueva.',
 };
 
 const REPLY_BLOCKED_SHORT: Record<ReplyBlockedReason, string> = {
@@ -92,6 +105,7 @@ const REPLY_BLOCKED_SHORT: Record<ReplyBlockedReason, string> = {
   window_expired: 'Pasaron más de 24 h desde el último mensaje del cliente.',
   no_inbound: 'El cliente todavía no había escrito.',
   contact_blocked: 'El contacto está bloqueado.',
+  conversation_closed: 'La conversación estaba cerrada.',
 };
 
 /** Código del 409 de POST /conversations/:id/messages → motivo (los mismos de reply.reason). */
@@ -101,6 +115,7 @@ export const REPLY_CONFLICT_CODES: Record<string, ReplyBlockedReason> = {
   WINDOW_EXPIRED: 'window_expired',
   NO_INBOUND: 'no_inbound',
   CONTACT_BLOCKED: 'contact_blocked',
+  CONVERSATION_CLOSED: 'conversation_closed',
 };
 
 // Motivos de derivación que decide el código (decide.ts y los disparadores de la config).
