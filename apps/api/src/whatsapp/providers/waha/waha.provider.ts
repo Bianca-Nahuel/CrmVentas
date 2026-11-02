@@ -3,7 +3,9 @@ import {
   PRESENCE_TIMEOUT_MS,
   SEND_TIMEOUT_MS,
   type ChatTarget,
+  type ConnectionResult,
   type NormalizeResult,
+  type PairingQr,
   type PresenceResult,
   type SeenMessage,
   type SendResult,
@@ -12,7 +14,20 @@ import {
 } from '../../provider.js';
 import type { WahaClient } from './waha-client.js';
 import { normalizeWahaEvent } from './waha-normalize.js';
+import {
+  isNotFound,
+  isOk,
+  isUnprocessable,
+  pairingFromQr,
+  pairingFromSession,
+  toConnectionResult,
+} from './waha-pairing.js';
 import { toPresenceResult, toSendResult, wahaChatId, wahaSeenRequest } from './waha-send.js';
+import { wahaSessionFor, wahaSessionName, type WahaWebhookSettings } from './waha-session.js';
+
+function sessionPath(externalId: string): string {
+  return `/api/sessions/${encodeURIComponent(externalId)}`;
+}
 
 // Conexión no oficial: solo responder, sin campañas ni plantillas (ver CLAUDE.md).
 const WAHA_CAPABILITIES: WhatsAppCapabilities = {
@@ -20,13 +35,70 @@ const WAHA_CAPABILITIES: WhatsAppCapabilities = {
   within24hWindowOnly: false,
   adAttribution: false,
   outboundCampaigns: false,
+  pairing: 'qr',
 };
 
 export class WahaProvider implements WhatsAppProvider {
   readonly id = 'waha' as const;
+  readonly connectionType = 'unofficial' as const;
   readonly capabilities = WAHA_CAPABILITIES;
 
-  constructor(private readonly client: WahaClient) {}
+  constructor(
+    private readonly client: WahaClient,
+    private readonly webhook: WahaWebhookSettings,
+  ) {}
+
+  sessionIdFor(channelId: string): string {
+    return wahaSessionName(channelId);
+  }
+
+  async openSession(externalId: string): Promise<ConnectionResult> {
+    const created = await this.client.sessionCall('POST', '/api/sessions', {
+      ...wahaSessionFor(this.webhook, externalId),
+      start: true,
+    });
+    return toConnectionResult(created);
+  }
+
+  // Detener → desvincular → reaplicar la configuración (con la sesión detenida, PUT no la arranca) →
+  // iniciar. Si la sesión ya no existe en WAHA, se crea de nuevo con el mismo nombre.
+  async restartPairing(externalId: string): Promise<ConnectionResult> {
+    const path = sessionPath(externalId);
+    const stopped = await this.client.sessionCall('POST', `${path}/stop`);
+    if (isNotFound(stopped)) return this.openSession(externalId);
+    if (!isOk(stopped)) return toConnectionResult(stopped);
+    const loggedOut = await this.client.sessionCall('POST', `${path}/logout`);
+    // 422: no había teléfono vinculado. Otro error podría dejar vinculado el teléfono anterior: no sigue.
+    if (!isOk(loggedOut) && !isNotFound(loggedOut) && !isUnprocessable(loggedOut)) {
+      return toConnectionResult(loggedOut);
+    }
+    const updated = await this.client.sessionCall('PUT', path, wahaSessionFor(this.webhook, externalId));
+    if (!isOk(updated)) return toConnectionResult(updated);
+    return toConnectionResult(await this.client.sessionCall('POST', `${path}/start`));
+  }
+
+  async getPairingQr(externalId: string): Promise<PairingQr> {
+    const session = pairingFromSession(await this.client.sessionCall('GET', sessionPath(externalId)));
+    if (session) return session;
+    return pairingFromQr(
+      await this.client.sessionCall('GET', `/api/${encodeURIComponent(externalId)}/auth/qr`),
+    );
+  }
+
+  async closeSession(externalId: string, options: { forget: boolean }): Promise<ConnectionResult> {
+    const path = sessionPath(externalId);
+    if (options.forget) {
+      const deleted = await this.client.sessionCall('DELETE', path);
+      return isNotFound(deleted) ? { ok: true } : toConnectionResult(deleted);
+    }
+    const loggedOut = await this.client.sessionCall('POST', `${path}/logout`);
+    if (isNotFound(loggedOut)) return { ok: true };
+    // 422: la sesión no tiene un teléfono vinculado (no está en WORKING). Cualquier otro error deja el
+    // teléfono vinculado: no se da por cerrada (la cola reintenta).
+    if (!isOk(loggedOut) && !isUnprocessable(loggedOut)) return toConnectionResult(loggedOut);
+    const stopped = await this.client.sessionCall('POST', `${path}/stop`);
+    return isNotFound(stopped) ? { ok: true } : toConnectionResult(stopped);
+  }
 
   normalize(raw: unknown): NormalizeResult {
     return normalizeWahaEvent(raw);

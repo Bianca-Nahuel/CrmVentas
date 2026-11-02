@@ -32,6 +32,8 @@ export async function startTestContext(): Promise<TestContext> {
   // La API no conoce las credenciales del dueño; solo los tests las usan para limpiar.
   const ownerUrl = process.env.DATABASE_URL_MIGRATIONS;
   if (!ownerUrl) throw new Error('Los tests necesitan DATABASE_URL_MIGRATIONS (limpieza como ventas_owner)');
+  // Ningún test le habla a WAHA: si un trabajo de envío llega al worker de la app, no sale nada real.
+  process.env.WHATSAPP_FAKE_PROVIDER = 'true';
   const env = parseEnv();
   const app = await createApp();
   await app.listen(0, '127.0.0.1');
@@ -122,7 +124,7 @@ export class HttpClient {
 
 export async function createUser(ctx: TestContext, label: string): Promise<{ id: string; email: string }> {
   const email = `${ctx.prefix}-${label}@example.test`;
-  const result = await ctx.auth.api.signUpEmail({ body: { email, name: label, password: TEST_PASSWORD } });
+  const result = await ctx.auth.api.createUser({ body: { email, name: label, password: TEST_PASSWORD } });
   return { id: result.user.id, email };
 }
 

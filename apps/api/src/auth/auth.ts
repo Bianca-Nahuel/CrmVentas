@@ -10,6 +10,7 @@ import { defaultStatements as adminStatements } from 'better-auth/plugins/admin/
 import type { Env } from '../config/env.js';
 import type { AuthDb } from '../db/pools.js';
 import { authSchema } from '../db/schema/auth.js';
+import { publishNotice, sessionHash, type Notice } from '../realtime/publish.js';
 
 const DAY = 60 * 60 * 24;
 
@@ -120,6 +121,67 @@ const rejectDisabledMemberships = createAuthMiddleware(async (ctx) => {
   }
 });
 
+// Tiempo real (tarea 025): después de cerrar o revocar sesiones, cambiar de empresa o tocar membresías, se
+// avisa a los streams SSE para que se revaliden al instante (si no, lo hacen solos cada
+// REALTIME_REVALIDATE_SECONDS). Una sesión puntual va por el hash de su token, nunca el token.
+// Solo si la acción salió bien: el hook `after` corre también cuando el endpoint falló (por ejemplo, un
+// anónimo que llama a remove-member con el id de otra empresa), y un aviso dispara revalidaciones.
+// Si el aviso falla, no se rompe el endpoint: la revalidación periódica lo cubre.
+const USER_NOTICE_PATHS = new Set([
+  '/revoke-sessions',
+  '/revoke-other-sessions',
+  '/organization/set-active',
+  '/change-password',
+  '/delete-user',
+]);
+const ADMIN_USER_NOTICE_PATHS = new Set([
+  '/admin/revoke-user-sessions',
+  '/admin/ban-user',
+  '/admin/remove-user',
+  '/admin/set-role',
+]);
+const TENANT_NOTICE_PATHS = new Set([
+  '/organization/remove-member',
+  '/organization/update-member-role',
+  '/organization/leave',
+  '/organization/delete',
+]);
+
+function realtimeNotices(db: AuthDb) {
+  return createAuthMiddleware(async (ctx) => {
+    const returned = ctx.context.returned;
+    if (returned instanceof APIError || returned instanceof Error) return;
+    if (returned instanceof Response && !returned.ok) return;
+    const notices: Notice[] = [];
+    if (ctx.path === '/sign-out') {
+      const token = await ctx.getSignedCookie(ctx.context.authCookies.sessionToken.name, ctx.context.secret);
+      if (token) notices.push({ kind: 'session', sessionHash: sessionHash(token) });
+    } else if (!ctx.context.session) {
+      // El resto de las rutas exige sesión: sin ella, la acción no pudo hacerse.
+    } else if (ctx.path === '/revoke-session' || ctx.path === '/admin/revoke-user-session') {
+      const token = readString(ctx.body, 'token') ?? readString(ctx.body, 'sessionToken');
+      if (token) notices.push({ kind: 'session', sessionHash: sessionHash(token) });
+    } else if (USER_NOTICE_PATHS.has(ctx.path)) {
+      notices.push({ kind: 'user', userId: ctx.context.session.user.id });
+    } else if (ADMIN_USER_NOTICE_PATHS.has(ctx.path)) {
+      const userId = readString(ctx.body, 'userId');
+      if (userId && UUID_PATTERN.test(userId)) notices.push({ kind: 'user', userId });
+    } else if (TENANT_NOTICE_PATHS.has(ctx.path)) {
+      const session = ctx.context.session as { session: { activeOrganizationId?: string | null } };
+      const tenantId =
+        readString(ctx.body, 'organizationId') ?? session.session.activeOrganizationId ?? undefined;
+      if (tenantId && UUID_PATTERN.test(tenantId)) notices.push({ kind: 'access', tenantId });
+    }
+    for (const notice of notices) {
+      try {
+        await publishNotice(db, notice);
+      } catch {
+        // Sin el aviso, la revalidación periódica corta el stream igual (con un poco de demora).
+      }
+    }
+  });
+}
+
 export function createAuth(env: Env, db: AuthDb) {
   return betterAuth({
     appName: 'ventas',
@@ -144,7 +206,9 @@ export function createAuth(env: Env, db: AuthDb) {
 
     // Verificación de email y recuperación de contraseña: desactivadas hasta tener proveedor de email
     // (sin sendVerificationEmail ni sendResetPassword configurados, esos flujos no envían nada).
-    emailAndPassword: { enabled: true, requireEmailVerification: false },
+    // Sin registro público: /sign-up/email responde 400 (también desde el servidor). Las cuentas se crean
+    // con auth.api.createUser del plugin admin (seed, alta de clientes) o por invitación.
+    emailAndPassword: { enabled: true, requireEmailVerification: false, disableSignUp: true },
 
     advanced: {
       database: { generateId: 'uuid' },
@@ -154,7 +218,7 @@ export function createAuth(env: Env, db: AuthDb) {
     },
 
     disabledPaths: DISABLED_PATHS,
-    hooks: { before: rejectDisabledMemberships },
+    hooks: { before: rejectDisabledMemberships, after: realtimeNotices(db) },
 
     plugins: [
       organization({

@@ -13,6 +13,7 @@ import {
   withTenant,
   type TestContext,
 } from './helpers.js';
+import { fakePhone } from './outbound-helpers.js';
 
 const PERMISSION_DENIED = '42501'; // también es el código de una fila rechazada por la RLS
 const FOREIGN_KEY_VIOLATION = '23503';
@@ -52,8 +53,9 @@ async function seedTenant(label: string): Promise<TenantData> {
       c,
       `INSERT INTO channels (tenant_id, name, phone_number, provider, connection_type, external_id,
          status, risk_accepted_at, risk_accepted_by)
-       VALUES ($1, 'ventas-principal', '+5491100000000', 'waha', 'unofficial', $2, 'connected', now(), $3)`,
-      [tenantId, channelExternalId, ownerId],
+       VALUES ($1, 'ventas-principal', $4, 'waha', 'unofficial', $2, 'connected', now(), $3)`,
+      // El número es único en toda la base (tarea 011): uno al azar por empresa.
+      [tenantId, channelExternalId, ownerId, `+${fakePhone()}`],
     );
     const contactId = await insertId(
       c,
@@ -132,9 +134,10 @@ describe('estructura y permisos', () => {
        ORDER BY grantee, table_name, privilege_type`,
       [TABLES],
     );
+    // DELETE en channels (tarea 011): solo canales que nunca se conectaron, por la política delete_never_connected.
     expect(tableGrants.rows).toEqual(
       [...TABLES].sort().flatMap((table_name) =>
-        ['INSERT', 'SELECT'].map((privilege_type) => ({
+        [...(table_name === 'channels' ? ['DELETE'] : []), 'INSERT', 'SELECT'].map((privilege_type) => ({
           grantee: 'ventas_app',
           table_name,
           privilege_type,
@@ -159,7 +162,15 @@ describe('estructura y permisos', () => {
         .map((r) => r.column_name);
     expect(updateColumns.rows.every((r) => r.grantee === 'ventas_app')).toBe(true);
     expect(byTable('messages')).toEqual(['cost_usd', 'status']);
-    // channels, contacts y conversations: todo menos id, tenant_id, created_at y updated_at.
+    // channels, contacts y conversations: todo menos id, tenant_id, created_at y updated_at. En channels,
+    // además, ni la sesión en el proveedor ni la aceptación del riesgo (0020, tarea 011).
+    const fixedChannelColumns = [
+      'connection_type',
+      'external_id',
+      'provider',
+      'risk_accepted_at',
+      'risk_accepted_by',
+    ];
     for (const table of ['channels', 'contacts', 'conversations']) {
       const { rows } = await ctx.ownerPool.query<{ column_name: string }>(
         `SELECT column_name FROM information_schema.columns
@@ -168,7 +179,10 @@ describe('estructura y permisos', () => {
          ORDER BY column_name`,
         [table],
       );
-      expect(byTable(table)).toEqual(rows.map((r) => r.column_name));
+      const expected = rows
+        .map((r) => r.column_name)
+        .filter((column) => table !== 'channels' || !fixedChannelColumns.includes(column));
+      expect(byTable(table)).toEqual(expected);
     }
   });
 
@@ -476,8 +490,10 @@ describe('restricciones', () => {
 describe('operaciones prohibidas', () => {
   it('ventas_app no puede borrar ni editar el contenido de un mensaje (punto 7)', async () => {
     await asApp(ctx, { userId: a.ownerId, tenantId: a.tenantId }, async (c) => {
-      for (const table of TABLES)
+      for (const table of TABLES.filter((name) => name !== 'channels'))
         expect(await errorCodeIn(c, `DELETE FROM ${table}`)).toBe(PERMISSION_DENIED);
+      // Un canal conectado no se borra: política delete_never_connected (0020, tarea 011).
+      expect((await c.query('DELETE FROM channels WHERE id = $1', [a.channelId])).rowCount).toBe(0);
       expect(await errorCodeIn(c, "UPDATE messages SET body = 'x' WHERE id = $1", [a.messageIds[0]])).toBe(
         PERMISSION_DENIED,
       );

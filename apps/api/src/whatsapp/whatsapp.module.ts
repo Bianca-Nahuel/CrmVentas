@@ -1,8 +1,9 @@
-import { Module, RequestMethod, type MiddlewareConsumer, type NestModule } from '@nestjs/common';
+import { Logger, Module, RequestMethod, type MiddlewareConsumer, type NestModule } from '@nestjs/common';
 import { ENV } from '../config/config.module.js';
 import type { Env } from '../config/env.js';
 import { rawWebhookBody } from '../http/webhook-body.js';
 import { WHATSAPP_PROVIDER_REGISTRY, type WhatsAppProviderRegistry } from './provider.js';
+import { FakeWhatsAppProvider } from './providers/fake/fake.provider.js';
 import { WahaClient } from './providers/waha/waha-client.js';
 import { WahaWebhookController } from './providers/waha/waha-webhook.controller.js';
 import { WahaProvider } from './providers/waha/waha.provider.js';
@@ -18,8 +19,16 @@ import { WahaProvider } from './providers/waha/waha.provider.js';
     },
     {
       provide: WHATSAPP_PROVIDER_REGISTRY,
-      inject: [WahaClient],
-      useFactory: (waha: WahaClient): WhatsAppProviderRegistry => new Map([['waha', new WahaProvider(waha)]]),
+      inject: [ENV, WahaClient],
+      useFactory: (env: Env, waha: WahaClient): WhatsAppProviderRegistry => {
+        if (env.WHATSAPP_FAKE_PROVIDER) {
+          // Solo para los e2e del panel: ningún envío sale por WhatsApp (parseEnv lo prohíbe en producción).
+          new Logger('WhatsappModule').warn({ msg: 'proveedor de WhatsApp falso: no se envía nada real' });
+          return new Map([['waha', new FakeWhatsAppProvider()]]);
+        }
+        const webhook = { webhookUrl: env.WAHA_WEBHOOK_URL, hmacKey: env.WAHA_WEBHOOK_HMAC_KEY };
+        return new Map([['waha', new WahaProvider(waha, webhook)]]);
+      },
     },
   ],
   exports: [WHATSAPP_PROVIDER_REGISTRY],

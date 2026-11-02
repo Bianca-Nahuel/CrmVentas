@@ -3,9 +3,10 @@ import pg from 'pg';
 import { aiSchema } from './schema/ai.js';
 import { authSchema } from './schema/auth.js';
 import { catalogSchema } from './schema/catalog.js';
+import { inboxSchema } from './schema/inbox.js';
 import { messagingSchema } from './schema/messaging.js';
 
-const appSchema = { ...authSchema, ...messagingSchema, ...aiSchema, ...catalogSchema };
+const appSchema = { ...authSchema, ...messagingSchema, ...aiSchema, ...catalogSchema, ...inboxSchema };
 
 export type AppDb = NodePgDatabase<typeof appSchema>;
 export type AuthDb = NodePgDatabase<typeof authSchema>;

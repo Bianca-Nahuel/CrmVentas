@@ -1,0 +1,2887 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "API del panel",
+    "version": "1"
+  },
+  "servers": [
+    {
+      "url": "/api"
+    }
+  ],
+  "components": {
+    "schemas": {
+      "ConversationEvent": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "message.created",
+              "message.updated",
+              "conversation.updated",
+              "conversation.read"
+            ]
+          },
+          "conversationId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "type",
+          "conversationId"
+        ]
+      },
+      "ChannelEvent": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "channel.updated"
+            ]
+          },
+          "channelId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "type",
+          "channelId"
+        ]
+      },
+      "StreamEnd": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "enum": [
+              "unauthenticated",
+              "forbidden",
+              "tenant_changed",
+              "restart"
+            ]
+          }
+        },
+        "required": [
+          "reason"
+        ]
+      },
+      "LeadList": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LeadRow"
+            }
+          },
+          "total": {
+            "type": "integer"
+          },
+          "page": {
+            "type": "integer"
+          },
+          "pageSize": {
+            "type": "integer"
+          },
+          "noChannels": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "page",
+          "pageSize",
+          "noChannels"
+        ]
+      },
+      "LeadRow": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "contact": {
+            "$ref": "#/components/schemas/ContactRef"
+          },
+          "channel": {
+            "$ref": "#/components/schemas/ChannelRef"
+          },
+          "score": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "tier": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "hot",
+              "warm",
+              "cold",
+              null
+            ]
+          },
+          "state": {
+            "$ref": "#/components/schemas/LeadState"
+          },
+          "pendingHandoff": {
+            "type": "boolean"
+          },
+          "awaitingReply": {
+            "type": "boolean"
+          },
+          "waitingSince": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "unread": {
+            "type": "boolean"
+          },
+          "lastMessage": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "type": {
+                "$ref": "#/components/schemas/MessageType"
+              },
+              "senderType": {
+                "$ref": "#/components/schemas/SenderType"
+              },
+              "preview": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "sentAt": {
+                "type": "string",
+                "format": "date-time"
+              }
+            },
+            "required": [
+              "type",
+              "senderType",
+              "preview",
+              "sentAt"
+            ]
+          },
+          "lastMessageAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "contact",
+          "channel",
+          "score",
+          "tier",
+          "state",
+          "pendingHandoff",
+          "awaitingReply",
+          "waitingSince",
+          "unread",
+          "lastMessage",
+          "lastMessageAt"
+        ]
+      },
+      "ContactRef": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "waId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "waId"
+        ]
+      },
+      "ChannelRef": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "phoneNumber": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "phoneNumber"
+        ]
+      },
+      "LeadState": {
+        "type": "string",
+        "enum": [
+          "open",
+          "handed_off",
+          "ai_paused"
+        ]
+      },
+      "MessageType": {
+        "type": "string",
+        "enum": [
+          "text",
+          "image",
+          "audio",
+          "video",
+          "document",
+          "location",
+          "other"
+        ]
+      },
+      "SenderType": {
+        "type": "string",
+        "enum": [
+          "contact",
+          "ai",
+          "user",
+          "app"
+        ]
+      },
+      "LeadSummary": {
+        "type": "object",
+        "properties": {
+          "pendingHandoffs": {
+            "type": "integer"
+          },
+          "channels": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ChannelRef"
+            }
+          }
+        },
+        "required": [
+          "pendingHandoffs",
+          "channels"
+        ]
+      },
+      "ConversationDetail": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "contact": {
+            "$ref": "#/components/schemas/ContactRef"
+          },
+          "channel": {
+            "$ref": "#/components/schemas/ChannelRef"
+          },
+          "score": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "tier": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "hot",
+              "warm",
+              "cold",
+              null
+            ]
+          },
+          "scoreBreakdown": {
+            "$ref": "#/components/schemas/ScoreBreakdown"
+          },
+          "extractedData": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "key": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "value": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "key",
+                "label",
+                "value"
+              ]
+            }
+          },
+          "handoff": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "reason": {
+                "type": "string"
+              },
+              "summary": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "at",
+              "reason",
+              "summary"
+            ]
+          },
+          "ai": {
+            "type": "object",
+            "properties": {
+              "state": {
+                "type": "string",
+                "enum": [
+                  "active",
+                  "handed_off",
+                  "paused"
+                ]
+              },
+              "pausedUntil": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "date-time"
+              },
+              "lastReactivation": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "properties": {
+                  "at": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "byName": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "at",
+                  "byName"
+                ]
+              }
+            },
+            "required": [
+              "state",
+              "pausedUntil",
+              "lastReactivation"
+            ]
+          },
+          "reply": {
+            "$ref": "#/components/schemas/ReplyAvailability"
+          },
+          "lastMessageAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "contact",
+          "channel",
+          "score",
+          "tier",
+          "scoreBreakdown",
+          "extractedData",
+          "handoff",
+          "ai",
+          "reply",
+          "lastMessageAt"
+        ]
+      },
+      "ScoreBreakdown": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "dimensions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "key": {
+                  "type": "string"
+                },
+                "signal": {
+                  "type": "number"
+                },
+                "weight": {
+                  "type": "number"
+                },
+                "points": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "key",
+                "signal",
+                "weight",
+                "points"
+              ]
+            }
+          },
+          "completeness": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "value": {
+                "type": "number"
+              },
+              "weight": {
+                "type": "number"
+              },
+              "obtained": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "missing": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "value",
+              "weight",
+              "obtained",
+              "missing"
+            ]
+          }
+        },
+        "required": [
+          "dimensions",
+          "completeness"
+        ]
+      },
+      "ReplyAvailability": {
+        "type": "object",
+        "properties": {
+          "allowed": {
+            "type": "boolean"
+          },
+          "reason": {
+            "$ref": "#/components/schemas/ReplyBlockedReason"
+          },
+          "pausedUntil": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "allowed",
+          "reason",
+          "pausedUntil"
+        ]
+      },
+      "ReplyBlockedReason": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "enum": [
+          "no_inbound",
+          "window_expired",
+          "contact_blocked",
+          "channel_unavailable",
+          "channel_paused",
+          null
+        ]
+      },
+      "MessageList": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Message"
+            }
+          },
+          "nextBefore": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "nextBefore"
+        ]
+      },
+      "Message": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "direction": {
+            "type": "string",
+            "enum": [
+              "inbound",
+              "outbound"
+            ]
+          },
+          "senderType": {
+            "$ref": "#/components/schemas/SenderType"
+          },
+          "sentByName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "type": {
+            "$ref": "#/components/schemas/MessageType"
+          },
+          "body": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "delivery": {
+            "$ref": "#/components/schemas/Delivery"
+          },
+          "sentAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "direction",
+          "senderType",
+          "sentByName",
+          "type",
+          "body",
+          "delivery",
+          "sentAt"
+        ]
+      },
+      "Delivery": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "sending",
+              "sent",
+              "delivered",
+              "read",
+              "failed",
+              "rejected"
+            ]
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "not_sent",
+                  "maybe_sent"
+                ]
+              },
+              {
+                "$ref": "#/components/schemas/ReplyBlockedReason"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "state",
+          "reason"
+        ]
+      },
+      "SendMessageBody": {
+        "type": "object",
+        "properties": {
+          "body": {
+            "type": "string",
+            "minLength": 1
+          },
+          "idempotencyKey": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "body",
+          "idempotencyKey"
+        ],
+        "additionalProperties": false
+      },
+      "ChannelList": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ChannelWithMembers"
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "ChannelWithMembers": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "phoneNumber": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "connected",
+              "disconnected",
+              "banned"
+            ]
+          },
+          "connectedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "disconnectedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "disconnectReason": {
+            "$ref": "#/components/schemas/ChannelDisconnectReason"
+          },
+          "numberInUse": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "scope": {
+                "type": "string",
+                "enum": [
+                  "same_tenant",
+                  "other_tenant"
+                ]
+              },
+              "channelName": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "scope",
+              "channelName"
+            ]
+          },
+          "sendingPause": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "until": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "date-time"
+              },
+              "blockedRisk": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "until",
+              "blockedRisk"
+            ]
+          },
+          "sellers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MemberRef"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "phoneNumber",
+          "status",
+          "connectedAt",
+          "disconnectedAt",
+          "disconnectReason",
+          "numberInUse",
+          "sendingPause",
+          "sellers"
+        ]
+      },
+      "ChannelDisconnectReason": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "enum": [
+          "logged_out",
+          "phone_mismatch",
+          "number_in_use",
+          "pairing_expired",
+          "session_failed",
+          null
+        ]
+      },
+      "MemberRef": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "userId",
+          "name",
+          "email"
+        ]
+      },
+      "CreateChannel": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false
+      },
+      "ChannelPairing": {
+        "type": "object",
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "qr",
+              "starting",
+              "connected",
+              "expired",
+              "rejected",
+              "unavailable"
+            ]
+          },
+          "qr": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "phoneNumber": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "disconnectReason": {
+            "$ref": "#/components/schemas/ChannelDisconnectReason"
+          },
+          "numberInUse": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "scope": {
+                "type": "string",
+                "enum": [
+                  "same_tenant",
+                  "other_tenant"
+                ]
+              },
+              "channelName": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "scope",
+              "channelName"
+            ]
+          }
+        },
+        "required": [
+          "state",
+          "qr",
+          "phoneNumber",
+          "disconnectReason",
+          "numberInUse"
+        ]
+      },
+      "SetChannelMembers": {
+        "type": "object",
+        "properties": {
+          "userIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "maxItems": 50
+          }
+        },
+        "required": [
+          "userIds"
+        ],
+        "additionalProperties": false
+      },
+      "SellerOptions": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MemberRef"
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
+      }
+    },
+    "parameters": {}
+  },
+  "paths": {
+    "/events": {
+      "get": {
+        "operationId": "streamEvents",
+        "tags": [
+          "panel"
+        ],
+        "summary": "Stream SSE de cambios de la bandeja (solo tipos e identificadores; 429 con demasiados streams)",
+        "responses": {
+          "200": {
+            "description": "Stream SSE",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ConversationEvent"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ChannelEvent"
+                    },
+                    {
+                      "$ref": "#/components/schemas/StreamEnd"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/leads": {
+      "get": {
+        "operationId": "listLeads",
+        "tags": [
+          "panel"
+        ],
+        "summary": "Grilla de leads (conversaciones visibles para el usuario)",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^(hot|warm|cold|none)(,(hot|warm|cold|none)){0,3}$"
+            },
+            "required": false,
+            "name": "tier",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/LeadState"
+            },
+            "required": false,
+            "name": "status",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": false,
+            "name": "channelId",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 2,
+              "maxLength": 100
+            },
+            "required": false,
+            "name": "q",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "unanswered",
+                "unread"
+              ]
+            },
+            "required": false,
+            "name": "attention",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "default",
+                "priority",
+                "score",
+                "last_message"
+              ],
+              "default": "default"
+            },
+            "required": false,
+            "name": "sort",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "asc",
+                "desc"
+              ],
+              "default": "desc"
+            },
+            "required": false,
+            "name": "dir",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0,
+              "maximum": 10000,
+              "default": 0
+            },
+            "required": false,
+            "name": "page",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50,
+              "default": 25
+            },
+            "required": false,
+            "name": "pageSize",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LeadList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/leads/summary": {
+      "get": {
+        "operationId": "getLeadSummary",
+        "tags": [
+          "panel"
+        ],
+        "summary": "Cantidad de derivadas sin atender",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LeadSummary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/conversations/{id}": {
+      "get": {
+        "operationId": "getConversation",
+        "tags": [
+          "panel"
+        ],
+        "summary": "Detalle de una conversación",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationDetail"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/conversations/{id}/messages": {
+      "get": {
+        "operationId": "listMessages",
+        "tags": [
+          "panel"
+        ],
+        "summary": "Mensajes, paginados hacia atrás",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "required": false,
+            "name": "before",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 50
+            },
+            "required": false,
+            "name": "limit",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "sendMessage",
+        "tags": [
+          "panel"
+        ],
+        "summary": "Responde por WhatsApp desde el panel (idempotente por idempotencyKey). 409 con code si no se puede enviar",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SendMessageBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Message"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/conversations/{id}/read": {
+      "post": {
+        "operationId": "markConversationRead",
+        "tags": [
+          "panel"
+        ],
+        "summary": "Marca la conversación como vista por el usuario",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Sin contenido"
+          },
+          "400": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/conversations/{id}/reactivate-ai": {
+      "post": {
+        "operationId": "reactivateAi",
+        "tags": [
+          "panel"
+        ],
+        "summary": "Vuelve a activar la IA en una conversación derivada o pausada (idempotente)",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationDetail"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/channels": {
+      "get": {
+        "operationId": "listChannels",
+        "tags": [
+          "panel"
+        ],
+        "summary": "Números de la empresa con su estado y sus vendedores asignados",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChannelList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createChannel",
+        "tags": [
+          "panel"
+        ],
+        "summary": "Da de alta un número (conexión no oficial): queda esperando el escaneo del QR",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateChannel"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChannelWithMembers"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/channels/{id}": {
+      "delete": {
+        "operationId": "cancelChannel",
+        "tags": [
+          "panel"
+        ],
+        "summary": "Cancela el alta de un número que nunca se conectó",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Sin contenido"
+          },
+          "400": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/channels/{id}/pairing": {
+      "get": {
+        "operationId": "getChannelPairing",
+        "tags": [
+          "panel"
+        ],
+        "summary": "QR vigente para vincular el número (no se cachea)",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChannelPairing"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/channels/{id}/reconnect": {
+      "post": {
+        "operationId": "reconnectChannel",
+        "tags": [
+          "panel"
+        ],
+        "summary": "Pide un QR nuevo para volver a vincular el número (mismo canal, mismo historial)",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChannelWithMembers"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/channels/{id}/disconnect": {
+      "post": {
+        "operationId": "disconnectChannel",
+        "tags": [
+          "panel"
+        ],
+        "summary": "Desvincula el número del sistema",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChannelWithMembers"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/channels/{id}/resume-sending": {
+      "post": {
+        "operationId": "resumeChannelSending",
+        "tags": [
+          "panel"
+        ],
+        "summary": "Levanta la pausa de envíos del número (no toca la sesión)",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChannelWithMembers"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/channels/{id}/members": {
+      "put": {
+        "operationId": "setChannelMembers",
+        "tags": [
+          "panel"
+        ],
+        "summary": "Reemplaza los vendedores asignados a un número",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetChannelMembers"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChannelWithMembers"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/members/sellers": {
+      "get": {
+        "operationId": "listSellers",
+        "tags": [
+          "panel"
+        ],
+        "summary": "Vendedores activos de la empresa (para asignar números)",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SellerOptions"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Error con un código estable (code) y, en las validaciones, la ruta de cada campo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "webhooks": {}
+}

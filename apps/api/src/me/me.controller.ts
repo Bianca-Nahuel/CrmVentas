@@ -1,6 +1,9 @@
-import { Controller, Get } from '@nestjs/common';
-import { eq, sql } from 'drizzle-orm';
-import { tenants, users } from '../db/schema/auth.js';
+import { Controller, Get, Req } from '@nestjs/common';
+import type { MeTenantOption, TenantRole } from '@ventas/shared';
+import { and, asc, eq, sql } from 'drizzle-orm';
+import { NoTenant } from '../auth/decorators.js';
+import type { AuthenticatedRequest } from '../auth/request.js';
+import { memberships, tenants, users } from '../db/schema/auth.js';
 import { currentTenantContext, currentTx } from '../db/tenant-context.js';
 
 @Controller('me')
@@ -38,5 +41,23 @@ export class MeController {
       role,
       db: { currentUser: db?.db_user, appTenantId: db?.app_tenant_id, appUserId: db?.app_user_id },
     };
+  }
+
+  // Empresas que el usuario puede elegir en el panel: membresía activa en una empresa activa, con su rol.
+  // organization/list de Better Auth no sirve: no trae el rol ni el status de la membresía.
+  // Corre como ventas_app con app.user_id (sin empresa): la RLS solo deja ver sus propias membresías.
+  @NoTenant()
+  @Get('tenants')
+  async tenants(@Req() request: AuthenticatedRequest): Promise<MeTenantOption[]> {
+    const userId = request.authSession!.user.id;
+    const rows = await currentTx()
+      .select({ id: tenants.id, name: tenants.name, slug: tenants.slug, role: memberships.role })
+      .from(memberships)
+      .innerJoin(tenants, eq(tenants.id, memberships.tenantId))
+      .where(
+        and(eq(memberships.userId, userId), eq(memberships.status, 'active'), eq(tenants.status, 'active')),
+      )
+      .orderBy(asc(tenants.name));
+    return rows.map((row) => ({ ...row, role: row.role as TenantRole }));
   }
 }

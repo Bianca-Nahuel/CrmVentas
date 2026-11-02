@@ -64,6 +64,13 @@ export interface MessageStatusEvent extends BaseEvent {
 export interface SessionStatusEvent extends BaseEvent {
   type: 'session.status';
   status: ChannelConnectionStatus;
+  /**
+   * Con `connected`: el número vinculado (E.164), que pasa a ser el del canal (decisión #27). null si el
+   * proveedor no lo informa o en cualquier otro estado.
+   */
+  phoneNumber: string | null;
+  /** Con `disconnected`: si la sesión falló (por ejemplo, se agotaron los QR) en vez de detenerse. */
+  failed: boolean;
 }
 
 export type WhatsAppEvent = MessageReceivedEvent | MessageEchoEvent | MessageStatusEvent | SessionStatusEvent;

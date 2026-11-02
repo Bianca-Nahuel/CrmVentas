@@ -5,6 +5,7 @@ import type { PgBoss } from 'pg-boss';
 import { APP_DB, type AppDatabase } from '../../db/database.module.js';
 import { conversations, messages, outboundMessages } from '../../db/schema/messaging.js';
 import { withTenantTransaction, type AppTx } from '../../db/tenant-context.js';
+import { publishConversationEvent } from '../../realtime/publish.js';
 import { errorCode } from '../../jobs/error-code.js';
 import { BOSS, QUEUES } from '../../jobs/jobs.module.js';
 import {
@@ -224,6 +225,7 @@ export class OutboundWorker implements OnApplicationBootstrap {
         .update(outboundMessages)
         .set({ status: 'rejected', rejectReason: context.rejectReason })
         .where(and(eq(outboundMessages.id, job.outboundId), eq(outboundMessages.status, 'queued')));
+      await this.publishUpdated(tx, job, context);
       return { kind: 'done', result: 'rechazado', reason: context.rejectReason };
     }
 
@@ -299,6 +301,7 @@ export class OutboundWorker implements OnApplicationBootstrap {
       .where(and(eq(outboundMessages.id, job.outboundId), eq(outboundMessages.status, 'queued')))
       .returning({ id: outboundMessages.id });
     if (claimed.length === 0) return { kind: 'done', result: 'sin_cambios', reason: 'claim_lost' };
+    await this.publishUpdated(tx, job, context);
     return { kind: 'send', context, body: row.body, unread: await unreadInbound(tx, row.conversationId) };
   }
 
@@ -399,6 +402,7 @@ export class OutboundWorker implements OnApplicationBootstrap {
       .update(conversations)
       .set({ lastMessageAt: sql`GREATEST(${conversations.lastMessageAt}, ${sentAt})` })
       .where(eq(conversations.id, context.conversationId));
+    await this.publishUpdated(tx, job, context);
     return 'enviado';
   }
 
@@ -417,14 +421,30 @@ export class OutboundWorker implements OnApplicationBootstrap {
       .where(and(eq(outboundMessages.id, job.outboundId), eq(outboundMessages.status, 'sending')));
 
     await applyChannelFailure(tx, context.channelId, failure);
+    await this.publishUpdated(tx, job, context);
     return retry ? 'reintento' : 'fallido';
   }
 
   private async markUnknown(tx: AppTx, ids: string[]): Promise<void> {
-    await tx
+    const rows = await tx
       .update(outboundMessages)
       .set({ status: 'failed', lastError: 'unknown_outcome' })
-      .where(and(inArray(outboundMessages.id, ids), eq(outboundMessages.status, 'sending')));
+      .where(and(inArray(outboundMessages.id, ids), eq(outboundMessages.status, 'sending')))
+      .returning({
+        tenantId: outboundMessages.tenantId,
+        channelId: outboundMessages.channelId,
+        conversationId: outboundMessages.conversationId,
+      });
+    for (const row of rows) await publishConversationEvent(tx, 'message.updated', row);
+  }
+
+  /** Tiempo real: cambió el estado de un envío (se entrega con el commit de esta transacción). */
+  private publishUpdated(tx: AppTx, job: OutboundJob, context: SendContext): Promise<void> {
+    return publishConversationEvent(tx, 'message.updated', {
+      tenantId: job.tenantId,
+      channelId: context.channelId,
+      conversationId: context.conversationId,
+    });
   }
 }
 

@@ -118,7 +118,7 @@ describe('normalizeWahaEvent: mensajes', () => {
 });
 
 describe('normalizeWahaEvent: session.status', () => {
-  it('WORKING → connected', () => {
+  it('WORKING → connected, con el número vinculado (me.id) en E.164', () => {
     expect(normalizeWahaEvent(fixture('session-status-working'))).toEqual({
       kind: 'event',
       event: {
@@ -127,7 +127,29 @@ describe('normalizeWahaEvent: session.status', () => {
         channelExternalId: 'ch_session_de_prueba',
         eventId: 'evt_01jabcdefghjkmnpqrstvwxyz0',
         status: 'connected',
+        phoneNumber: '+5491100000099',
+        failed: false,
       },
+    });
+  });
+
+  it.each([
+    [{ id: '5491100000099:12@s.whatsapp.net' }, '+5491100000099'],
+    [{ id: '100000000000002@lid' }, null],
+    [null, null],
+    [undefined, null],
+  ])('me %j → phoneNumber %s', (me, phoneNumber) => {
+    const base = fixture('session-status-working') as Record<string, unknown>;
+    expect(normalizeWahaEvent({ ...base, me })).toMatchObject({ kind: 'event', event: { phoneNumber } });
+  });
+
+  it('solo WORKING lleva número; FAILED marca failed', () => {
+    const base = fixture('session-status-working') as { payload: Record<string, unknown> };
+    expect(normalizeWahaEvent({ ...base, payload: { ...base.payload, status: 'FAILED' } })).toMatchObject({
+      event: { status: 'disconnected', phoneNumber: null, failed: true },
+    });
+    expect(normalizeWahaEvent({ ...base, payload: { ...base.payload, status: 'STOPPED' } })).toMatchObject({
+      event: { status: 'disconnected', phoneNumber: null, failed: false },
     });
   });
 

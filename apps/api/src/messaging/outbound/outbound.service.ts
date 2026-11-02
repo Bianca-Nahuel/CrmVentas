@@ -1,15 +1,21 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { fromDrizzle, type PgBoss } from 'pg-boss';
-import { channels, outboundMessages } from '../../db/schema/messaging.js';
+import { channels, conversations, outboundMessages } from '../../db/schema/messaging.js';
 import { currentTx, type AppTx } from '../../db/tenant-context.js';
+import { publishConversationEvent, publishNotice } from '../../realtime/publish.js';
 import { BOSS, QUEUES } from '../../jobs/jobs.module.js';
 import type { ProviderFailure, SeenMessage } from '../../whatsapp/provider.js';
-import { REPLY_WINDOW_HOURS } from './outbound.constants.js';
+import { AI_PAUSE_AFTER_HUMAN_HOURS, REPLY_WINDOW_HOURS } from './outbound.constants.js';
 
 export type OutboundSenderType = 'ai' | 'user' | 'app';
 export type RejectReason =
-  'no_inbound' | 'window_expired' | 'contact_blocked' | 'channel_unavailable' | 'channel_paused';
+  | 'no_inbound'
+  | 'window_expired'
+  | 'contact_blocked'
+  | 'channel_unavailable'
+  | 'channel_paused'
+  | 'superseded';
 export type OutboundStatus = 'queued' | 'sending' | 'sent' | 'failed' | 'rejected';
 
 export interface EnqueueTextInput {
@@ -77,7 +83,51 @@ export class InvalidOutboundError extends Error {
   }
 }
 
-const MAX_BODY_CHARS = 4096;
+/**
+ * Por qué no se puede enviar en una conversación (c = conversations, ct = contacts, ch = channels), o NULL
+ * si se puede. La usan loadSendContext y el detalle de la conversación del panel (que explica el motivo).
+ */
+export const SEND_REJECT_REASON = sql`CASE
+  WHEN c.last_inbound_at IS NULL THEN 'no_inbound'
+  WHEN c.last_inbound_at <= now() - make_interval(hours => ${REPLY_WINDOW_HOURS}) THEN 'window_expired'
+  WHEN ct.blocked THEN 'contact_blocked'
+  WHEN ch.status <> 'connected' OR ch.external_id IS NULL THEN 'channel_unavailable'
+  WHEN ch.sending_paused_until IS NOT NULL AND ch.sending_paused_until > now() THEN 'channel_paused'
+END`;
+
+/**
+ * Una persona respondió (desde el teléfono o el panel): la IA no se mete en la conversación por
+ * AI_PAUSE_AFTER_HUMAN_HOURS. Nunca acorta una pausa más larga.
+ */
+export async function pauseAiAfterHuman(tx: AppTx, conversationId: string): Promise<void> {
+  await tx
+    .update(conversations)
+    .set({
+      aiPausedUntil: sql`GREATEST(COALESCE(${conversations.aiPausedUntil}, now()), now() + make_interval(hours => ${AI_PAUSE_AFTER_HUMAN_HOURS}))`,
+    })
+    .where(eq(conversations.id, conversationId));
+}
+
+/**
+ * Deja sin efecto las respuestas de la IA que todavía esperan en la cola (rejected/superseded): respondió
+ * una persona. Una que ya está en 'sending' sale igual (el claim es atómico y nunca se corta un envío).
+ */
+export async function supersedeQueuedAiReplies(tx: AppTx, conversationId: string): Promise<number> {
+  const rows = await tx
+    .update(outboundMessages)
+    .set({ status: 'rejected', rejectReason: 'superseded' })
+    .where(
+      and(
+        eq(outboundMessages.conversationId, conversationId),
+        eq(outboundMessages.senderType, 'ai'),
+        eq(outboundMessages.status, 'queued'),
+      ),
+    )
+    .returning({ id: outboundMessages.id });
+  return rows.length;
+}
+
+export const MAX_BODY_CHARS = 4096;
 const MAX_KEY_CHARS = 200;
 
 /**
@@ -96,14 +146,7 @@ export async function loadSendContext(tx: AppTx, conversationId: string): Promis
     reject_reason: RejectReason | null;
   }>(sql`
     SELECT c.id AS conversation_id, c.channel_id, ch.external_id AS channel_external_id, ch.provider,
-           ct.wa_id AS contact_wa_id, c.last_inbound_at,
-           CASE
-             WHEN c.last_inbound_at IS NULL THEN 'no_inbound'
-             WHEN c.last_inbound_at <= now() - make_interval(hours => ${REPLY_WINDOW_HOURS}) THEN 'window_expired'
-             WHEN ct.blocked THEN 'contact_blocked'
-             WHEN ch.status <> 'connected' OR ch.external_id IS NULL THEN 'channel_unavailable'
-             WHEN ch.sending_paused_until IS NOT NULL AND ch.sending_paused_until > now() THEN 'channel_paused'
-           END AS reject_reason
+           ct.wa_id AS contact_wa_id, c.last_inbound_at, ${SEND_REJECT_REASON} AS reject_reason
     FROM conversations c
     JOIN contacts ct ON ct.tenant_id = c.tenant_id AND ct.id = c.contact_id
     JOIN channels ch ON ch.tenant_id = c.tenant_id AND ch.id = c.channel_id
@@ -165,9 +208,18 @@ export class OutboundService {
     if (!inserted) {
       // Otro pedido con la misma clave ganó la carrera (el INSERT esperó su commit).
       const winner = await this.findByKey(tx, input.idempotencyKey);
-      if (!winner) throw new Error('No se encontró el envío con la clave repetida');
+      // No visible: la clave es de un envío en un número que este usuario no ve (RLS channel_visibility).
+      // Es otro envío: conflicto, sin revelar nada de esa fila.
+      if (!winner) throw new IdempotencyConflictError();
       return sameRequest(winner, input, sentByUserId);
     }
+
+    // Tiempo real: el envío aparece "En cola" (o rechazado) en el panel cuando la transacción hace commit.
+    await publishConversationEvent(tx, 'message.created', {
+      tenantId: inserted.tenantId,
+      channelId: context.channelId,
+      conversationId: context.conversationId,
+    });
 
     if (status === 'queued') {
       const job: OutboundJob = {
@@ -278,22 +330,28 @@ export async function applyChannelFailure(
   channelId: string,
   failure: ProviderFailure,
 ): Promise<boolean> {
+  let changed: { tenantId: string }[];
   if (failure.error === 'blocked_risk') {
-    await tx
+    changed = await tx
       .update(channels)
       .set({
         sendingPausedUntil: sql`'infinity'::timestamptz`,
         sendingPausedReason: `blocked_risk:${failure.code}`,
       })
-      .where(eq(channels.id, channelId));
-    return true;
-  }
-  if (failure.error === 'session_down') {
-    await tx
+      .where(eq(channels.id, channelId))
+      .returning({ tenantId: channels.tenantId });
+  } else if (failure.error === 'session_down') {
+    changed = await tx
       .update(channels)
       .set({ status: 'disconnected' })
-      .where(and(eq(channels.id, channelId), inArray(channels.status, ['pending', 'connected'])));
-    return true;
+      .where(and(eq(channels.id, channelId), inArray(channels.status, ['pending', 'connected'])))
+      .returning({ tenantId: channels.tenantId });
+  } else {
+    return false;
   }
-  return false;
+  // El panel muestra por qué no se puede responder (tiempo real).
+  for (const row of changed) {
+    await publishNotice(tx, { kind: 'channel', type: 'channel.updated', tenantId: row.tenantId, channelId });
+  }
+  return true;
 }

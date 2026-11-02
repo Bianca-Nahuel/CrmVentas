@@ -99,6 +99,55 @@
       "when": 1793050438378,
       "tag": "0013_catalog_url_ascii",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1793365743661,
+      "tag": "0014_inbox_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1793365748557,
+      "tag": "0015_inbox_permissions_rls",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1793406206181,
+      "tag": "0016_conversation_reads",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1793406212343,
+      "tag": "0017_conversation_reads_rls",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1793552673252,
+      "tag": "0018_outbound_superseded",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1793568760849,
+      "tag": "0019_channels_pairing",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1793568796284,
+      "tag": "0020_channels_pairing_rls",
+      "breakpoints": true
     }
   ]
 }

@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { WahaClient } from '../src/whatsapp/providers/waha/waha-client.js';
 import { WahaProvider } from '../src/whatsapp/providers/waha/waha.provider.js';
+const TEST_WEBHOOK = { webhookUrl: 'http://api/api/webhooks/waha', hmacKey: 'k'.repeat(32) };
 
 function fakeFetch(status: number, body: unknown, calls: { url: string; apiKey: string | null }[] = []) {
   return (async (input: string | URL | Request, init?: RequestInit) => {
@@ -15,7 +16,7 @@ const lidEvent = () => {
   const raw = JSON.parse(
     readFileSync(new URL('./fixtures/whatsapp/waha/message-lid-without-alt.json', import.meta.url), 'utf8'),
   );
-  const result = new WahaProvider(new WahaClient('http://waha', 'k')).normalize(raw);
+  const result = new WahaProvider(new WahaClient('http://waha', 'k'), TEST_WEBHOOK).normalize(raw);
   if (result.kind !== 'event') throw new Error('fixture inválido');
   return result.event;
 };
@@ -106,19 +107,23 @@ describe('WahaProvider.enrich', () => {
   it('reemplaza el LID por el número si WAHA lo conoce', async () => {
     const provider = new WahaProvider(
       new WahaClient('http://waha', 'k', fakeFetch(200, { pn: '5491100000005@c.us' })),
+      TEST_WEBHOOK,
     );
     const event = await provider.enrich(lidEvent());
     expect(event).toMatchObject({ contact: { waId: '+5491100000005' } });
   });
 
   it('deja el LID si WAHA no lo conoce', async () => {
-    const provider = new WahaProvider(new WahaClient('http://waha', 'k', fakeFetch(404, {})));
+    const provider = new WahaProvider(new WahaClient('http://waha', 'k', fakeFetch(404, {})), TEST_WEBHOOK);
     expect(await provider.enrich(lidEvent())).toMatchObject({ contact: { waId: '100000000000002@lid' } });
   });
 
   it('no llama a WAHA si el contacto ya tiene número', async () => {
     const calls: { url: string; apiKey: string | null }[] = [];
-    const provider = new WahaProvider(new WahaClient('http://waha', 'k', fakeFetch(500, {}, calls)));
+    const provider = new WahaProvider(
+      new WahaClient('http://waha', 'k', fakeFetch(500, {}, calls)),
+      TEST_WEBHOOK,
+    );
     const event = { ...lidEvent(), contact: { waId: '+5491100000005', profileName: null } };
     expect(await provider.enrich(event)).toBe(event);
     expect(calls).toHaveLength(0);

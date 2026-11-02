@@ -21,13 +21,20 @@ function setup(service: Partial<InboundService>) {
       within24hWindowOnly: false,
       adAttribution: false,
       outboundCampaigns: false,
+      pairing: 'qr',
     },
+    connectionType: 'unofficial',
     normalize: normalizeWahaEvent,
     enrich,
     sendText: vi.fn(),
     markSeen: vi.fn(),
     startTyping: vi.fn(),
     stopTyping: vi.fn(),
+    sessionIdFor: vi.fn(),
+    openSession: vi.fn(),
+    restartPairing: vi.fn(),
+    getPairingQr: vi.fn(),
+    closeSession: vi.fn(),
   };
   const registry: WhatsAppProviderRegistry = new Map([['waha', provider]]);
   const worker = new InboundWorker({} as PgBoss, registry, service as InboundService);

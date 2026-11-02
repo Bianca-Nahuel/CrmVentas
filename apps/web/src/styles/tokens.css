@@ -1,0 +1,119 @@
+/*
+ * Tokens del sistema de diseño. Toda la interfaz usa estas variables: nunca un hex suelto en un componente.
+ * Contrastes (WCAG): ver la tabla de la tarea 023. Texto ≥ 4,5:1, bordes de controles ≥ 3:1.
+ * El tema lo fija <html data-theme="light|dark"> (script de index.html + ThemeService).
+ */
+:root {
+  color-scheme: light;
+
+  /* Superficies */
+  --bg: #f6f8f7;
+  --surface: #ffffff;
+  --surface-2: #eff3f2;
+  --overlay-backdrop: rgb(13 20 19 / 0.45);
+  /* Fondo del QR de WhatsApp: blanco también en oscuro (el lector necesita el margen claro). */
+  --qr-surface: #ffffff;
+
+  /* Texto */
+  --text: #14201f;
+  --text-muted: #4a5a58;
+  --text-subtle: #5f6f6d;
+
+  /* Bordes */
+  --border: #d9e0df;
+  --border-strong: #7f8e8c;
+
+  /* Primario (verde petróleo) */
+  --primary: #0f766e;
+  --primary-hover: #115e59;
+  --on-primary: #ffffff;
+  --primary-soft: #e3f3f1;
+  --primary-strong: #0b4f4a;
+
+  /* Estados: texto/ícono + fondo suave */
+  --success: #166534;
+  --success-soft: #e7f5ec;
+  --warning: #92400e;
+  --warning-soft: #fef3e2;
+  --error: #b91c1c;
+  --error-soft: #fdecec;
+
+  /* Nivel del lead (siempre acompañado de ícono y texto) */
+  --lead-hot: #b2390b;
+  --lead-hot-soft: #fdede4;
+  --lead-warm: #854d0e;
+  --lead-warm-soft: #fbf3d9;
+  --lead-cold: #1e40af;
+  --lead-cold-soft: #e7eefc;
+
+  /* Radios */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-full: 999px;
+
+  /* Sombras: mínimas, los bordes separan */
+  --shadow-1: 0 1px 2px rgb(16 24 23 / 0.06);
+  --shadow-2: 0 6px 16px -4px rgb(16 24 23 / 0.12);
+  --shadow-3: 0 16px 40px -12px rgb(16 24 23 / 0.25);
+
+  /* Espaciado (base 4) */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-8: 48px;
+
+  /* Tipografía */
+  --font-sans: 'Plus Jakarta Sans Variable', system-ui, 'Segoe UI', Roboto, sans-serif;
+
+  /* Foco visible */
+  --focus-ring: 0 0 0 2px var(--surface), 0 0 0 4px var(--primary);
+
+  /* Densidad */
+  --row-height: 44px;
+  --touch-target: 44px;
+  --sidebar-width: 264px;
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+
+  --bg: #0d1413;
+  --surface: #141c1b;
+  --surface-2: #1b2625;
+  --overlay-backdrop: rgb(0 0 0 / 0.6);
+
+  --text: #e6eeed;
+  --text-muted: #a7b6b4;
+  --text-subtle: #8d9c9a;
+
+  --border: #2a3836;
+  --border-strong: #5b6c69;
+
+  --primary: #2dd4bf;
+  --primary-hover: #5eead4;
+  --on-primary: #04211e;
+  --primary-soft: #0f2e2b;
+  --primary-strong: #7de8d8;
+
+  --success: #4ade80;
+  --success-soft: #10261a;
+  --warning: #fbbf24;
+  --warning-soft: #2a2110;
+  --error: #f87171;
+  --error-soft: #2c1414;
+
+  --lead-hot: #fb923c;
+  --lead-hot-soft: #2d1a10;
+  --lead-warm: #facc15;
+  --lead-warm-soft: #29240e;
+  --lead-cold: #7ab4fb;
+  --lead-cold-soft: #121f33;
+
+  --shadow-1: 0 1px 2px rgb(0 0 0 / 0.4);
+  --shadow-2: 0 8px 20px -4px rgb(0 0 0 / 0.55);
+  --shadow-3: 0 20px 48px -12px rgb(0 0 0 / 0.7);
+}
