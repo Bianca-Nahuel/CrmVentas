@@ -4,7 +4,10 @@
 // toma trabajos en estos tests. Números ficticios.
 import type { PgBoss } from 'pg-boss';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { APP_DB, type AppDatabase } from '../src/db/database.module.js';
+import { withTenantTransaction } from '../src/db/tenant-context.js';
 import { BOSS, QUEUES } from '../src/jobs/jobs.module.js';
+import { OutboundService } from '../src/messaging/outbound/outbound.service.js';
 import {
   addMember,
   createTenant,
@@ -14,7 +17,8 @@ import {
   withTenant,
   type TestContext,
 } from './helpers.js';
-import { fakePhone, uid } from './outbound-helpers.js';
+import { OutboundWorker } from '../src/messaging/outbound/outbound.worker.js';
+import { attempt, fakeBoss, fakePhone, FakeProvider, registryWith, uid } from './outbound-helpers.js';
 
 let ctx: TestContext;
 
@@ -288,21 +292,60 @@ describe('3. reglas de envío → 409 sin encolar nada', () => {
     expect(await outbox(id)).toEqual([]);
   });
 
-  it('sin mensajes entrantes → NO_INBOUND; ventana vencida → WINDOW_EXPIRED', async () => {
+  it('sin mensajes entrantes → NO_INBOUND', async () => {
     const empty = await createConversation(tenantA, channels.A1, null);
     expect(await send(clients.owner, empty, { body: 'Hola', idempotencyKey: key() })).toMatchObject({
       status: 409,
       body: { code: 'NO_INBOUND' },
     });
-    const old = await createConversation(tenantA, channels.A1, '25 hours');
-    expect(await send(clients.owner, old, { body: 'Hola', idempotencyKey: key() })).toMatchObject({
-      status: 409,
-      body: { code: 'WINDOW_EXPIRED' },
-    });
     expect(await outbox(empty)).toEqual([]);
-    expect(await outbox(old)).toEqual([]);
+  });
+
+  it('más de 24 h desde el último entrante: una persona responde (WAHA no exige la ventana); la IA no', async () => {
+    const old = await createConversation(tenantA, channels.A1, '25 hours');
     const detail = await clients.owner.get(`/api/conversations/${old}`);
-    expect(detail.body!.reply).toEqual({ allowed: false, reason: 'window_expired', pausedUntil: null });
+    expect(detail.body!.reply).toEqual({ allowed: true, reason: null, pausedUntil: null });
+    const response = await send(clients.owner, old, { body: 'Hola', idempotencyKey: key() });
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({ delivery: { state: 'queued', reason: null } });
+    // El worker vuelve a evaluar las reglas antes de mandar: la respuesta de la persona sale igual.
+    const provider = new FakeProvider();
+    const worker = new OutboundWorker(fakeBoss().boss, registryWith(provider), ctx.app.get(APP_DB), {
+      sleep: async () => {},
+      random: () => 0.5,
+    });
+    expect(await worker.handle({ outboundId: response.body!.id, tenantId: tenantA }, attempt())).toBe(
+      'enviado',
+    );
+    expect(provider.sends()).toHaveLength(1);
+
+    const db = ctx.app.get<AppDatabase>(APP_DB).db;
+    const ai = await withTenantTransaction(db, { tenantId: tenantA }, (tx) =>
+      ctx.app
+        .get(OutboundService)
+        .enqueueText(
+          { conversationId: old, body: 'Hola', senderType: 'ai', idempotencyKey: `ai:${uid()}` },
+          tx,
+        ),
+    );
+    expect(ai).toMatchObject({ status: 'rejected', rejectReason: 'window_expired' });
+
+    // Un proveedor que exige la ventana (la Cloud API): tampoco una persona.
+    const strict = new FakeProvider();
+    strict.capabilities.within24hWindowOnly = true;
+    const human = await withTenantTransaction(db, { tenantId: tenantA }, (tx) =>
+      new OutboundService(fakeBoss().boss, registryWith(strict)).enqueueText(
+        {
+          conversationId: old,
+          body: 'Hola',
+          senderType: 'user',
+          sentByUserId: users.owner.id,
+          idempotencyKey: `panel:${uid()}`,
+        },
+        tx,
+      ),
+    );
+    expect(human).toMatchObject({ status: 'rejected', rejectReason: 'window_expired' });
   });
 
   it('una conversación donde se puede responder → reply.allowed', async () => {

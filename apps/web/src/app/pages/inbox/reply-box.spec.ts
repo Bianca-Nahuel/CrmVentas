@@ -52,19 +52,19 @@ async function setup(detail = conversation()) {
     input.dispatchEvent(new Event('input'));
     await fixture.whenStable();
   };
-  const ctrlEnter = async () => {
-    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true, bubbles: true }));
+  const pressEnter = async () => {
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
     await fixture.whenStable();
   };
-  return { fixture, el, input, button, type, ctrlEnter, calls, sent, blocked };
+  return { fixture, el, input, button, type, pressEnter, calls, sent, blocked };
 }
 
 describe('ReplyBox', () => {
-  it('avisa por qué número sale y envía con Ctrl+Enter el texto sin espacios de más', async () => {
-    const { el, type, ctrlEnter, calls, sent, input, fixture } = await setup();
+  it('avisa por qué número sale y envía con Enter el texto sin espacios de más', async () => {
+    const { el, type, pressEnter, calls, sent, input, fixture } = await setup();
     expect(el.textContent).toContain('Sale por WhatsApp desde ventas-principal (+5491100000001)');
     await type('  Hola, te paso el precio \n');
-    await ctrlEnter();
+    await pressEnter();
     expect(calls).toHaveLength(1);
     expect(calls[0]!.text).toBe('Hola, te paso el precio');
     calls[0]!.response.next(queued);
@@ -75,9 +75,9 @@ describe('ReplyBox', () => {
   });
 
   it('si sigue escribiendo mientras se envía, no pierde lo nuevo', async () => {
-    const { type, ctrlEnter, calls, input, fixture } = await setup();
+    const { type, pressEnter, calls, input, fixture } = await setup();
     await type('Hola');
-    await ctrlEnter();
+    await pressEnter();
     await type('Hola, y otra cosa');
     calls[0]!.response.next(queued);
     calls[0]!.response.complete();
@@ -85,46 +85,49 @@ describe('ReplyBox', () => {
     expect(input.value).toBe('Hola, y otra cosa');
   });
 
-  it('Enter solo no envía (es un salto de línea) y vacío no se puede enviar', async () => {
-    const { input, button, type, calls, fixture } = await setup();
+  it('Shift + Enter no envía (es un salto de línea) y vacío no se puede enviar', async () => {
+    const { input, button, type, pressEnter, calls, fixture } = await setup();
     expect(button.disabled).toBe(true);
     await type('   ');
     expect(button.disabled).toBe(true);
-    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    await pressEnter();
+    expect(calls).toHaveLength(0);
+    await type('Hola');
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', shiftKey: true, bubbles: true }));
     await fixture.whenStable();
     expect(calls).toHaveLength(0);
   });
 
   it('doble envío mientras está en vuelo → un solo pedido', async () => {
-    const { type, ctrlEnter, button, calls } = await setup();
+    const { type, pressEnter, button, calls } = await setup();
     await type('Hola');
-    await ctrlEnter();
-    await ctrlEnter();
+    await pressEnter();
+    await pressEnter();
     button.click();
     expect(calls).toHaveLength(1);
     expect(button.disabled).toBe(true);
   });
 
   it('reintento después de un error de red: misma clave; si cambia el texto, clave nueva', async () => {
-    const { type, ctrlEnter, calls, el, fixture } = await setup();
+    const { type, pressEnter, calls, el, fixture } = await setup();
     await type('Hola');
-    await ctrlEnter();
+    await pressEnter();
     calls[0]!.response.error(new HttpErrorResponse({ status: 0 }));
     await fixture.whenStable();
     expect(el.querySelector('[data-testid="reply-error"]')?.textContent).toContain('no se repite');
-    await ctrlEnter();
+    await pressEnter();
     expect(calls[1]!.key).toBe(calls[0]!.key);
     calls[1]!.response.error(new HttpErrorResponse({ status: 502 }));
     await fixture.whenStable();
     await type('Hola, ¿cómo estás?');
-    await ctrlEnter();
+    await pressEnter();
     expect(calls[2]!.key).not.toBe(calls[0]!.key);
   });
 
   it('409 con una regla de envío → explica, deshabilita, conserva el borrador y avisa para recargar', async () => {
-    const { type, ctrlEnter, calls, el, input, button, blocked, fixture } = await setup();
+    const { type, pressEnter, calls, el, input, button, blocked, fixture } = await setup();
     await type('Hola');
-    await ctrlEnter();
+    await pressEnter();
     calls[0]!.response.error(new HttpErrorResponse({ status: 409, error: { code: 'CHANNEL_PAUSED' } }));
     await fixture.whenStable();
     expect(blocked).toEqual(['channel_paused']);

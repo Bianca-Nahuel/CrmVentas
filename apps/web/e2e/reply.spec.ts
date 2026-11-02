@@ -25,7 +25,7 @@ test.describe('responder desde el panel', () => {
     const text = `Abrimos de 9 a 18 (${Date.now()})`;
     const input = box.getByTestId('reply-input');
     await input.fill(text);
-    await input.press('Control+Enter');
+    await input.press('Enter');
     await expect(input).toHaveValue('');
 
     const bubble = page.getByTestId('message').filter({ hasText: text });
@@ -51,13 +51,15 @@ test.describe('responder desde el panel', () => {
     await expect(box.getByTestId('reply-send')).toBeDisabled();
   });
 
-  test('más de 24 h sin que escriba el cliente: no se puede responder y se explica', async ({ page }) => {
+  test('más de 24 h sin que escriba el cliente: la conexión no oficial deja responder igual', async ({
+    page,
+  }) => {
     await loginAs(page, USERS.ownerCeramicos);
     await expectInLayout(page, 'Cerámicos Demo');
     await openConversation(page, 'Diego Ventana');
     const box = page.getByTestId('reply-box');
-    await expect(box.getByTestId('reply-blocked')).toHaveAttribute('data-reason', 'window_expired');
-    await expect(box.getByTestId('reply-input')).toBeDisabled();
+    await expect(box.getByTestId('reply-input')).toBeEnabled();
+    await expect(box.getByTestId('reply-blocked')).toHaveCount(0);
   });
 
   test('estado de cada mensaje con ícono y texto; reintento solo en lo que seguro no salió', async ({

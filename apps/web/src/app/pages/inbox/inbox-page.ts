@@ -91,11 +91,11 @@ const FILTERS: readonly { value: Attention; label: string }[] = [
             (input)="onSearch($any($event.target).value)"
           />
         </div>
-        <div class="mt-2 flex gap-1 lg:mx-3" role="group" aria-label="Filtrar conversaciones">
+        <div class="mt-2 flex flex-wrap gap-1 lg:mx-3" role="group" aria-label="Filtrar conversaciones">
           @for (option of filters; track option.value) {
             <button
               type="button"
-              class="h-8 rounded-full border px-3 text-sm font-medium"
+              class="h-8 shrink-0 whitespace-nowrap rounded-full border px-3 text-sm font-medium"
               [class]="
                 attention() === option.value
                   ? 'border-primary bg-primary-soft text-primary-strong'

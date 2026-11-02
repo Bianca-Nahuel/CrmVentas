@@ -7,7 +7,6 @@ describe('navegación por rol (permisos de libs/shared)', () => {
     expect(paths('owner')).toEqual([
       'conversaciones',
       'leads',
-      'canales',
       'numeros',
       'rendimiento',
       'catalogo',
@@ -21,7 +20,6 @@ describe('navegación por rol (permisos de libs/shared)', () => {
     expect(paths('admin')).toEqual([
       'conversaciones',
       'leads',
-      'canales',
       'numeros',
       'rendimiento',
       'catalogo',
@@ -30,7 +28,7 @@ describe('navegación por rol (permisos de libs/shared)', () => {
     ]);
   });
 
-  it('seller ve Conversaciones y Leads, sin Canales, Catálogo, Agente ni Consumo', () => {
+  it('seller ve Conversaciones y Leads, sin Números, Catálogo, Agente ni Consumo', () => {
     expect(paths('seller')).toEqual(['conversaciones', 'leads']);
   });
 

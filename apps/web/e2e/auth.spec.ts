@@ -11,8 +11,7 @@ test.describe('login y empresa activa', () => {
     await expect(navLinks(page)).toHaveText([
       'Conversaciones',
       /^Leads/,
-      'Canales',
-      'Números y vendedores',
+      'Números',
       'Rendimiento',
       'Catálogo',
       'Configuración del agente',
@@ -85,14 +84,14 @@ test.describe('login y empresa activa', () => {
     await expect(page.getByRole('heading', { name: 'No tenés acceso' })).toBeVisible();
   });
 
-  test('6. seller no ve Canales, Catálogo, Agente ni Consumo, y la URL a mano da sin acceso', async ({
+  test('6. seller no ve Números, Catálogo, Agente ni Consumo, y la URL a mano da sin acceso', async ({
     page,
   }) => {
     await login(page, USERS.multi);
     await page.getByRole('button', { name: /Cerámicos Demo/ }).click();
     await expectInLayout(page, 'Cerámicos Demo');
     await expect(navLinks(page)).toHaveText(['Conversaciones', /^Leads/]);
-    for (const path of ['/canales', '/catalogo', '/agente', '/consumo']) {
+    for (const path of ['/numeros', '/canales', '/catalogo', '/agente', '/consumo']) {
       await page.goto(path);
       await expect(page, path).toHaveURL('/sin-acceso');
     }

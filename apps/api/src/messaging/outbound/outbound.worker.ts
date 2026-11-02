@@ -32,6 +32,7 @@ import {
 } from './outbound.constants.js';
 import {
   applyChannelFailure,
+  humanReplyWindowFreeProviders,
   loadSendContext,
   unreadInbound,
   type OutboundJob,
@@ -204,6 +205,7 @@ export class OutboundWorker implements OnApplicationBootstrap {
         status: outboundMessages.status,
         body: outboundMessages.body,
         conversationId: outboundMessages.conversationId,
+        senderType: outboundMessages.senderType,
         claimedAt: outboundMessages.claimedAt,
         stuck: sql<boolean>`${outboundMessages.claimedAt} <= now() - make_interval(secs => ${STUCK_SENDING_AFTER_MS / 1000})`,
       })
@@ -228,7 +230,11 @@ export class OutboundWorker implements OnApplicationBootstrap {
       return { kind: 'done', result: 'sin_cambios', reason: `status_${row.status}` };
 
     // Las reglas pueden haber cambiado mientras el trabajo esperaba en la cola.
-    const context = await loadSendContext(tx, row.conversationId);
+    const context = await loadSendContext(
+      tx,
+      row.conversationId,
+      row.senderType === 'user' ? humanReplyWindowFreeProviders(this.providers) : [],
+    );
     if (!context) return { kind: 'done', result: 'sin_cambios', reason: 'no_conversation' };
     if (context.rejectReason) {
       await tx

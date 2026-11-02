@@ -7,7 +7,6 @@ import {
   Package,
   RadioTower,
   TrendingUp,
-  UserCog,
   Users,
   type IconNode,
 } from 'lucide';
@@ -48,18 +47,11 @@ export const NAV_ITEMS: readonly NavItem[] = [
     soon: 'Acá vas a ver a cada interesado con su puntaje, su nivel y el resumen para atenderlo.',
   },
   {
-    path: 'canales',
-    label: 'Canales',
+    path: 'numeros',
+    label: 'Números',
     icon: RadioTower,
     permission: { channel: ['read'] },
-    soon: 'Acá vas a conectar los números de WhatsApp de la empresa.',
-  },
-  {
-    path: 'numeros',
-    label: 'Números y vendedores',
-    icon: UserCog,
-    permission: { channel: ['assign'] },
-    soon: 'Acá elegís qué vendedores atienden cada número.',
+    soon: 'Acá vas a conectar los números de WhatsApp de la empresa y elegir qué vendedores los atienden.',
   },
   {
     path: 'rendimiento',

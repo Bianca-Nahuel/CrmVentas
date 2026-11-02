@@ -10,8 +10,7 @@ import { Shell } from './pages/layout/shell';
 const SECTIONS: Record<string, Pick<Route, 'loadChildren'>> = {
   leads: { loadChildren: () => import('./pages/inbox.routes').then((m) => m.LEADS_ROUTES) },
   conversaciones: { loadChildren: () => import('./pages/inbox.routes').then((m) => m.INBOX_ROUTES) },
-  numeros: { loadChildren: () => import('./pages/inbox.routes').then((m) => m.CHANNEL_MEMBERS_ROUTES) },
-  canales: { loadChildren: () => import('./pages/inbox.routes').then((m) => m.CHANNELS_ROUTES) },
+  numeros: { loadChildren: () => import('./pages/inbox.routes').then((m) => m.CHANNELS_ROUTES) },
   rendimiento: { loadChildren: () => import('./pages/performance.routes').then((m) => m.PERFORMANCE_ROUTES) },
 };
 const comingSoon = () => import('./pages/coming-soon/coming-soon-page').then((m) => m.ComingSoonPage);
@@ -42,6 +41,8 @@ export const routes: Routes = [
     children: [
       // Al entrar: la primera sección que el rol puede ver (el viewer va a Rendimiento).
       { path: '', pathMatch: 'full', canActivate: [homeGuard], children: [] },
+      // Canales se unificó con Números y vendedores: los links viejos van a Números.
+      { path: 'canales', redirectTo: 'numeros' },
       ...NAV_ITEMS.map((item) => ({
         path: item.path,
         title: item.label,

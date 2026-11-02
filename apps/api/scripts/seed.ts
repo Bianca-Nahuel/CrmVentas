@@ -314,7 +314,7 @@ const DEMO_LEADS: SeedLead[] = [
       { text: '¿Te sirve alguno de esos?', minutesAgo: 140, lastError: 'unknown_outcome' },
     ],
   },
-  // Tarea 024: el cliente escribió hace más de 24 h (no se le puede responder desde el panel).
+  // Tarea 024: el cliente escribió hace más de 24 h (con WAHA una persona le responde igual, #112; la IA no).
   {
     waId: '+5491100000208',
     name: 'Diego Ventana',

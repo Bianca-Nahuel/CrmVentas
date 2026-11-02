@@ -122,7 +122,7 @@ for (const theme of THEMES) {
         await loginAs(page, USERS.ownerCeramicos);
         await expectInLayout(page, 'Cerámicos Demo');
         await page.goto('/numeros');
-        await expect(page.getByTestId('channel-card').first()).toBeVisible();
+        await expect(page.getByTestId('channel-row').first()).toBeVisible();
         await shot(page, '13-numeros');
         await page.getByRole('button', { name: 'Asignar vendedores' }).first().click();
         await expect(page.getByRole('listbox')).toBeVisible();
@@ -234,7 +234,7 @@ for (const theme of THEMES) {
       test('canales: lista, alta, QR, rechazo, conectado y desconectar', async ({ page, request }) => {
         await loginAs(page, USERS.ownerCeramicos);
         await expectInLayout(page, 'Cerámicos Demo');
-        await page.goto('/canales');
+        await page.goto('/numeros');
         const rows = page.getByTestId('channel-row');
         const row = (name: string) => rows.filter({ hasText: name });
         const dialog = page.getByRole('dialog');

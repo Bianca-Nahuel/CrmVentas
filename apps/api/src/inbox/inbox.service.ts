@@ -1,10 +1,17 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Inject,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { sql, type SQL } from 'drizzle-orm';
 import { TenantConfigService } from '../ai/config/tenant-config.service.js';
 import type { AppTx, TenantContext } from '../db/tenant-context.js';
 import { publishConversationEvent } from '../realtime/publish.js';
 import { ConversationScope, scopeCondition, type Scope } from './conversation-scope.js';
-import { SEND_REJECT_REASON } from '../messaging/outbound/outbound.service.js';
+import { humanReplyWindowFreeProviders, sendRejectReason } from '../messaging/outbound/outbound.service.js';
+import { WHATSAPP_PROVIDER_REGISTRY, type WhatsAppProviderRegistry } from '../whatsapp/provider.js';
 import type {
   ConversationDetail,
   LeadList,
@@ -113,10 +120,16 @@ export function decodeCursor(cursor: string): { sentAt: string; id: string } | n
 
 @Injectable()
 export class InboxService {
+  /** Quien mira el detalle es una persona del equipo: su respuesta puede ir fuera de la ventana. */
+  private readonly windowFreeProviders: readonly string[];
+
   constructor(
     private readonly scopes: ConversationScope,
     private readonly configs: TenantConfigService,
-  ) {}
+    @Inject(WHATSAPP_PROVIDER_REGISTRY) providers: WhatsAppProviderRegistry,
+  ) {
+    this.windowFreeProviders = humanReplyWindowFreeProviders(providers);
+  }
 
   async listLeads(tx: AppTx, context: TenantContext, query: LeadListQuery): Promise<LeadList> {
     const scope = await this.scopes.resolve(tx, context);
@@ -223,7 +236,7 @@ export class InboxService {
       closed_by_name: string | null;
     }>(sql`
       SELECT c.id, ct.display_name, ct.profile_name, ct.wa_id,
-             ${SEND_REJECT_REASON} AS reply_reason,
+             ${sendRejectReason(this.windowFreeProviders)} AS reply_reason,
              CASE WHEN ch.sending_paused_until > now() AND ch.sending_paused_until <> 'infinity'
                THEN ${iso(sql`ch.sending_paused_until`)} END AS sending_paused_until,
              ch.id AS channel_id, ch.name AS channel_name, ch.phone_number AS channel_phone,
