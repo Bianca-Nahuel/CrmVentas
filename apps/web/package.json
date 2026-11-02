@@ -8,7 +8,8 @@
     "build": "ng build",
     "typecheck": "tsc -p tsconfig.app.json --noEmit && tsc -p tsconfig.spec.json --noEmit && tsc -p tsconfig.e2e.json --noEmit",
     "test": "ng test --watch=false",
-    "e2e": "playwright test",
+    "e2e": "playwright test --project=chromium",
+    "e2e:capturas": "playwright test --project=capturas",
     "api:client": "ng-openapi-gen -c ng-openapi-gen.json"
   },
   "dependencies": {

@@ -3,7 +3,10 @@
 // me.id) que procesa el worker de la app. Números ficticios.
 import { readFileSync } from 'node:fs';
 import pg from 'pg';
+import type { PgBoss } from 'pg-boss';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import type { InboundService } from '../src/whatsapp/inbound/inbound.service.js';
+import { InboundWorker } from '../src/whatsapp/inbound/inbound.worker.js';
 import { INBOX_EVENTS_CHANNEL } from '../src/realtime/publish.js';
 import { WHATSAPP_PROVIDER_REGISTRY, type WhatsAppProviderRegistry } from '../src/whatsapp/provider.js';
 import { FAKE_QR_IMAGE } from '../src/whatsapp/providers/fake/fake-qr.js';
@@ -49,6 +52,22 @@ function sessionStatus(session: string, status: string, phone?: string) {
 }
 
 const NO_PAIRING = { qr: null, phoneNumber: null, disconnectReason: null, numberInUse: null };
+
+/**
+ * Espera a que el worker termine con todo lo que llegó por el webhook para la sesión: para comprobar que
+ * un evento no cambió nada, sin pausas fijas.
+ */
+async function processed(session: string) {
+  await waitFor(async () => {
+    const { rows } = await ctx.ownerPool.query<{ n: number }>(
+      `SELECT count(*)::int AS n FROM pgboss.job
+       WHERE name = 'whatsapp-inbound' AND data->'payload'->>'session' = $1
+         AND state NOT IN ('completed', 'failed', 'cancelled')`,
+      [session],
+    );
+    return rows[0]!.n === 0;
+  });
+}
 
 const scan = (session: string, phone: string) =>
   postWahaWebhook(ctx, sessionStatus(session, 'WORKING', phone));
@@ -239,7 +258,7 @@ describe('QR', () => {
     const channel = await createPending();
     expect(await postWahaWebhook(ctx, sessionStatus(channel.session, 'STOPPED'))).toBe(200);
     expect(await postWahaWebhook(ctx, sessionStatus(channel.session, 'SCAN_QR_CODE'))).toBe(200);
-    await new Promise((resolve) => setTimeout(resolve, 1500));
+    await processed(channel.session);
     expect((await channelRow(channel.id))!.status).toBe('pending');
   });
 });
@@ -301,7 +320,7 @@ describe('escaneo', () => {
     });
     // Un reenvío del mismo evento (o uno nuevo) no hace nada: resolve_channel descarta la sesión rechazada.
     expect(await scan(second.session, first.phone)).toBe(200);
-    await new Promise((resolve) => setTimeout(resolve, 1500));
+    await processed(second.session);
     expect((await events(second.id)).filter((e) => e.type === 'number_in_use')).toHaveLength(1);
     const firstName = (
       (await clients.owner.get('/api/channels')).body!.items as Record<string, unknown>[]
@@ -360,7 +379,7 @@ describe('escaneo', () => {
     await clients.owner.post(`/api/channels/${channel.id}/reconnect`);
     // Después del QR: podría ser otro teléfono, queda esperando el número.
     expect(await postWahaWebhook(ctx, sessionStatus(channel.session, 'WORKING'))).toBe(200);
-    await new Promise((resolve) => setTimeout(resolve, 1500));
+    await processed(channel.session);
     expect((await channelRow(channel.id))!.status).toBe('pending');
     expect(await scan(channel.session, channel.phone)).toBe(200);
     await waitFor(async () => (await channelRow(channel.id))?.status === 'connected');
@@ -405,7 +424,7 @@ describe('acciones del panel', () => {
     expect(again).toMatchObject({ status: 409, body: { code: 'CHANNEL_NOT_CONNECTED' } });
     // Un WORKING que ya estaba en la cola no lo vuelve a conectar: el camino es reconectar.
     expect(await scan(channel.session, channel.phone)).toBe(200);
-    await new Promise((resolve) => setTimeout(resolve, 1500));
+    await processed(channel.session);
     expect(await channelRow(channel.id)).toMatchObject({
       status: 'disconnected',
       disconnect_reason: 'logged_out',
@@ -570,6 +589,16 @@ describe('permisos', () => {
     for (const response of fromB)
       expect(response).toMatchObject({ status: 404, body: { code: 'NOT_FOUND' } });
     expect((await channelRow(channel.id))!.status).toBe('connected');
+  });
+});
+
+describe('cola', () => {
+  it('los workers toman JOBS_POLLING_SECONDS (inyectado por propiedad); creados a mano, el valor por defecto', () => {
+    const polling = (worker: unknown) =>
+      (worker as { workOptions(): { pollingIntervalSeconds: number } }).workOptions().pollingIntervalSeconds;
+    expect(polling(ctx.app.get(InboundWorker))).toBe(0.5);
+    expect(polling(ctx.app.get(SessionCloseWorker))).toBe(1);
+    expect(polling(new InboundWorker({} as PgBoss, new Map(), {} as InboundService))).toBe(1);
   });
 });
 

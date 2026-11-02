@@ -17,6 +17,7 @@
     "build:web": "npm run build:shared && npm run build -w @ventas/web",
     "test:web": "npm run build:shared && npm run test -w @ventas/web",
     "e2e:web": "npm run build:shared && npm run e2e -w @ventas/web",
+    "e2e:capturas": "npm run build:shared && npm run e2e:capturas -w @ventas/web",
     "typecheck": "npm run build:shared && npm run typecheck --workspaces --if-present",
     "lint": "eslint . && node tools/eslint/check-security-rules.mjs && node tools/check-api-client.mjs",
     "api:generate": "npm run api:openapi -w @ventas/api && npm run api:client -w @ventas/web",

@@ -1,7 +1,7 @@
 // Capturas de cada pantalla en claro y oscuro, a 375 px (celular) y 1280 px (escritorio).
-// Se guardan en test-results/capturas/ (fuera de git). Correr con: npm run e2e:web -- capturas
+// Se guardan en test-results/capturas/ (fuera de git). Correr con: npm run e2e:capturas (una pantalla: -- --grep canales)
 import { expect, test, type Page } from '@playwright/test';
-import { USERS, expectInLayout, inbound, login, randomPhone, sessionStatus } from './helpers';
+import { expectInLayout, inbound, login, loginAs, randomPhone, sessionStatus, USERS } from './helpers';
 
 const WIDTHS = [
   { name: '375', width: 375, height: 812 },
@@ -49,7 +49,7 @@ for (const theme of THEMES) {
       });
 
       test('layout owner', async ({ page }) => {
-        await login(page, USERS.ownerCeramicos);
+        await loginAs(page, USERS.ownerCeramicos);
         await expectInLayout(page, 'Cerámicos Demo');
         await shot(page, '05-layout-owner');
         if (size.width < 1024) {
@@ -74,7 +74,7 @@ for (const theme of THEMES) {
 
       // Tarea 014: grilla, bandeja, conversación derivada, números y vendedores, y el estado vacío.
       test('leads', async ({ page }) => {
-        await login(page, USERS.ownerCeramicos);
+        await loginAs(page, USERS.ownerCeramicos);
         await expectInLayout(page, 'Cerámicos Demo');
         await page.goto('/leads');
         await expect(page.getByText('Ana Gómez').locator('visible=true').first()).toBeVisible();
@@ -82,7 +82,7 @@ for (const theme of THEMES) {
       });
 
       test('bandeja y conversación derivada', async ({ page }) => {
-        await login(page, USERS.ownerCeramicos);
+        await loginAs(page, USERS.ownerCeramicos);
         await expectInLayout(page, 'Cerámicos Demo');
         await page.goto('/conversaciones');
         await expect(page.getByTestId('inbox-item').first()).toBeVisible();
@@ -99,7 +99,7 @@ for (const theme of THEMES) {
       });
 
       test('reactivar la IA (confirmación)', async ({ page }) => {
-        await login(page, USERS.ownerCeramicos);
+        await loginAs(page, USERS.ownerCeramicos);
         await expectInLayout(page, 'Cerámicos Demo');
         await page.goto('/conversaciones');
         await page.getByTestId('inbox-item').filter({ hasText: 'Ana Gómez' }).click();
@@ -111,7 +111,7 @@ for (const theme of THEMES) {
       });
 
       test('números y vendedores', async ({ page }) => {
-        await login(page, USERS.ownerCeramicos);
+        await loginAs(page, USERS.ownerCeramicos);
         await expectInLayout(page, 'Cerámicos Demo');
         await page.goto('/numeros');
         await expect(page.getByTestId('channel-card').first()).toBeVisible();
@@ -122,7 +122,7 @@ for (const theme of THEMES) {
       });
 
       test('leads: seller sin números', async ({ page }) => {
-        await login(page, 'vendedor.sin.numeros@example.test');
+        await loginAs(page, 'vendedor.sin.numeros@example.test');
         await expectInLayout(page, 'Cerámicos Demo');
         await page.goto('/leads');
         await expect(page.getByTestId('leads-empty')).toBeVisible();
@@ -132,7 +132,7 @@ for (const theme of THEMES) {
       // Tarea 024: caja de respuesta (con borrador), estados de los mensajes, número pausado y ventana
       // vencida. No se envía nada: el borrador queda escrito para la captura.
       const openConversation = async (page: Page, name: string) => {
-        await login(page, USERS.ownerCeramicos);
+        await loginAs(page, USERS.ownerCeramicos);
         await expectInLayout(page, 'Cerámicos Demo');
         await page.goto('/conversaciones');
         // Por nombre: las conversaciones que dejan otras corridas pueden sacarla de las 50 más recientes.
@@ -167,7 +167,7 @@ for (const theme of THEMES) {
       // Tarea 025: tiempo real. Los entrantes se simulan con el webhook firmado (números ficticios).
       const indicator = (page: Page) => page.getByTestId('live-indicator').locator('visible=true');
       const openLive = async (page: Page, path: string) => {
-        await login(page, USERS.ownerCeramicos);
+        await loginAs(page, USERS.ownerCeramicos);
         await expectInLayout(page, 'Cerámicos Demo');
         await page.goto(path);
         await expect(indicator(page)).toHaveAttribute('data-status', 'live');
@@ -224,7 +224,7 @@ for (const theme of THEMES) {
       // Tarea 011: canales. El escaneo se simula con el webhook firmado (proveedor falso, números ficticios).
       // El canal "Capturas" se reutiliza entre corridas (reconectar): no se acumulan canales en la lista.
       test('canales: lista, alta, QR, rechazo, conectado y desconectar', async ({ page, request }) => {
-        await login(page, USERS.ownerCeramicos);
+        await loginAs(page, USERS.ownerCeramicos);
         await expectInLayout(page, 'Cerámicos Demo');
         await page.goto('/canales');
         const rows = page.getByTestId('channel-row');
