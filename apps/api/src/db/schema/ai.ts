@@ -99,7 +99,51 @@ export const aiRuns = pgTable(
   ],
 );
 
-export const aiSchema = { tenantConfigs, aiRuns };
+// Cada turno del playground (tarea 027): el chat de prueba del panel. Solo el costo y la decisión, para que
+// cuente en el consumo y para el tope por hora; nunca el texto de la prueba ni la config. Sin UPDATE ni
+// DELETE para la app (0027).
+export const aiPlaygroundRuns = pgTable(
+  'ai_playground_runs',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`uuidv7()`),
+    tenantId: uuid('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    // FK compuesta a memberships en 0027 (ON DELETE SET NULL).
+    userId: uuid('user_id'),
+    // La versión sobre la que se estaba editando (la config probada puede no estar guardada).
+    baseConfigVersion: integer('base_config_version'),
+    promptVersion: text('prompt_version').notNull(),
+    provider: text('provider'),
+    model: text('model'),
+    billingMode: text('billing_mode'),
+    inputTokens: integer('input_tokens'),
+    outputTokens: integer('output_tokens'),
+    costUsd: numeric('cost_usd', { precision: 12, scale: 8 }),
+    costSource: text('cost_source'),
+    latencyMs: integer('latency_ms'),
+    decision: text('decision').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('ai_playground_runs_tenant_created_idx').on(t.tenantId, t.createdAt),
+    check(
+      'ai_playground_runs_decision_check',
+      sql`${t.decision} ~ '^(replied|asked_fields|asked_text|handed_off|none|blocked:[a-z_]+|error:[a-z_]+)$'`,
+    ),
+    check('ai_playground_runs_billing_mode_check', sql`${t.billingMode} IN ('platform', 'byok')`),
+    check('ai_playground_runs_cost_source_check', sql`${t.costSource} IN ('provider', 'estimated')`),
+    check('ai_playground_runs_provider_check', sql`${t.provider} IN ('openrouter', 'anthropic', 'openai')`),
+    check(
+      'ai_playground_runs_counters_check',
+      sql`${t.inputTokens} >= 0 AND ${t.outputTokens} >= 0 AND ${t.latencyMs} >= 0 AND ${t.costUsd} >= 0`,
+    ),
+  ],
+);
+
+export const aiSchema = { tenantConfigs, aiRuns, aiPlaygroundRuns };
 
 export type TenantConfigRow = typeof tenantConfigs.$inferSelect;
 export type AiRun = typeof aiRuns.$inferSelect;

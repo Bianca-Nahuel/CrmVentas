@@ -183,6 +183,27 @@
       "when": 1793598102259,
       "tag": "0025_revision_unica_y_rechazo_cerrada",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1793633399809,
+      "tag": "0026_paneles_catalogo_agente",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1793633437154,
+      "tag": "0027_paneles_catalogo_agente_rls",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1793640801695,
+      "tag": "0028_purga_vistas_previas",
+      "breakpoints": true
     }
   ]
 }

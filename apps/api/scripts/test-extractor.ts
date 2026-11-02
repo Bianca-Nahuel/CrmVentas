@@ -23,8 +23,8 @@ const { withTenantTransaction } = await import('../src/db/tenant-context.js');
 const { TenantConfigService } = await import('../src/ai/config/tenant-config.service.js');
 const { CATALOG_USER_AGENT } = await import('../src/catalog/catalog.service.js');
 const { SafeFetcher } = await import('../src/catalog/web/safe-fetch.js');
-const { extractProduct, invalidSelectors } = await import('../src/catalog/web/extract.js');
-const { checkSanity } = await import('../src/catalog/web/sanity.js');
+const { invalidSelectors } = await import('../src/catalog/web/extract.js');
+const { testExtractor } = await import('../src/catalog/web/extractor-test.js');
 
 const USAGE = 'Uso: npm run dev:test-extractor -- --tenant <id> --url <url> [--config <ruta.json>]';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -80,46 +80,30 @@ if (badSelectors.length > 0) {
   process.exit(1);
 }
 
-const page = await new SafeFetcher({ userAgent: CATALOG_USER_AGENT }).fetchHtml(url, catalog.allowed_domains);
-if (!page.ok) {
-  console.error(`No se leyó la página: ${page.errorCode}${page.status ? ` (HTTP ${page.status})` : ''}.`);
+const result = await testExtractor(new SafeFetcher({ userAgent: CATALOG_USER_AGENT }), url, catalog);
+if (!result.ok) {
+  console.error(
+    `No se leyó la página: ${result.errorCode}${result.httpStatus ? ` (HTTP ${result.httpStatus})` : ''}.`,
+  );
   process.exit(1);
 }
-console.log(`Leída: ${page.finalUrl} (HTTP ${page.status}, ${Buffer.byteLength(page.html)} bytes)\n`);
-
-const extraction = extractProduct(page.html, catalog.extractor);
-if (extraction.title) console.log(`Título (h1): ${extraction.title}\n`);
+console.log(`Leída: ${result.finalUrl} (HTTP ${result.httpStatus})\n`);
+if (result.title) console.log(`Título (h1): ${result.title}\n`);
 const width = 18;
-const fields = [
-  'list_price',
-  'promo_price',
-  'promo_condition',
-  'price_no_taxes',
-  'currency',
-  'price_unit',
-  'units_per_package',
-  'pieces_per_package',
-  'availability',
-  'description',
-] as const;
-for (const field of fields) {
-  const value = extraction.fields[field];
-  const source = extraction.sources[field];
-  const matched = extraction.matched[field as keyof typeof extraction.matched];
-  const shown = value === undefined ? '—' : String(value).slice(0, 120);
+for (const { field, value, source, matched } of result.fields) {
+  const shown = value === null ? '—' : value.slice(0, 120);
   console.log(
-    `${field.padEnd(width)} ${shown}${source ? `   [${source}]` : ''}${matched && source === 'extractor' ? `   (texto: "${matched.slice(0, 60)}")` : ''}`,
+    `${field.padEnd(width)} ${shown}${source ? `   [${source}]` : ''}${matched ? `   (texto: "${matched.slice(0, 60)}")` : ''}`,
   );
 }
-if (extraction.ruleIssues.length > 0) {
+if (result.ruleIssues.length > 0) {
   console.log('\nReglas del extractor que no dieron un valor:');
-  for (const issue of extraction.ruleIssues) console.log(`  - ${issue}`);
+  for (const issue of result.ruleIssues) console.log(`  - ${issue}`);
 }
-const sanity = checkSanity(extraction.fields, null, catalog.max_price_change_pct);
 console.log(
-  `\nControles de cordura: ${sanity.ok ? 'OK' : `FALLA (${sanity.errorCode})`}${sanity.dropped.length > 0 ? `; descartados: ${sanity.dropped.join(', ')}` : ''}`,
+  `\nControles de cordura: ${result.sanity.ok ? 'OK' : `FALLA (${result.sanity.errorCode})`}${result.sanity.dropped.length > 0 ? `; descartados: ${result.sanity.dropped.join(', ')}` : ''}`,
 );
-if (catalog.availability_source === 'web' && extraction.fields.availability === undefined) {
+if (result.noAvailability) {
   console.log(
     'Aviso: availability_source es web pero la página no informa disponibilidad: el agente va a derivar.',
   );

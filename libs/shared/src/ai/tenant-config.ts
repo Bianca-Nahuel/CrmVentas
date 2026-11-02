@@ -105,6 +105,12 @@ export const reviewConfigSchema = z
     // Indicaciones de la empresa ("no tutear", "siempre ofrecer el envío"). Van por debajo de la capa fija.
     guidance: z.string().trim().max(1000).default(''),
     weekly_digest: z.boolean().default(false),
+    // Confirmación de transparencia (tarea 027): qué owner activó la revisión y cuándo, con el aviso de que
+    // el equipo sabe que se revisan sus conversaciones. La llena el servidor al activarla, nunca el panel.
+    transparency_ack: z
+      .object({ by: z.uuid(), at: z.iso.datetime({ offset: true }) })
+      .strict()
+      .optional(),
   })
   .strict();
 export type ReviewConfig = z.infer<typeof reviewConfigSchema>;

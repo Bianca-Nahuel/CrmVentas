@@ -5,13 +5,15 @@ import { DEV_ROUTES } from './dev/dev.routes';
 import { Shell } from './pages/layout/shell';
 
 // Secciones que ya tienen su pantalla: las de la bandeja (tareas 014 y 011) en un mismo módulo lazy (ver
-// inbox.routes.ts) y Rendimiento (026) en el suyo.
+// inbox.routes.ts), Rendimiento (026) en el suyo, y Catálogo y Configuración del agente (027) en los suyos.
 // El resto muestra "próximamente".
 const SECTIONS: Record<string, Pick<Route, 'loadChildren'>> = {
   leads: { loadChildren: () => import('./pages/inbox.routes').then((m) => m.LEADS_ROUTES) },
   conversaciones: { loadChildren: () => import('./pages/inbox.routes').then((m) => m.INBOX_ROUTES) },
   numeros: { loadChildren: () => import('./pages/inbox.routes').then((m) => m.CHANNELS_ROUTES) },
   rendimiento: { loadChildren: () => import('./pages/performance.routes').then((m) => m.PERFORMANCE_ROUTES) },
+  catalogo: { loadChildren: () => import('./pages/catalog.routes').then((m) => m.CATALOG_ROUTES) },
+  agente: { loadChildren: () => import('./pages/agent.routes').then((m) => m.AGENT_ROUTES) },
 };
 const comingSoon = () => import('./pages/coming-soon/coming-soon-page').then((m) => m.ComingSoonPage);
 

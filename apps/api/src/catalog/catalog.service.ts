@@ -8,6 +8,7 @@ import { TurnCatalogContext } from '../ai/tools/turn-catalog-context.js';
 import type { LlmTool } from '../ai/llm/llm-client.js';
 import { CatalogViewer } from './catalog-viewer.js';
 import { PgCatalogStore } from './pg-catalog-store.js';
+import { ReadOnlyCatalogStore } from './read-only-catalog-store.js';
 import { ProductPageReader } from './web/product-page-reader.js';
 import { SafeFetcher } from './web/safe-fetch.js';
 
@@ -16,7 +17,9 @@ export const CATALOG_USER_AGENT = 'VentasCatalogBot/1.0 (lectura de precios auto
 
 @Injectable()
 export class CatalogService {
-  readonly reader = new ProductPageReader(new SafeFetcher({ userAgent: CATALOG_USER_AGENT }));
+  // Un solo SafeFetcher (y su límite por dominio) para el agente, el refresco y el probador del panel.
+  readonly fetcher = new SafeFetcher({ userAgent: CATALOG_USER_AGENT });
+  readonly reader = new ProductPageReader(this.fetcher);
   readonly viewer = new CatalogViewer(this.reader);
 
   constructor(@Inject(APP_DB) private readonly database: AppDatabase) {}
@@ -25,17 +28,22 @@ export class CatalogService {
     return new PgCatalogStore(this.database.db, tenantId);
   }
 
-  /** Herramientas de un turno. null si la empresa no tiene el catálogo activo. */
+  /**
+   * Herramientas de un turno. null si la empresa no tiene el catálogo activo. readOnly (playground del
+   * panel, tarea 027): las lecturas nuevas de la web no se guardan en la base.
+   */
   forTurn(
     tenantId: string,
     catalog: CatalogConfig | undefined,
     now: Date,
     timezone: string,
+    options: { readOnly?: boolean } = {},
   ): { tools: LlmTool[]; context: TurnCatalogContext } | null {
     if (!catalog?.enabled) return null;
     const context = new TurnCatalogContext(catalog, now, timezone);
+    const store = options.readOnly ? new ReadOnlyCatalogStore(this.store(tenantId)) : this.store(tenantId);
     return {
-      tools: buildCatalogTools({ store: this.store(tenantId), viewer: this.viewer, context }),
+      tools: buildCatalogTools({ store, viewer: this.viewer, context }),
       context,
     };
   }

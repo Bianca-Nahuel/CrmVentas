@@ -1,7 +1,8 @@
 // Importación del catálogo desde Excel (tarea 007): vista previa, aplicar y volver atrás. Todo con la
 // empresa activa (RLS): una importación nunca ve ni toca productos de otra empresa.
 // - preview: lee y valida el archivo, compara con el catálogo y guarda la importación (status preview)
-//   con sus filas, sin tocar los productos;
+//   con sus filas, sin tocar los productos. El panel (tarea 027) usa sus dos partes por separado: analyze
+//   (calcula sin guardar) e insertImport/replacePreview (guarda, o rehace la misma importación con otro mapeo);
 // - apply: en una transacción, con un lock por empresa, upsert de las filas válidas, los ausentes pasan a
 //   active = false (nunca se borran) y los precios o el stock del Excel quedan como snapshots;
 // - revert: vuelve a aplicar las filas de la importación aplicada anterior.
@@ -18,10 +19,11 @@ import {
   proposeMapping,
   findHeaderRow,
   type ImportMapping,
+  type NormalizeResult,
   type NormalizedProduct,
   type NormalizedRow,
 } from './normalize-rows.js';
-import { readXlsx, SpreadsheetError, type XlsxLimits } from './xlsx-reader.js';
+import { readXlsx, SpreadsheetError, type XlsxLimits, type XlsxSheet } from './xlsx-reader.js';
 
 export class CatalogImportError extends Error {
   constructor(
@@ -62,6 +64,36 @@ export interface PreviewResult {
   changes: PreviewChange[];
   invalid: { rowNumber: number; sku: string | null; errors: string[] }[];
   missing: string[];
+}
+
+export type PreviewCounts = PreviewResult['counts'];
+
+export interface ReadyAnalysis {
+  kind: 'ready';
+  sheet: XlsxSheet;
+  /** Con la hoja y la fila de encabezados resueltas. */
+  mapping: ImportMapping;
+  mappingSource: PreviewResult['mappingSource'];
+  normalized: NormalizeResult;
+  baseImportId: string | null;
+  changes: PreviewChange[];
+  rowChanges: Map<NormalizedRow, PreviewChange>;
+  missing: string[];
+  counts: PreviewCounts;
+}
+
+export type Analysis = ReadyAnalysis | { kind: 'needs_mapping'; sheet: XlsxSheet };
+
+function countColumns(counts: PreviewCounts) {
+  return {
+    rowsTotal: counts.rows,
+    rowsInvalid: counts.invalid,
+    newCount: counts.new,
+    changedCount: counts.changed,
+    unchangedCount: counts.unchanged,
+    missingCount: counts.missing,
+    priceJumpCount: counts.priceJumps,
+  };
 }
 
 type CurrentProduct = {
@@ -111,6 +143,26 @@ export class CatalogImportService {
       limits?: Partial<XlsxLimits>;
     },
   ): Promise<PreviewResult> {
+    const analysis = await this.analyze(tx, input);
+    if (analysis.kind === 'needs_mapping') {
+      throw new CatalogImportError(
+        'mapping_required',
+        'No se reconocieron las columnas de código y nombre: pasá un mapeo con --mapping.',
+      );
+    }
+    const importId = await this.insertImport(tx, input, analysis.sheet.name, analysis);
+    await this.insertRows(tx, importId, analysis);
+    return this.result(importId, analysis);
+  }
+
+  /**
+   * Lee el archivo y arma la vista previa sin guardar nada. Sin mapeo (ni uno guardado que sirva ni uno que
+   * se pueda proponer por los encabezados) devuelve needs_mapping con la hoja leída: el panel lo pide.
+   */
+  async analyze(
+    tx: AppTx,
+    input: { data: Uint8Array; mapping?: unknown; catalog: CatalogConfig; limits?: Partial<XlsxLimits> },
+  ): Promise<Analysis> {
     let mapping: ImportMapping | undefined;
     let mappingSource: PreviewResult['mappingSource'] = 'argument';
     if (input.mapping !== undefined) {
@@ -124,7 +176,7 @@ export class CatalogImportService {
       mapping = parsed.data;
     } else {
       const saved = await tx.execute<{ mapping: unknown }>(sql`
-        SELECT mapping FROM catalog_imports ORDER BY created_at DESC LIMIT 1
+        SELECT mapping FROM catalog_imports WHERE mapping <> '{}'::jsonb ORDER BY created_at DESC LIMIT 1
       `);
       const parsed = saved.rows[0] ? mappingSchema.safeParse(saved.rows[0].mapping) : null;
       if (parsed?.success) {
@@ -140,7 +192,7 @@ export class CatalogImportService {
         ...(sheetName ? { sheet: sheetName } : {}),
         ...(input.limits ? { limits: input.limits } : {}),
       });
-    let sheet: ReturnType<typeof readXlsx>;
+    let sheet: XlsxSheet;
     try {
       sheet = read(mapping?.sheet);
     } catch (error) {
@@ -167,12 +219,7 @@ export class CatalogImportService {
         headerIndex === null
           ? null
           : proposeMapping((sheet.rows[headerIndex] ?? []).map((cell) => String(cell ?? '')));
-      if (!proposed) {
-        throw new CatalogImportError(
-          'mapping_required',
-          'No se reconocieron las columnas de código y nombre: pasá un mapeo con --mapping.',
-        );
-      }
+      if (!proposed) return { kind: 'needs_mapping', sheet };
       mapping = { ...proposed, header_row: headerIndex! + 1 };
       mappingSource = 'proposed';
     }
@@ -203,16 +250,38 @@ export class CatalogImportService {
       .map((product) => product.sku)
       .sort();
 
-    const counts = {
-      rows: normalized.rows.length,
-      invalid: normalized.rows.filter((row) => row.status === 'invalid').length,
-      new: changes.filter((change) => change.change === 'new').length,
-      changed: changes.filter((change) => change.change === 'changed').length,
-      unchanged: changes.filter((change) => change.change === 'unchanged').length,
-      missing: missing.length,
-      priceJumps: changes.filter((change) => change.priceJump).length,
+    return {
+      kind: 'ready',
+      sheet,
+      mapping: { ...mapping, sheet: sheet.name, header_row: normalized.headerRow },
+      mappingSource,
+      normalized,
+      baseImportId,
+      changes,
+      rowChanges,
+      missing,
+      counts: {
+        rows: normalized.rows.length,
+        invalid: normalized.rows.filter((row) => row.status === 'invalid').length,
+        new: changes.filter((change) => change.change === 'new').length,
+        changed: changes.filter((change) => change.change === 'changed').length,
+        unchanged: changes.filter((change) => change.change === 'unchanged').length,
+        missing: missing.length,
+        priceJumps: changes.filter((change) => change.priceJump).length,
+      },
     };
+  }
 
+  /**
+   * Guarda una importación nueva en vista previa. Sin análisis (falta el mapeo), queda con el mapeo vacío y
+   * los conteos en cero hasta que se rehaga con replacePreview.
+   */
+  async insertImport(
+    tx: AppTx,
+    input: { fileName: string; data: Uint8Array; createdBy?: string | null },
+    sheetName: string,
+    analysis: ReadyAnalysis | null,
+  ): Promise<string> {
     const [created] = await tx
       .insert(catalogImports)
       .values({
@@ -220,28 +289,53 @@ export class CatalogImportService {
         fileName: basename(input.fileName).slice(0, 255) || 'catalogo.xlsx',
         fileSha256: createHash('sha256').update(input.data).digest('hex'),
         fileSize: input.data.byteLength,
-        sheetName: sheet.name.slice(0, 100),
-        mapping: { ...mapping, sheet: sheet.name, header_row: normalized.headerRow },
+        sheetName: sheetName.slice(0, 100),
+        mapping: analysis?.mapping ?? {},
         status: 'preview',
-        baseImportId,
-        rowsTotal: counts.rows,
-        rowsInvalid: counts.invalid,
-        newCount: counts.new,
-        changedCount: counts.changed,
-        unchangedCount: counts.unchanged,
-        missingCount: counts.missing,
-        priceJumpCount: counts.priceJumps,
+        baseImportId: analysis ? analysis.baseImportId : await this.currentAppliedImportId(tx),
+        ...(analysis ? countColumns(analysis.counts) : {}),
         createdBy: input.createdBy ?? null,
       })
       .returning({ id: catalogImports.id });
-    const importId = created!.id;
+    return created!.id;
+  }
 
+  /**
+   * Rehace la vista previa de una importación con otro análisis (otro mapeo, o porque se aplicó otra en el
+   * medio): reemplaza sus filas y conteos. Solo si sigue en vista previa.
+   */
+  async replacePreview(tx: AppTx, importId: string, analysis: ReadyAnalysis): Promise<PreviewResult> {
+    const result = await tx.execute<{ status: string }>(sql`
+      SELECT status FROM catalog_imports WHERE id = ${importId} FOR UPDATE
+    `);
+    const target = result.rows[0];
+    if (!target) throw new CatalogImportError('not_found', 'No existe esa importación.');
+    if (target.status !== 'preview') {
+      throw new CatalogImportError('not_preview', `La importación está en estado ${target.status}.`);
+    }
+    await tx.execute(sql`DELETE FROM catalog_import_rows WHERE import_id = ${importId}`);
+    const counts = countColumns(analysis.counts);
+    await tx
+      .update(catalogImports)
+      .set({
+        sheetName: analysis.sheet.name.slice(0, 100),
+        mapping: analysis.mapping,
+        baseImportId: analysis.baseImportId,
+        ...counts,
+      })
+      .where(sql`${catalogImports.id} = ${importId}`);
+    await this.insertRows(tx, importId, analysis);
+    return this.result(importId, analysis);
+  }
+
+  async insertRows(tx: AppTx, importId: string, analysis: ReadyAnalysis): Promise<void> {
+    const rows = analysis.normalized.rows;
     // De a 500 filas por INSERT.
-    for (let start = 0; start < normalized.rows.length; start += 500) {
-      const chunk = normalized.rows.slice(start, start + 500);
+    for (let start = 0; start < rows.length; start += 500) {
+      const chunk = rows.slice(start, start + 500);
       await tx.insert(catalogImportRows).values(
         chunk.map((row) => {
-          const change = rowChanges.get(row);
+          const change = analysis.rowChanges.get(row);
           return {
             tenantId: sql`app_tenant_id()`,
             importId,
@@ -257,26 +351,27 @@ export class CatalogImportService {
         }),
       );
     }
+  }
 
+  private result(importId: string, analysis: ReadyAnalysis): PreviewResult {
+    const rows = analysis.normalized.rows;
     const attributeKeys = [
-      ...new Set(
-        normalized.rows.flatMap((row) => Object.keys((row.data as NormalizedProduct).attributes ?? {})),
-      ),
+      ...new Set(rows.flatMap((row) => Object.keys((row.data as NormalizedProduct).attributes ?? {}))),
     ];
     return {
       importId,
-      sheetName: sheet.name,
-      sheetNames: sheet.sheetNames,
-      mapping,
-      mappingSource,
-      headerRow: normalized.headerRow,
+      sheetName: analysis.sheet.name,
+      sheetNames: analysis.sheet.sheetNames,
+      mapping: analysis.mapping,
+      mappingSource: analysis.mappingSource,
+      headerRow: analysis.normalized.headerRow,
       attributeKeys,
-      counts,
-      changes,
-      invalid: normalized.rows
+      counts: analysis.counts,
+      changes: analysis.changes,
+      invalid: rows
         .filter((row) => row.status === 'invalid')
         .map((row) => ({ rowNumber: row.rowNumber, sku: row.sku, errors: row.errors })),
-      missing,
+      missing: analysis.missing,
     };
   }
 
@@ -420,7 +515,31 @@ export class CatalogImportService {
     return result.rows[0]?.id ?? null;
   }
 
-  private async currentProducts(tx: AppTx): Promise<Map<string, CurrentProduct>> {
+  /**
+   * Qué cambia cada fila válida respecto del catálogo actual (para mostrar "de qué a qué" en una página de la
+   * vista previa del panel): la misma comparación de analyze, solo con esos SKUs.
+   */
+  async diffRows(
+    tx: AppTx,
+    rows: { rowNumber: number; data: NormalizedProduct }[],
+    maxPriceChangePct: number,
+  ): Promise<Map<number, PreviewChange>> {
+    const current = await this.currentProducts(
+      tx,
+      rows.map((row) => row.data.sku),
+    );
+    return new Map(
+      rows.map((row) => [
+        row.rowNumber,
+        this.diff(current.get(row.data.sku), row.data, maxPriceChangePct, row.rowNumber),
+      ]),
+    );
+  }
+
+  private async currentProducts(tx: AppTx, skus?: string[]): Promise<Map<string, CurrentProduct>> {
+    const filter = skus
+      ? sql`WHERE p.sku IN (SELECT jsonb_array_elements_text(${JSON.stringify(skus)}::jsonb))`
+      : sql``;
     const result = await tx.execute<CurrentProduct>(sql`
       SELECT p.id, p.sku, p.name, p.category, p.unit, p.units_per_package::text AS units_per_package,
              p.pieces_per_package, p.url, p.attributes, p.active,
@@ -428,6 +547,7 @@ export class CatalogImportService {
                WHERE s.product_id = p.id AND s.source = 'excel' AND s.ok
                ORDER BY s.read_at DESC LIMIT 1) AS excel_price
       FROM catalog_products p
+      ${filter}
     `);
     return new Map(result.rows.map((row) => [row.sku, row]));
   }

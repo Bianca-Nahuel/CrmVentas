@@ -1,12 +1,28 @@
 # Estado del proyecto
 
-_Última actualización: 2026-11-02 (tarea 026, revisión de vendedores)_
+_Última actualización: 2026-11-02 (tarea 027, paneles de catálogo y del agente)_
 
 > Esta rama (`claude/bandeja-y-leads`) sale de `claude/panel-angular-base`, que sale de `main`. El estado de
 > la tarea 010 del agente (rama `claude/hopeful-darwin-mfj88r`, decisiones #63–#67) no está acá: al mergear,
 > juntar los dos `ESTADO.md`.
 
 ## Hecho
+
+- **Tarea 027 (paneles de catálogo y configuración del agente):** hecha el 2026-11-02 en la rama `claude/test-tiempo-real`, **sin commitear** (va encima de la 026, que tampoco está commiteada). Ver el "Resultado" en `docs/tareas/hechas/027-paneles-catalogo-y-agente.md`, las decisiones #113 a #117 y la deuda de la 027.
+  - **Qué hay:**
+    - `/catalogo`: Productos, Importar en 3 pasos, Historial con "volver a la anterior" y Configuración con el probador del extractor;
+    - `/agente`: 8 secciones con Signal Forms validadas con el mismo zod, historial con comparar y restaurar, y el playground (no envía ni guarda mensajes).
+  - **Migraciones 0026 a 0028:** ya aplicadas en la base local.
+  - **Dependencias:** `multer` y `@types/multer`.
+  - **Verificación:**
+    - punto A con curl: OK, salvo la prueba de concurrencia del tope del playground, que la hace el usuario;
+    - lint y build: OK;
+    - typecheck: falla solo en `apps/api/test/inbox-reply.test.ts:317`, que es previo;
+    - tests: sin correr (decisión de la tarea); `catalog-db.test.ts:392` quedó roto, a propósito.
+  - **Revisores:** aprobaron los dos.
+  - **Falta:** la prueba del usuario en el navegador (punto B, con la guía en el Resultado).
+  - **Bundle inicial en 515,63 kB:** ~11 kB son de Signal Forms (`@angular/core`). Decidir si se sube el presupuesto.
+  - **Al commitear:** dejar afuera `.claude/launch.json` y `tools/panel-pruebas/`.
 
 - **Tarea 011 (canales, conexión por QR):** hecha el 2026-11-02 en la rama `claude/canales-qr` (sale de `46b6e92`), commiteada y pusheada. Ver el "Resultado" en `docs/tareas/hechas/011-canales-conexion-por-qr.md`, las decisiones #94 a #101 y la deuda de la 011.
   - **Qué hay:** alta de números por QR desde `/canales` (sin cartel de riesgo, #101), reconectar, desconectar, cancelar y levantar la pausa; número único en toda la base; `channel_events`; cola `whatsapp-session-close`; tope de 20 sesiones abiertas por empresa.
@@ -103,6 +119,9 @@ _Última actualización: 2026-11-02 (tarea 026, revisión de vendedores)_
   - **Si `ng serve` muestra código viejo** después de cambiar `libs/shared`, correr `npx ng cache clean` (la caché de Vite guarda la versión anterior).
 
 ## Siguiente
+
+- **Prueba de la 027 en el navegador** (guía en su "Resultado") y después el commit, con el mensaje propuesto en la sesión. Antes de desplegar: `db:migrate` (0026 a 0028).
+- **Deuda de la 027:** arreglar `catalog-db.test.ts:392`, escribir los tests de la tarea, pasar los límites en memoria a la base y decidir el presupuesto del bundle. Además, el extractor de Lecer de la empresa de prueba ya no encuentra el precio en la página (revisarlo con el probador del panel).
 
 - **Commit de la 026** (mensaje propuesto en la sesión). Al commitear, dejar afuera `.claude/launch.json` y `tools/panel-pruebas/`. Antes de desplegar: `db:migrate` (de la 0021 a la 0025) y `npm run dev:backfill-metrics` para las conversaciones existentes.
 - **Deuda de la 026:** ver "Deuda pendiente (tarea 026)" en `docs/decisiones.md`. Lo principal: que cada vendedor vea sus propias revisiones, el calendario de feriados y que el tope diario cuente los intentos fallidos.
