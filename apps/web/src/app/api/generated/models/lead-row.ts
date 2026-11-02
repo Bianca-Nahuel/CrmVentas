@@ -6,9 +6,14 @@ import { ContactRef } from '../models/contact-ref';
 import { LeadState } from '../models/lead-state';
 import { MessageType } from '../models/message-type';
 import { SenderType } from '../models/sender-type';
+import { StoredCloseOutcome } from '../models/stored-close-outcome';
 export interface LeadRow {
   awaitingReply: boolean;
   channel: ChannelRef;
+  closed: ({
+'at': string;
+'outcome': StoredCloseOutcome;
+} | null);
   contact: ContactRef;
   id: string;
   lastMessage: ({

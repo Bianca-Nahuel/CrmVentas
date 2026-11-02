@@ -86,7 +86,7 @@ test.describe('grilla de leads', () => {
     await expect(page.getByTestId('lead-row').filter({ hasText: 'Lucas Romero' })).toHaveCount(0);
     await expect(page.getByTestId('lead-row').filter({ hasText: 'Sofía Herrera' })).toHaveCount(0);
     // Sin la sección de números y vendedores.
-    await expect(page.getByRole('link', { name: 'Números y vendedores' })).toHaveCount(0);
+    await expect(page.getByRole('link', { name: 'Números', exact: true })).toHaveCount(0);
   });
 
   test('un seller sin números ve el estado vacío', async ({ page }) => {
@@ -196,15 +196,15 @@ test.describe('conversación', () => {
   });
 });
 
-test.describe('números y vendedores', () => {
+test.describe('números: vendedores', () => {
   test('el owner ve los números con sus vendedores y asigna con el selector', async ({ page }) => {
     await loginAs(page, USERS.ownerCeramicos);
     await expectInLayout(page, 'Cerámicos Demo');
-    await page.getByRole('link', { name: 'Números y vendedores' }).click();
-    const principal = page.getByTestId('channel-card').filter({ hasText: 'ventas-principal' });
+    await page.getByRole('link', { name: 'Números', exact: true }).click();
+    const principal = page.getByTestId('channel-row').filter({ hasText: 'ventas-principal' });
     await expect(principal).toContainText('Usuario Dos Empresas');
 
-    const sucursal = page.getByTestId('channel-card').filter({ hasText: 'sucursal-norte' });
+    const sucursal = page.getByTestId('channel-row').filter({ hasText: 'sucursal-norte' });
     await sucursal.getByRole('button', { name: 'Asignar vendedores' }).click();
     const listbox = page.getByRole('listbox');
     await listbox.getByRole('option', { name: /Vendedor Sin Números/ }).click();

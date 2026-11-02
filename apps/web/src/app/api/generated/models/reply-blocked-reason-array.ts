@@ -11,5 +11,6 @@ export const REPLY_BLOCKED_REASON: ReplyBlockedReason[] = [
   'window_expired',
   'contact_blocked',
   'channel_unavailable',
-  'channel_paused'
+  'channel_paused',
+  'conversation_closed'
 ];

@@ -1,5 +1,4 @@
 import type { Routes } from '@angular/router';
-import { ChannelMembersPage } from './channels/channel-members-page';
 import { ChannelsPage } from './channels/channels-page';
 import { ConversationEmpty } from './inbox/conversation-empty';
 import { ConversationPage } from './inbox/conversation-page';
@@ -8,7 +7,7 @@ import { LeadsPage } from './leads/leads-page';
 
 // Leads, bandeja, números (tarea 014) y canales (011) en UN módulo lazy: si cada página fuera su propio chunk, el build
 // junta el código que comparten (tabla, íconos, cliente de la API) en un chunk que carga el bundle
-// inicial. Así queda todo en un solo chunk que se baja al entrar a cualquiera de las tres.
+// inicial. Así queda todo en un solo chunk que se baja al entrar a cualquiera de ellas.
 
 export const LEADS_ROUTES: Routes = [{ path: '', component: LeadsPage }];
 
@@ -23,6 +22,5 @@ export const INBOX_ROUTES: Routes = [
   },
 ];
 
-export const CHANNEL_MEMBERS_ROUTES: Routes = [{ path: '', component: ChannelMembersPage }];
-
+// Números: conexión (011) y vendedores de cada número (014) en una sola página.
 export const CHANNELS_ROUTES: Routes = [{ path: '', component: ChannelsPage }];

@@ -22,7 +22,17 @@ import { onInboxChanges } from '../../core/realtime';
 import { Icon } from '../../ui/icon';
 import { Score } from '../../ui/score';
 import { Paginator, SortHeader, ariaSort, type SortState } from '../../ui/table';
-import { contactName, previewText, shortWhen, STATE_LABELS, fullWhen } from '../inbox/format';
+import { AuthService } from '../../core/auth/auth.service';
+import { can } from '../../core/nav';
+import { CloseConversation } from '../inbox/close-dialog';
+import {
+  CLOSE_OUTCOME_LABELS,
+  contactName,
+  previewText,
+  shortWhen,
+  STATE_LABELS,
+  fullWhen,
+} from '../inbox/format';
 import { LeadStateBadge } from '../inbox/lead-state-badge';
 import {
   DEFAULT_QUERY,
@@ -121,6 +131,7 @@ const MOBILE_SORTS = [
           <option value="handed_off">{{ stateLabels.handed_off }}</option>
           <option value="ai_paused">{{ stateLabels.ai_paused }}</option>
           <option value="open">{{ stateLabels.open }}</option>
+          <option value="closed">Cerradas</option>
         </select>
       </div>
       <div>
@@ -226,6 +237,9 @@ const MOBILE_SORTS = [
                     (sortChange)="setSort($event)"
                   />
                 </th>
+                @if (canClose()) {
+                  <th scope="col" class="px-4 py-2.5"><span class="sr-only">Acciones</span></th>
+                }
               </tr>
             </thead>
             <tbody>
@@ -259,7 +273,11 @@ const MOBILE_SORTS = [
                   </td>
                   <td class="px-4"><app-score [score]="lead.score" [level]="lead.tier" /></td>
                   <td class="px-4">
-                    <app-lead-state-badge [state]="lead.state" [pending]="lead.pendingHandoff" />
+                    @if (lead.closed; as closed) {
+                      <span class="text-muted">Cerrada · {{ outcomeLabel(closed.outcome) }}</span>
+                    } @else {
+                      <app-lead-state-badge [state]="lead.state" [pending]="lead.pendingHandoff" />
+                    }
                   </td>
                   <td class="px-4">
                     <span class="block max-w-60 truncate text-text" [attr.title]="preview(lead)">{{
@@ -272,6 +290,21 @@ const MOBILE_SORTS = [
                       >{{ when(lead.lastMessageAt) }}</time
                     >
                   </td>
+                  @if (canClose()) {
+                    <td class="px-4 text-right">
+                      @if (!lead.closed) {
+                        <button
+                          type="button"
+                          class="btn btn-ghost btn-sm"
+                          data-testid="row-close"
+                          [attr.aria-label]="'Cerrar la conversación con ' + name(lead)"
+                          (click)="closeRow(lead)"
+                        >
+                          Cerrar
+                        </button>
+                      }
+                    </td>
+                  }
                 </tr>
               }
             </tbody>
@@ -299,7 +332,11 @@ const MOBILE_SORTS = [
                 </span>
                 <span class="flex flex-wrap items-center gap-2 text-sm text-muted">
                   <span class="truncate">{{ lead.channel.name }}</span>
-                  <app-lead-state-badge [state]="lead.state" [pending]="lead.pendingHandoff" />
+                  @if (lead.closed; as closed) {
+                    <span>Cerrada · {{ outcomeLabel(closed.outcome) }}</span>
+                  } @else {
+                    <app-lead-state-badge [state]="lead.state" [pending]="lead.pendingHandoff" />
+                  }
                 </span>
                 <span class="flex items-baseline justify-between gap-3 text-sm">
                   <span class="truncate text-text">{{ preview(lead) }}</span>
@@ -328,6 +365,11 @@ export class LeadsPage {
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
   protected readonly summary = inject(InboxSummary);
+  private readonly auth = inject(AuthService);
+  private readonly closer = inject(CloseConversation);
+  protected readonly canClose = computed(() => can(this.auth.role(), { conversation: ['close'] }));
+  protected readonly outcomeLabel = (outcome: keyof typeof CLOSE_OUTCOME_LABELS) =>
+    CLOSE_OUTCOME_LABELS[outcome];
   private readonly document = inject(DOCUMENT);
 
   private readonly params = toSignal(this.route.queryParamMap, { requireSync: true });
@@ -433,9 +475,22 @@ export class LeadsPage {
     this.update({ page });
   }
 
-  /** Clic en cualquier parte de la fila. Si fue en el link del nombre, el link ya navega. */
+  /** Cerrar desde la fila: sale de la lista sin esperar el refresco. */
+  protected closeRow(lead: LeadRow) {
+    this.closer.open(lead.id).subscribe((updated) => {
+      if (!updated) return;
+      this.leads.update((list) =>
+        list
+          ? { ...list, items: list.items.filter((row) => row.id !== lead.id), total: list.total - 1 }
+          : list,
+      );
+      this.summary.refresh();
+    });
+  }
+
+  /** Clic en cualquier parte de la fila. Si fue en el link del nombre o en un botón, ya hace lo suyo. */
   protected openRow(event: MouseEvent, id: string) {
-    if ((event.target as HTMLElement).closest('a')) return;
+    if ((event.target as HTMLElement).closest('a, button')) return;
     void this.router.navigate(['/conversaciones', id]);
   }
 

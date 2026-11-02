@@ -15,6 +15,15 @@ const messageTypeSchema = z
   .meta({ id: 'MessageType' });
 const senderTypeSchema = z.enum(['contact', 'ai', 'user', 'app']).meta({ id: 'SenderType' });
 
+// Resultado al cerrar (tarea 026). auto_inactive lo pone solo el cierre automático.
+export const closeOutcomeSchema = z
+  .enum(['sold', 'not_sold', 'no_response', 'not_a_lead', 'other'])
+  .meta({ id: 'CloseOutcome' });
+export type CloseOutcome = z.infer<typeof closeOutcomeSchema>;
+const storedCloseOutcomeSchema = z.enum([...closeOutcomeSchema.options, 'auto_inactive']).meta({
+  id: 'StoredCloseOutcome',
+});
+
 const TIER_FILTER = /^(hot|warm|cold|none)(,(hot|warm|cold|none)){0,3}$/;
 export const LEADS_MAX_PAGE_SIZE = 50;
 
@@ -23,6 +32,8 @@ export const leadListQuerySchema = z
     // Varios niveles separados por coma; "none" = sin calificar.
     tier: z.string().regex(TIER_FILTER).optional(),
     status: leadStateSchema.optional(),
+    // open (por defecto): las abiertas; closed: el filtro "Cerradas" (tarea 026).
+    view: z.enum(['open', 'closed']).default('open'),
     channelId: uuid.optional(),
     // Nombre, o número si solo tiene dígitos y separadores (se comparan solo los dígitos).
     q: z.string().trim().min(2).max(100).optional(),
@@ -74,6 +85,8 @@ export const leadRowSchema = z
       })
       .nullable(),
     lastMessageAt: isoDate,
+    // Solo en la vista "Cerradas".
+    closed: z.object({ at: isoDate, outcome: storedCloseOutcomeSchema }).nullable(),
   })
   .meta({ id: 'LeadRow' });
 export type LeadRow = z.infer<typeof leadRowSchema>;
@@ -102,7 +115,14 @@ export const conversationParamsSchema = z.object({ id: uuid }).strict();
 
 // Por qué no se puede responder (reglas de envío de messaging/outbound, sin 'superseded').
 export const replyBlockedReasonSchema = z
-  .enum(['no_inbound', 'window_expired', 'contact_blocked', 'channel_unavailable', 'channel_paused'])
+  .enum([
+    'no_inbound',
+    'window_expired',
+    'contact_blocked',
+    'channel_unavailable',
+    'channel_paused',
+    'conversation_closed',
+  ])
   .meta({ id: 'ReplyBlockedReason' });
 export type ReplyBlockedReason = z.infer<typeof replyBlockedReasonSchema>;
 
@@ -154,9 +174,42 @@ export const conversationDetailSchema = z
       })
       .meta({ id: 'ReplyAvailability' }),
     lastMessageAt: isoDate,
+    // Cierre (tarea 026). byName null en el automático o si la persona ya no es miembro. La nota es texto del
+    // equipo: se muestra como texto.
+    closed: z
+      .object({
+        at: isoDate,
+        outcome: storedCloseOutcomeSchema,
+        note: z.string().nullable(),
+        byName: z.string().nullable(),
+      })
+      .nullable()
+      .meta({ id: 'ConversationClosed' }),
+    // Conversaciones anteriores del mismo contacto en este número (solo lectura), de la más nueva a la más
+    // vieja, hasta 20.
+    previous: z.array(
+      z
+        .object({
+          id: uuid,
+          openedAt: isoDate,
+          closedAt: isoDate.nullable(),
+          outcome: storedCloseOutcomeSchema.nullable(),
+        })
+        .meta({ id: 'PreviousConversation' }),
+    ),
   })
   .meta({ id: 'ConversationDetail' });
 export type ConversationDetail = z.infer<typeof conversationDetailSchema>;
+
+export const closeConversationBodySchema = z
+  .object({
+    outcome: closeOutcomeSchema,
+    // Opcional; vacía = sin nota.
+    note: z.string().trim().max(500).optional(),
+  })
+  .strict()
+  .meta({ id: 'CloseConversationBody' });
+export type CloseConversationBody = z.infer<typeof closeConversationBodySchema>;
 
 export const MESSAGES_MAX_LIMIT = 100;
 export const messageListQuerySchema = z
@@ -272,10 +325,21 @@ export const inboxRoutes: ApiRoute[] = [
   },
   {
     method: 'post',
+    path: '/conversations/{id}/close',
+    operationId: 'closeConversation',
+    summary: 'Cierra la conversación con un resultado (idempotente: una ya cerrada no cambia)',
+    params: conversationParamsSchema,
+    body: closeConversationBodySchema,
+    response: conversationDetailSchema,
+  },
+  {
+    method: 'post',
     path: '/conversations/{id}/reactivate-ai',
     operationId: 'reactivateAi',
-    summary: 'Vuelve a activar la IA en una conversación derivada o pausada (idempotente)',
+    summary:
+      'Vuelve a activar la IA en una conversación derivada o pausada (idempotente). 409 CONVERSATION_CLOSED si está cerrada',
     params: conversationParamsSchema,
     response: conversationDetailSchema,
+    conflict: true,
   },
 ];

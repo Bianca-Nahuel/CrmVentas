@@ -11,8 +11,8 @@ const LIVE_MS = 8_000;
 async function openChannels(page: Page) {
   await loginAs(page, USERS.ownerCeramicos);
   await expectInLayout(page, 'Cerámicos Demo');
-  await page.goto('/canales');
-  await expect(page.getByRole('heading', { name: 'Canales', level: 1 })).toBeVisible();
+  await page.goto('/numeros');
+  await expect(page.getByRole('heading', { name: 'Números', level: 1 })).toBeVisible();
 }
 
 const row = (page: Page, name: string) => page.getByTestId('channel-row').filter({ hasText: name });
@@ -122,13 +122,13 @@ test.describe('canales', () => {
     await expect(row(page, name)).toHaveCount(0);
   });
 
-  test('un seller no ve Canales en el menú ni llega por URL', async ({ page }) => {
+  test('un seller no ve Números en el menú ni llega por URL', async ({ page }) => {
     await loginAs(page, 'vendedor.sin.numeros@example.test');
     await expectInLayout(page, 'Cerámicos Demo');
     await expect(
-      page.getByRole('navigation', { name: 'Secciones' }).getByRole('link', { name: 'Canales' }),
+      page.getByRole('navigation', { name: 'Secciones' }).getByRole('link', { name: 'Números', exact: true }),
     ).toHaveCount(0);
-    await page.goto('/canales');
+    await page.goto('/numeros');
     await expect(page).toHaveURL(/\/sin-acceso/);
     await expect(page.getByTestId('connect-new')).toHaveCount(0);
   });

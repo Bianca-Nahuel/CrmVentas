@@ -6,6 +6,7 @@ import { APP_DB, type AppDatabase } from '../../db/database.module.js';
 import { conversations, messages, outboundMessages } from '../../db/schema/messaging.js';
 import { withTenantTransaction, type AppTx } from '../../db/tenant-context.js';
 import { publishConversationEvent } from '../../realtime/publish.js';
+import { refreshConversationMetrics } from '../../performance/conversation-metrics.js';
 import { errorCode } from '../../jobs/error-code.js';
 import { ENV } from '../../config/config.module.js';
 import type { Env } from '../../config/env.js';
@@ -31,6 +32,7 @@ import {
 } from './outbound.constants.js';
 import {
   applyChannelFailure,
+  humanReplyWindowFreeProviders,
   loadSendContext,
   unreadInbound,
   type OutboundJob,
@@ -203,6 +205,7 @@ export class OutboundWorker implements OnApplicationBootstrap {
         status: outboundMessages.status,
         body: outboundMessages.body,
         conversationId: outboundMessages.conversationId,
+        senderType: outboundMessages.senderType,
         claimedAt: outboundMessages.claimedAt,
         stuck: sql<boolean>`${outboundMessages.claimedAt} <= now() - make_interval(secs => ${STUCK_SENDING_AFTER_MS / 1000})`,
       })
@@ -227,7 +230,11 @@ export class OutboundWorker implements OnApplicationBootstrap {
       return { kind: 'done', result: 'sin_cambios', reason: `status_${row.status}` };
 
     // Las reglas pueden haber cambiado mientras el trabajo esperaba en la cola.
-    const context = await loadSendContext(tx, row.conversationId);
+    const context = await loadSendContext(
+      tx,
+      row.conversationId,
+      row.senderType === 'user' ? humanReplyWindowFreeProviders(this.providers) : [],
+    );
     if (!context) return { kind: 'done', result: 'sin_cambios', reason: 'no_conversation' };
     if (context.rejectReason) {
       await tx
@@ -411,6 +418,7 @@ export class OutboundWorker implements OnApplicationBootstrap {
       .update(conversations)
       .set({ lastMessageAt: sql`GREATEST(${conversations.lastMessageAt}, ${sentAt})` })
       .where(eq(conversations.id, context.conversationId));
+    await refreshConversationMetrics(tx, context.conversationId);
     await this.publishUpdated(tx, job, context);
     return 'enviado';
   }

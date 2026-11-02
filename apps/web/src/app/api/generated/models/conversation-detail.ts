@@ -3,6 +3,8 @@
 
 import { ChannelRef } from '../models/channel-ref';
 import { ContactRef } from '../models/contact-ref';
+import { ConversationClosed } from '../models/conversation-closed';
+import { PreviousConversation } from '../models/previous-conversation';
 import { ReplyAvailability } from '../models/reply-availability';
 import { ScoreBreakdown } from '../models/score-breakdown';
 export interface ConversationDetail {
@@ -15,6 +17,7 @@ export interface ConversationDetail {
 } | null);
 };
   channel: ChannelRef;
+  closed: ConversationClosed | null;
   contact: ContactRef;
   extractedData: Array<{
 'key': string;
@@ -28,6 +31,7 @@ export interface ConversationDetail {
 } | null);
   id: string;
   lastMessageAt: string;
+  previous: Array<PreviousConversation>;
   reply: ReplyAvailability;
   score: (number | null);
   scoreBreakdown: ScoreBreakdown | null;

@@ -5,7 +5,12 @@ import { channels, conversations, outboundMessages } from '../../db/schema/messa
 import { currentTx, type AppTx } from '../../db/tenant-context.js';
 import { publishConversationEvent, publishNotice } from '../../realtime/publish.js';
 import { BOSS, QUEUES } from '../../jobs/jobs.module.js';
-import type { ProviderFailure, SeenMessage } from '../../whatsapp/provider.js';
+import {
+  WHATSAPP_PROVIDER_REGISTRY,
+  type ProviderFailure,
+  type SeenMessage,
+  type WhatsAppProviderRegistry,
+} from '../../whatsapp/provider.js';
 import { AI_PAUSE_AFTER_HUMAN_HOURS, REPLY_WINDOW_HOURS } from './outbound.constants.js';
 
 export type OutboundSenderType = 'ai' | 'user' | 'app';
@@ -15,6 +20,7 @@ export type RejectReason =
   | 'contact_blocked'
   | 'channel_unavailable'
   | 'channel_paused'
+  | 'conversation_closed'
   | 'superseded';
 export type OutboundStatus = 'queued' | 'sending' | 'sent' | 'failed' | 'rejected';
 
@@ -84,16 +90,32 @@ export class InvalidOutboundError extends Error {
 }
 
 /**
+ * Proveedores en los que una persona del equipo puede responder fuera de la ventana desde el último
+ * entrante (capabilities.within24hWindowOnly = false). La IA y los textos de la app la respetan siempre.
+ */
+export function humanReplyWindowFreeProviders(providers: WhatsAppProviderRegistry): string[] {
+  return [...providers.values()]
+    .filter((provider) => !provider.capabilities.within24hWindowOnly)
+    .map((provider) => provider.id);
+}
+
+/**
  * Por qué no se puede enviar en una conversación (c = conversations, ct = contacts, ch = channels), o NULL
  * si se puede. La usan loadSendContext y el detalle de la conversación del panel (que explica el motivo).
+ * `windowFreeProviders`: los canales de esos proveedores no vencen por la ventana (respuestas de personas,
+ * ver humanReplyWindowFreeProviders); un proveedor que no esté en la lista la respeta.
  */
-export const SEND_REJECT_REASON = sql`CASE
+export function sendRejectReason(windowFreeProviders: readonly string[] = []) {
+  return sql`CASE
+  WHEN c.status <> 'open' THEN 'conversation_closed'
   WHEN c.last_inbound_at IS NULL THEN 'no_inbound'
-  WHEN c.last_inbound_at <= now() - make_interval(hours => ${REPLY_WINDOW_HOURS}) THEN 'window_expired'
+  WHEN c.last_inbound_at <= now() - make_interval(hours => ${REPLY_WINDOW_HOURS})
+    AND NOT (ch.provider = ANY (string_to_array(${windowFreeProviders.join(',')}, ','))) THEN 'window_expired'
   WHEN ct.blocked THEN 'contact_blocked'
   WHEN ch.status <> 'connected' OR ch.external_id IS NULL THEN 'channel_unavailable'
   WHEN ch.sending_paused_until IS NOT NULL AND ch.sending_paused_until > now() THEN 'channel_paused'
 END`;
+}
 
 /**
  * Una persona respondió (desde el teléfono o el panel): la IA no se mete en la conversación por
@@ -131,11 +153,16 @@ export const MAX_BODY_CHARS = 4096;
 const MAX_KEY_CHARS = 200;
 
 /**
- * Reglas de envío. Valen para toda conexión: ningún canal inicia conversaciones ni escribe fuera de la
- * ventana desde el último entrante (en la no oficial, por riesgo de bloqueo; en la oficial, porque fuera
- * de la ventana solo van plantillas, que todavía no se mandan).
+ * Reglas de envío. Valen para toda conexión: ningún canal inicia conversaciones. La IA y la app nunca
+ * escriben fuera de la ventana desde el último entrante; una persona del equipo sí, en los proveedores que
+ * no la exigen (`windowFreeProviders`, decisión #112). En la oficial, fuera de la ventana solo van
+ * plantillas, que todavía no se mandan.
  */
-export async function loadSendContext(tx: AppTx, conversationId: string): Promise<SendContext | null> {
+export async function loadSendContext(
+  tx: AppTx,
+  conversationId: string,
+  windowFreeProviders: readonly string[] = [],
+): Promise<SendContext | null> {
   const result = await tx.execute<{
     conversation_id: string;
     channel_id: string;
@@ -146,7 +173,7 @@ export async function loadSendContext(tx: AppTx, conversationId: string): Promis
     reject_reason: RejectReason | null;
   }>(sql`
     SELECT c.id AS conversation_id, c.channel_id, ch.external_id AS channel_external_id, ch.provider,
-           ct.wa_id AS contact_wa_id, c.last_inbound_at, ${SEND_REJECT_REASON} AS reject_reason
+           ct.wa_id AS contact_wa_id, c.last_inbound_at, ${sendRejectReason(windowFreeProviders)} AS reject_reason
     FROM conversations c
     JOIN contacts ct ON ct.tenant_id = c.tenant_id AND ct.id = c.contact_id
     JOIN channels ch ON ch.tenant_id = c.tenant_id AND ch.id = c.channel_id
@@ -170,7 +197,14 @@ export async function loadSendContext(tx: AppTx, conversationId: string): Promis
 // por defecto, o la que pase un worker): la fila y el trabajo de la cola se confirman juntos.
 @Injectable()
 export class OutboundService {
-  constructor(@Inject(BOSS) private readonly boss: PgBoss) {}
+  private readonly windowFreeProviders: readonly string[];
+
+  constructor(
+    @Inject(BOSS) private readonly boss: PgBoss,
+    @Inject(WHATSAPP_PROVIDER_REGISTRY) providers: WhatsAppProviderRegistry,
+  ) {
+    this.windowFreeProviders = humanReplyWindowFreeProviders(providers);
+  }
 
   /**
    * Idempotente por (empresa, idempotencyKey): repetir la clave devuelve la fila de la primera vez, en el
@@ -185,7 +219,11 @@ export class OutboundService {
     const existing = await this.findByKey(tx, input.idempotencyKey);
     if (existing) return sameRequest(existing, input, sentByUserId);
 
-    const context = await loadSendContext(tx, input.conversationId);
+    const context = await loadSendContext(
+      tx,
+      input.conversationId,
+      input.senderType === 'user' ? this.windowFreeProviders : [],
+    );
     if (!context) throw new ConversationNotFoundError();
 
     const status: OutboundStatus = context.rejectReason ? 'rejected' : 'queued';

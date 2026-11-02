@@ -1,6 +1,9 @@
 import { Module } from '@nestjs/common';
 import { CatalogModule } from '../catalog/catalog.module.js';
 import { OutboundModule } from '../messaging/outbound/outbound.module.js';
+import { AgentConfigController } from './config/agent-config.controller.js';
+import { AgentConfigService } from './config/agent-config.service.js';
+import { PlaygroundService } from './config/playground.service.js';
 import { TenantConfigService } from './config/tenant-config.service.js';
 import { AI_BUDGET_GUARD, NoopBudgetGuard } from './llm/budget-guard.js';
 import { LLM_CLIENT_FACTORY, PlatformLlmClientFactory } from './llm/llm-client.factory.js';
@@ -9,17 +12,22 @@ import { AiReplyWorker } from './reply/ai-reply.worker.js';
 
 /**
  * Agente de IA (tarea 006): configuración por empresa, cliente de modelos y worker de ai-reply. La tarea
- * 008 reemplaza AI_BUDGET_GUARD y la 009 el LLM_CLIENT_FACTORY, sin tocar el pipeline.
+ * 008 reemplaza AI_BUDGET_GUARD y la 009 el LLM_CLIENT_FACTORY, sin tocar el pipeline. Panel de la
+ * configuración y playground (tarea 027).
  */
 @Module({
   imports: [OutboundModule, CatalogModule],
+  controllers: [AgentConfigController],
   providers: [
+    AgentConfigService,
+    PlaygroundService,
     TenantConfigService,
     { provide: LLM_CLIENT_FACTORY, useClass: PlatformLlmClientFactory },
     { provide: AI_BUDGET_GUARD, useClass: NoopBudgetGuard },
     AiReplyService,
     AiReplyWorker,
   ],
-  exports: [TenantConfigService],
+  // LLM_CLIENT_FACTORY y AI_BUDGET_GUARD también los usa el analista de calidad (tarea 026).
+  exports: [TenantConfigService, LLM_CLIENT_FACTORY, AI_BUDGET_GUARD],
 })
 export class AiModule {}

@@ -103,7 +103,7 @@ describe('guards', () => {
         auth.status.set('ready');
         return 'ready';
       });
-      expect(await run(homeGuard, '/')).toBe('/metricas');
+      expect(await run(homeGuard, '/')).toBe('/rendimiento');
     });
   });
 
@@ -111,7 +111,7 @@ describe('guards', () => {
     it('con sesión y empresa, el login redirige al panel', async () => {
       auth.next = 'ready';
       auth.role.set('viewer');
-      expect(await run(guestGuard, '/ingresar')).toBe('/metricas');
+      expect(await run(guestGuard, '/ingresar')).toBe('/rendimiento');
     });
 
     it('sin sesión muestra el login', async () => {

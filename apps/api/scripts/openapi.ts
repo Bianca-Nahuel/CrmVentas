@@ -5,13 +5,22 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { OpenAPIRegistry, OpenApiGeneratorV31 } from '@asteasolutions/zod-to-openapi';
+import { agentConfigRoutes } from '../src/ai/config/agent-config.contracts.js';
+import { catalogAdminRoutes } from '../src/catalog/catalog-admin.contracts.js';
 import type { ApiRoute } from '../src/http/api-route.js';
 import { channelRoutes } from '../src/inbox/channels.contracts.js';
 import { inboxRoutes } from '../src/inbox/inbox.contracts.js';
+import { performanceRoutes } from '../src/performance/performance.contracts.js';
 import { eventsRoute } from '../src/realtime/events.contracts.js';
 
 const OUTPUT = fileURLToPath(new URL('../openapi.json', import.meta.url));
-const ROUTES: ApiRoute[] = [...inboxRoutes, ...channelRoutes];
+const ROUTES: ApiRoute[] = [
+  ...inboxRoutes,
+  ...channelRoutes,
+  ...performanceRoutes,
+  ...catalogAdminRoutes,
+  ...agentConfigRoutes,
+];
 
 const errorSchema = {
   description: 'Error con un código estable (code) y, en las validaciones, la ruta de cada campo',
@@ -54,6 +63,21 @@ export function buildDocument() {
         ...(route.params ? { params: route.params } : {}),
         ...(route.query ? { query: route.query } : {}),
         ...(route.body ? { body: { content: { 'application/json': { schema: route.body } } } } : {}),
+        ...(route.multipartFile
+          ? {
+              body: {
+                content: {
+                  'multipart/form-data': {
+                    schema: {
+                      type: 'object' as const,
+                      properties: { file: { type: 'string' as const, format: 'binary' } },
+                      required: ['file'],
+                    },
+                  },
+                },
+              },
+            }
+          : {}),
       },
       responses: {
         ...(route.response
@@ -64,6 +88,7 @@ export function buildDocument() {
         403: errorSchema,
         404: errorSchema,
         ...(route.conflict ? { 409: errorSchema } : {}),
+        ...Object.fromEntries((route.errors ?? []).map((status) => [status, errorSchema])),
       },
     });
   }

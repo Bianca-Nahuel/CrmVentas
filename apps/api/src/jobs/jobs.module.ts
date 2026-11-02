@@ -6,13 +6,16 @@ import type { Env } from '../config/env.js';
 /** Instancia de pg-boss compartida (encolar desde los controllers, trabajar desde los workers). */
 export const BOSS = Symbol('BOSS');
 
-/** Colas. Se crean en las migraciones (drizzle/0004_pgboss.sql, 0007, 0009, 0012, 0020), nunca desde la app. */
+/** Colas. Se crean en las migraciones (drizzle/0004_pgboss.sql, 0007, 0009, 0012, 0020, 0022, 0027), nunca desde la app. */
 export const QUEUES = {
   whatsappInbound: 'whatsapp-inbound',
   whatsappOutbound: 'whatsapp-outbound',
   whatsappSessionClose: 'whatsapp-session-close',
   aiReply: 'ai-reply',
   catalogRefresh: 'catalog-refresh',
+  performanceDaily: 'performance-daily',
+  performanceTenant: 'performance-tenant',
+  catalogImportFilesPurge: 'catalog-import-files-purge',
 } as const;
 
 /**

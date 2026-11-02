@@ -5,13 +5,15 @@ import type { LeadState, ListLeads$Params } from '../../api/generated';
 
 export type LeadSort = 'default' | 'score' | 'last_message';
 export type LeadTierFilter = 'hot' | 'warm' | 'cold' | 'none';
+/** Estado del filtro: el de la IA o "Cerradas" (tarea 026), que pide la vista de cerradas. */
+export type LeadStatusFilter = LeadState | 'closed';
 export const LEADS_PAGE_SIZE = 25;
 
 export interface LeadQuery {
   sort: LeadSort;
   dir: 'asc' | 'desc';
   tier: LeadTierFilter | null;
-  status: LeadState | null;
+  status: LeadStatusFilter | null;
   channel: string | null;
   q: string;
   page: number;
@@ -29,7 +31,7 @@ export const DEFAULT_QUERY: LeadQuery = {
 
 const SORTS: readonly LeadSort[] = ['default', 'score', 'last_message'];
 const TIERS: readonly LeadTierFilter[] = ['hot', 'warm', 'cold', 'none'];
-const STATES: readonly LeadState[] = ['open', 'handed_off', 'ai_paused'];
+const STATES: readonly LeadStatusFilter[] = ['open', 'handed_off', 'ai_paused', 'closed'];
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const oneOf = <T extends string>(value: string | null, options: readonly T[]): T | null =>
@@ -70,7 +72,11 @@ export function toApiParams(query: LeadQuery, pageSize = LEADS_PAGE_SIZE): ListL
     sort: query.sort,
     dir: query.dir,
     ...(query.tier ? { tier: query.tier } : {}),
-    ...(query.status ? { status: query.status } : {}),
+    ...(query.status === 'closed'
+      ? { view: 'closed' as const }
+      : query.status
+        ? { status: query.status }
+        : {}),
     ...(query.channel ? { channelId: query.channel } : {}),
     ...(q.length >= 2 ? { q } : {}),
     page: query.page,

@@ -182,6 +182,11 @@ export const conversations = pgTable(
     handedOffAt: timestamp('handed_off_at', { withTimezone: true }),
     handoffReason: text('handoff_reason'),
     handoffSummary: text('handoff_summary'),
+    // Cierre (tarea 026). closed_by va a memberships (FK compuesta en 0022); NULL en el cierre automático.
+    closedAt: timestamp('closed_at', { withTimezone: true }),
+    closedBy: uuid('closed_by'),
+    closeOutcome: text('close_outcome'),
+    closeNote: text('close_note'),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
@@ -228,6 +233,23 @@ export const conversations = pgTable(
     check('conversations_handoff_reason_check', sql`${t.handoffReason} ~ '^[a-z0-9_:]{1,80}$'`),
     check('conversations_handoff_summary_check', sql`char_length(${t.handoffSummary}) <= 2000`),
     check('conversations_handoff_check', sql`(${t.handedOffAt} IS NULL) = (${t.handoffReason} IS NULL)`),
+    // Cierre automático diario (tarea 026): abiertas sin mensajes desde hace N días.
+    index('conversations_open_last_message_idx')
+      .on(t.tenantId, t.lastMessageAt)
+      .where(sql`${t.status} = 'open'`),
+    check(
+      'conversations_close_outcome_check',
+      sql`${t.closeOutcome} IN ('sold', 'not_sold', 'no_response', 'not_a_lead', 'other', 'auto_inactive')`,
+    ),
+    check('conversations_close_note_check', sql`char_length(${t.closeNote}) <= 500`),
+    // Cerrada ⇔ tiene fecha y resultado; el autor y la nota solo si está cerrada; el automático sin autor.
+    check(
+      'conversations_close_check',
+      sql`(${t.status} = 'closed') = (${t.closedAt} IS NOT NULL)
+        AND (${t.closedAt} IS NULL) = (${t.closeOutcome} IS NULL)
+        AND (${t.closedAt} IS NOT NULL OR (${t.closedBy} IS NULL AND ${t.closeNote} IS NULL))
+        AND (${t.closeOutcome} IS DISTINCT FROM 'auto_inactive' OR ${t.closedBy} IS NULL)`,
+    ),
   ],
 );
 
@@ -348,7 +370,7 @@ export const outboundMessages = pgTable(
     ),
     check(
       'outbound_messages_reject_reason_check',
-      sql`${t.rejectReason} IN ('no_inbound', 'window_expired', 'contact_blocked', 'channel_unavailable', 'channel_paused', 'superseded')`,
+      sql`${t.rejectReason} IN ('no_inbound', 'window_expired', 'contact_blocked', 'channel_unavailable', 'channel_paused', 'conversation_closed', 'superseded')`,
     ),
     check(
       'outbound_messages_rejected_reason_check',

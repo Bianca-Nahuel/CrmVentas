@@ -10,11 +10,14 @@ import {
   type CreateChannelBody,
 } from './channels.contracts.js';
 import { ChannelsService } from './channels.service.js';
+import { CloseService } from './close.service.js';
 import {
+  closeConversationBodySchema,
   conversationParamsSchema,
   leadListQuerySchema,
   messageListQuerySchema,
   sendMessageBodySchema,
+  type CloseConversationBody,
   type LeadListQuery,
   type SendMessageBody,
 } from './inbox.contracts.js';
@@ -31,6 +34,7 @@ export class InboxController {
   constructor(
     private readonly inbox: InboxService,
     private readonly replies: ReplyService,
+    private readonly closer: CloseService,
   ) {}
 
   @RequirePermission({ lead: ['read'] })
@@ -75,6 +79,16 @@ export class InboxController {
   @Post('conversations/:id/read')
   async markRead(@Param(idParam) params: { id: string }) {
     await this.inbox.markRead(currentTx(), currentTenantContext(), params.id);
+  }
+
+  @RequirePermission({ conversation: ['close'] })
+  @HttpCode(200)
+  @Post('conversations/:id/close')
+  close(
+    @Param(idParam) params: { id: string },
+    @Body(new ZodValidationPipe(closeConversationBodySchema)) body: CloseConversationBody,
+  ) {
+    return this.closer.close(currentTx(), currentTenantContext(), params.id, body);
   }
 
   @RequirePermission({ conversation: ['reply'] })

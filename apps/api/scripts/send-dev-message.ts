@@ -54,7 +54,8 @@ const boss = createBoss(env);
 boss.on('error', (error) => console.error(`pg-boss: ${error.message}`));
 try {
   await boss.start();
-  const service = new OutboundService(boss);
+  // Manda como 'app': respeta la ventana siempre, así que no necesita los proveedores.
+  const service = new OutboundService(boss, new Map());
   const result = await withTenantTransaction(appDatabase.db, { tenantId }, (tx) =>
     service.enqueueText(
       { conversationId, body: text, senderType: 'app', idempotencyKey: `dev:${randomUUID()}` },

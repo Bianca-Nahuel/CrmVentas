@@ -13,7 +13,16 @@ import {
   viewChild,
 } from '@angular/core';
 import { RouterLink } from '@angular/router';
-import { ArrowDown, ArrowLeft, Bot, ChevronDown, FileQuestion, RotateCw, ShieldAlert } from 'lucide';
+import {
+  ArrowDown,
+  ArrowLeft,
+  Bot,
+  ChevronDown,
+  CircleCheckBig,
+  FileQuestion,
+  RotateCw,
+  ShieldAlert,
+} from 'lucide';
 import { filter, switchMap } from 'rxjs';
 import { InboxApi } from '../../api/inbox-api';
 import type { ConversationDetail, Message } from '../../api/generated';
@@ -30,6 +39,7 @@ import { Score } from '../../ui/score';
 import { NotifyService } from '../../ui/toast';
 import {
   AI_STATE_LABELS,
+  CLOSE_OUTCOME_LABELS,
   REPLY_BLOCKED_TEXT,
   REPLY_CONFLICT_CODES,
   deliveryHelp,
@@ -44,6 +54,7 @@ import {
 import { DeliveryStatus } from './delivery-status';
 import { InboxReads } from './inbox-reads';
 import { ReplyBox } from './reply-box';
+import { CloseConversation } from './close-dialog';
 
 const DESKTOP = '(min-width: 1024px)';
 
@@ -95,16 +106,35 @@ const DESKTOP = '(min-width: 1024px)';
               {{ c.contact.waId }} · {{ c.channel.name }} ({{ c.channel.phoneNumber }})
             </p>
           </div>
-          <div class="flex items-center gap-2">
-            <span
-              class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-sm font-semibold"
-              [class]="
-                c.ai.state === 'active' ? 'bg-success-soft text-success' : 'bg-warning-soft text-warning'
-              "
-              data-testid="ai-state"
-            >
-              <app-icon [icon]="botIcon" [size]="15" /> {{ aiLabel(c) }}
-            </span>
+          <div class="flex flex-wrap items-center gap-2">
+            @if (c.closed; as closed) {
+              <span
+                class="inline-flex items-center gap-1.5 rounded-full bg-surface-2 px-2.5 py-1 text-sm font-semibold text-muted"
+                data-testid="closed-state"
+              >
+                <app-icon [icon]="closedIcon" [size]="15" /> Cerrada · {{ outcomeLabel(closed.outcome) }}
+              </span>
+            } @else {
+              <span
+                class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-sm font-semibold"
+                [class]="
+                  c.ai.state === 'active' ? 'bg-success-soft text-success' : 'bg-warning-soft text-warning'
+                "
+                data-testid="ai-state"
+              >
+                <app-icon [icon]="botIcon" [size]="15" /> {{ aiLabel(c) }}
+              </span>
+              @if (canClose()) {
+                <button
+                  type="button"
+                  class="btn btn-secondary btn-sm"
+                  data-testid="close-conversation"
+                  (click)="close(c)"
+                >
+                  <app-icon [icon]="closedIcon" [size]="15" /> Cerrar conversación
+                </button>
+              }
+            }
           </div>
         </header>
 
@@ -113,12 +143,23 @@ const DESKTOP = '(min-width: 1024px)';
           aria-label="Datos del lead"
         >
           <app-score [score]="c.score" [level]="c.tier" variant="full" />
+          @if (c.closed; as closed) {
+            <div class="card p-3.5 text-sm" data-testid="closed-panel">
+              <p class="font-semibold text-text">Cerrada · {{ outcomeLabel(closed.outcome) }}</p>
+              <p class="text-subtle">
+                {{ closed.byName ? closed.byName + ' · ' : '' }}{{ fullWhen(closed.at) }}
+              </p>
+              @if (closed.note) {
+                <p class="mt-2 whitespace-pre-wrap break-words text-text" [textContent]="closed.note"></p>
+              }
+            </div>
+          }
           @if (c.ai.lastReactivation; as r) {
             <p class="text-xs text-subtle">
               IA reactivada{{ r.byName ? ' por ' + r.byName : '' }} · {{ fullWhen(r.at) }}
             </p>
           }
-          @if (c.ai.state !== 'active' && canReactivate()) {
+          @if (!c.closed && c.ai.state !== 'active' && canReactivate()) {
             <button
               type="button"
               class="btn btn-primary btn-sm self-start xl:self-stretch"
@@ -188,6 +229,23 @@ const DESKTOP = '(min-width: 1024px)';
                 }
               </div>
             </details>
+          }
+          @if (c.previous.length) {
+            <nav class="card p-3.5 text-sm" aria-label="Conversaciones anteriores" data-testid="previous">
+              <p class="font-semibold text-muted">Conversaciones anteriores con este contacto</p>
+              <ul class="mt-1.5 flex flex-col gap-1">
+                @for (prev of c.previous; track prev.id) {
+                  <li>
+                    <a class="text-primary hover:underline" [routerLink]="['/conversaciones', prev.id]">
+                      {{ fullWhen(prev.openedAt) }}</a
+                    >
+                    <span class="text-subtle">
+                      · {{ prev.outcome ? outcomeLabel(prev.outcome) : 'abierta' }}</span
+                    >
+                  </li>
+                }
+              </ul>
+            </nav>
           }
         </aside>
 
@@ -297,7 +355,7 @@ const DESKTOP = '(min-width: 1024px)';
           </div>
         </div>
 
-        @if (canReply()) {
+        @if (canReply() && !c.closed) {
           <!--
             Celular: fija abajo (sticky dentro de la página, que es la que hace scroll) y con el margen del
             área segura; el viewport se achica con el teclado (interactive-widget en index.html).
@@ -381,6 +439,7 @@ export class ConversationPage {
   });
   protected readonly canReply = computed(() => can(this.auth.role(), { conversation: ['reply'] }));
   protected readonly canReactivate = this.canReply;
+  protected readonly canClose = computed(() => can(this.auth.role(), { conversation: ['close'] }));
   /** El resumen arranca abierto en el escritorio y cerrado en el celular. */
   protected readonly openSummary = globalThis.matchMedia?.(DESKTOP).matches ?? true;
 
@@ -391,6 +450,10 @@ export class ConversationPage {
   protected readonly notFoundIcon = FileQuestion;
   protected readonly downIcon = ArrowDown;
   protected readonly retryIcon = RotateCw;
+  protected readonly closedIcon = CircleCheckBig;
+  protected readonly outcomeLabel = (outcome: keyof typeof CLOSE_OUTCOME_LABELS) =>
+    CLOSE_OUTCOME_LABELS[outcome];
+  private readonly closer = inject(CloseConversation);
   protected readonly deliveryHelp = deliveryHelp;
   protected readonly fullWhen = fullWhen;
   protected readonly time = timeLabel;
@@ -590,6 +653,14 @@ export class ConversationPage {
         this.loadingOlder.set(false);
       },
       error: () => this.loadingOlder.set(false),
+    });
+  }
+
+  protected close(c: ConversationDetail) {
+    this.closer.open(c.id).subscribe((updated) => {
+      if (!updated) return;
+      this.detail.set(updated);
+      this.summary.refresh();
     });
   }
 

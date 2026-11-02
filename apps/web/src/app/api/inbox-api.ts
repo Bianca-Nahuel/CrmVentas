@@ -3,6 +3,7 @@ import { Injectable, inject } from '@angular/core';
 import { map, type Observable } from 'rxjs';
 import {
   ApiConfiguration,
+  closeConversation,
   getConversation,
   getLeadSummary,
   listChannels,
@@ -13,6 +14,7 @@ import {
   reactivateAi,
   sendMessage,
   setChannelMembers,
+  type CloseOutcome,
   type ListLeads$Params,
   type StrictHttpResponse,
 } from './generated';
@@ -51,6 +53,13 @@ export class InboxApi {
 
   markRead(id: string) {
     return body(markConversationRead(this.http, this.rootUrl, { id }));
+  }
+
+  /** Cerrar con un resultado (tarea 026). Idempotente: una ya cerrada vuelve sin cambios. */
+  close(id: string, outcome: CloseOutcome, note: string) {
+    return body(
+      closeConversation(this.http, this.rootUrl, { id, body: { outcome, ...(note ? { note } : {}) } }),
+    );
   }
 
   reactivateAi(id: string) {

@@ -13,6 +13,7 @@ import { LeadState } from '../../models/lead-state';
 export interface ListLeads$Params {
   tier?: string;
   status?: LeadState;
+  view?: 'open' | 'closed';
   channelId?: string;
   q?: string;
   attention?: 'unanswered' | 'unread';
@@ -27,6 +28,7 @@ export function listLeads(http: HttpClient, rootUrl: string, params?: ListLeads$
   if (params) {
     rb.query('tier', params.tier, {});
     rb.query('status', params.status, {});
+    rb.query('view', params.view, {});
     rb.query('channelId', params.channelId, {});
     rb.query('q', params.q, {});
     rb.query('attention', params.attention, {});

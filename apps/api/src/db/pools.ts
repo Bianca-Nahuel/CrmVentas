@@ -5,8 +5,16 @@ import { authSchema } from './schema/auth.js';
 import { catalogSchema } from './schema/catalog.js';
 import { inboxSchema } from './schema/inbox.js';
 import { messagingSchema } from './schema/messaging.js';
+import { performanceSchema } from './schema/performance.js';
 
-const appSchema = { ...authSchema, ...messagingSchema, ...aiSchema, ...catalogSchema, ...inboxSchema };
+const appSchema = {
+  ...authSchema,
+  ...messagingSchema,
+  ...aiSchema,
+  ...catalogSchema,
+  ...inboxSchema,
+  ...performanceSchema,
+};
 
 export type AppDb = NodePgDatabase<typeof appSchema>;
 export type AuthDb = NodePgDatabase<typeof authSchema>;

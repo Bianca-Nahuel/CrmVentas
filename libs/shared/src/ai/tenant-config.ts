@@ -54,6 +54,66 @@ export const weeklyHoursSchema = z
 export type WeeklyHours = z.infer<typeof weeklyHoursSchema>;
 
 const key = z.string().regex(/^[a-z][a-z0-9_]{0,39}$/, 'clave en minúsculas, números y _');
+
+export const DEFAULT_AUTO_CLOSE_DAYS = 14;
+
+/** Criterios de la revisión de calidad si la empresa no configura los suyos. */
+export const DEFAULT_REVIEW_CRITERIA = [
+  {
+    key: 'tone',
+    label: 'Cordialidad y tono',
+    description: 'Saluda, trata con respeto y mantiene un tono amable y profesional en toda la conversación.',
+  },
+  {
+    key: 'clarity',
+    label: 'Claridad',
+    description: 'Los mensajes se entienden a la primera, sin ambigüedades ni datos sueltos.',
+  },
+  {
+    key: 'answers_question',
+    label: 'Responde lo que se preguntó',
+    description: 'Contesta cada pregunta concreta del cliente, sin evadirla ni cambiar de tema.',
+  },
+  {
+    key: 'proactivity',
+    label: 'Proactividad',
+    description:
+      'Ofrece alternativas, productos complementarios o el próximo paso sin que el cliente lo pida.',
+  },
+  {
+    key: 'follow_up',
+    label: 'Seguimiento y cierre',
+    description: 'Retoma lo pendiente y deja claro cómo sigue la conversación o la compra.',
+  },
+] as const;
+
+const reviewCriterionSchema = z
+  .object({ key, label: z.string().trim().min(1).max(60), description: z.string().trim().min(1).max(300) })
+  .strict();
+
+export const reviewConfigSchema = z
+  .object({
+    enabled: z.boolean().default(false),
+    // Dentro de ALLOWED_MODELS (lo valida el superRefine). Sin modelo: REVIEW_DEFAULT_MODEL_ID (models.ts).
+    model: z.string().max(100).optional(),
+    max_per_day: z.number().int().min(1).max(500).default(50),
+    criteria: z
+      .array(reviewCriterionSchema)
+      .min(1)
+      .max(8)
+      .default(() => DEFAULT_REVIEW_CRITERIA.map((criterion) => ({ ...criterion }))),
+    // Indicaciones de la empresa ("no tutear", "siempre ofrecer el envío"). Van por debajo de la capa fija.
+    guidance: z.string().trim().max(1000).default(''),
+    weekly_digest: z.boolean().default(false),
+    // Confirmación de transparencia (tarea 027): qué owner activó la revisión y cuándo, con el aviso de que
+    // el equipo sabe que se revisan sus conversaciones. La llena el servidor al activarla, nunca el panel.
+    transparency_ack: z
+      .object({ by: z.uuid(), at: z.iso.datetime({ offset: true }) })
+      .strict()
+      .optional(),
+  })
+  .strict();
+export type ReviewConfig = z.infer<typeof reviewConfigSchema>;
 const customTriggerId = z.string().regex(/^custom_[a-z0-9_]{1,40}$/, 'custom_ + minúsculas, números y _');
 
 const handoffModeSchema = z.discriminatedUnion('type', [
@@ -221,10 +281,16 @@ export const tenantConfigSchema = z
     catalog: catalogConfigSchema.optional(),
     // Bandeja (tarea 014). Sin esta sección, cada seller ve solo los números que tiene asignados.
     // La misma opción la lee app_sees_all_channels() en la base (migración 0015).
+    // auto_close_after_days (tarea 026): días sin mensajes para cerrar una conversación abierta; null = nunca.
     inbox: z
-      .object({ sellers_see_all_channels: z.boolean().default(false) })
+      .object({
+        sellers_see_all_channels: z.boolean().default(false),
+        auto_close_after_days: z.number().int().min(1).max(365).nullable().default(DEFAULT_AUTO_CLOSE_DAYS),
+      })
       .strict()
-      .optional(),
+      .prefault({}),
+    // Revisión de calidad por IA (tarea 026). Apagada por defecto.
+    review: reviewConfigSchema.prefault({}),
   })
   .strict()
   .superRefine((config, ctx) => {
@@ -284,6 +350,13 @@ export const tenantConfigSchema = z
     if (config.ai.model !== undefined && !findAllowedModel(config.ai.model)) {
       issue(['ai', 'model'], 'el modelo no está en la lista de modelos permitidos');
     }
+    if (config.review.model !== undefined && !findAllowedModel(config.review.model)) {
+      issue(['review', 'model'], 'el modelo no está en la lista de modelos permitidos');
+    }
+    unique(
+      ['review', 'criteria'],
+      config.review.criteria.map((criterion) => criterion.key),
+    );
 
     const fieldKeys = new Set(fields.map((field) => field.key));
     const checkMode = (mode: HandoffMode, path: (string | number)[]) => {

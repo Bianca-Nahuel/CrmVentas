@@ -1,5 +1,7 @@
 export * from './ai/catalog-config.js';
+export * from './ai/messages.js';
 export * from './ai/models.js';
+export * from './ai/score.js';
 export * from './ai/tenant-config.js';
 export * from './ai/text.js';
 export * from './auth/me.js';

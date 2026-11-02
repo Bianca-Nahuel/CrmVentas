@@ -22,8 +22,6 @@ export const REPLY_MAX_CHARS = 4096;
 /** Desde acá se muestra el contador. */
 const COUNTER_FROM = 3500;
 
-const IS_MAC = /Mac|iPhone|iPad/.test(globalThis.navigator?.platform ?? '');
-
 /**
  * Caja para responder por WhatsApp desde la conversación (tarea 024). El backend decide si se puede
  * (conversation.reply y el 409 del envío); acá solo se explica y se deshabilita.
@@ -90,7 +88,7 @@ const IS_MAC = /Mac|iPhone|iPad/.test(globalThis.navigator?.platform ?? '');
               conversation().channel.phoneNumber
             }})
           </span>
-          <span class="hidden lg:inline">{{ shortcut }} + Enter para enviar</span>
+          <span class="hidden lg:inline">Enter para enviar · Shift + Enter para un salto de línea</span>
           @if (showCounter()) {
             <span class="tabular ml-auto" [class.text-error]="tooLong()" data-testid="reply-counter">
               {{ chars() }} / {{ max }}
@@ -132,7 +130,6 @@ export class ReplyBox {
   );
 
   protected readonly max = REPLY_MAX_CHARS;
-  protected readonly shortcut = IS_MAC ? '⌘' : 'Ctrl';
   protected readonly noticeId = `reply-notice-${Math.random().toString(36).slice(2, 8)}`;
   protected readonly sendIcon = SendHorizontal;
   protected readonly infoIcon = Info;
@@ -163,8 +160,9 @@ export class ReplyBox {
     return REPLY_BLOCKED_TEXT[reason];
   }
 
+  /** Enter envía; Shift + Enter hace un salto de línea (y Enter mientras se compone un acento, nada). */
   protected onKeydown(event: KeyboardEvent) {
-    if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
+    if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
       event.preventDefault();
       this.send();
     }

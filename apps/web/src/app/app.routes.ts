@@ -4,13 +4,16 @@ import { NAV_ITEMS } from './core/nav';
 import { DEV_ROUTES } from './dev/dev.routes';
 import { Shell } from './pages/layout/shell';
 
-// Secciones que ya tienen su pantalla (tareas 014 y 011), todas del mismo módulo lazy (ver inbox.routes.ts).
+// Secciones que ya tienen su pantalla: las de la bandeja (tareas 014 y 011) en un mismo módulo lazy (ver
+// inbox.routes.ts), Rendimiento (026) en el suyo, y Catálogo y Configuración del agente (027) en los suyos.
 // El resto muestra "próximamente".
 const SECTIONS: Record<string, Pick<Route, 'loadChildren'>> = {
   leads: { loadChildren: () => import('./pages/inbox.routes').then((m) => m.LEADS_ROUTES) },
   conversaciones: { loadChildren: () => import('./pages/inbox.routes').then((m) => m.INBOX_ROUTES) },
-  numeros: { loadChildren: () => import('./pages/inbox.routes').then((m) => m.CHANNEL_MEMBERS_ROUTES) },
-  canales: { loadChildren: () => import('./pages/inbox.routes').then((m) => m.CHANNELS_ROUTES) },
+  numeros: { loadChildren: () => import('./pages/inbox.routes').then((m) => m.CHANNELS_ROUTES) },
+  rendimiento: { loadChildren: () => import('./pages/performance.routes').then((m) => m.PERFORMANCE_ROUTES) },
+  catalogo: { loadChildren: () => import('./pages/catalog.routes').then((m) => m.CATALOG_ROUTES) },
+  agente: { loadChildren: () => import('./pages/agent.routes').then((m) => m.AGENT_ROUTES) },
 };
 const comingSoon = () => import('./pages/coming-soon/coming-soon-page').then((m) => m.ComingSoonPage);
 
@@ -38,8 +41,10 @@ export const routes: Routes = [
     component: Shell,
     canActivate: [authGuard, tenantGuard],
     children: [
-      // Al entrar: la primera sección que el rol puede ver (el viewer va a Métricas).
+      // Al entrar: la primera sección que el rol puede ver (el viewer va a Rendimiento).
       { path: '', pathMatch: 'full', canActivate: [homeGuard], children: [] },
+      // Canales se unificó con Números y vendedores: los links viejos van a Números.
+      { path: 'canales', redirectTo: 'numeros' },
       ...NAV_ITEMS.map((item) => ({
         path: item.path,
         title: item.label,

@@ -6,6 +6,7 @@ import { sql } from 'drizzle-orm';
 import {
   boolean,
   check,
+  customType,
   index,
   integer,
   jsonb,
@@ -199,7 +200,41 @@ export const productSnapshots = pgTable(
   ],
 );
 
-export const catalogSchema = { catalogProducts, catalogImports, catalogImportRows, productSnapshots };
+// El .xlsx subido desde el panel (tarea 027), para rehacer la vista previa con otro mapeo sin volver a
+// subirlo. Vence a las 24 h y lo borra el trabajo catalog-import-files-purge (función de 0027). Nunca va a
+// disco. La FK compuesta a catalog_imports, los permisos y la RLS están en 0027.
+const bytea = customType<{ data: Buffer; driverData: Buffer }>({ dataType: () => 'bytea' });
+
+export const catalogImportFiles = pgTable(
+  'catalog_import_files',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`uuidv7()`),
+    tenantId: uuid('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    importId: uuid('import_id').notNull(),
+    data: bytea('data').notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now() + interval '24 hours'`),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique('catalog_import_files_import_unique').on(t.importId),
+    index('catalog_import_files_expires_idx').on(t.expiresAt),
+    check('catalog_import_files_size_check', sql`octet_length(${t.data}) BETWEEN 1 AND 5242880`),
+  ],
+);
+
+export const catalogSchema = {
+  catalogProducts,
+  catalogImports,
+  catalogImportRows,
+  productSnapshots,
+  catalogImportFiles,
+};
 
 export type CatalogProductRow = typeof catalogProducts.$inferSelect;
 export type ProductSnapshotRow = typeof productSnapshots.$inferSelect;

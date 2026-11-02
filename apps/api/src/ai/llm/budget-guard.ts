@@ -10,7 +10,10 @@ export type ReserveResult =
 export interface AiBudgetGuard {
   /** Antes de llamar: reserva la estimación (tokens de entrada aproximados + maxOutputTokens × precio). */
   reserve(tenantId: string, estimateUsd: string): Promise<ReserveResult>;
-  /** Después de una llamada con costo (aunque la salida haya sido inválida). */
+  /**
+   * Después de una llamada con costo (aunque la salida haya sido inválida). aiRunId es de ai_runs o, en el
+   * playground del panel (tarea 027), de ai_playground_runs: la tarea 008 no puede asumir una sola tabla.
+   */
   settle(reservationId: string, actualUsd: string, aiRunId: string): Promise<void>;
   /** Si la llamada falló sin costo conocido. */
   release(reservationId: string): Promise<void>;

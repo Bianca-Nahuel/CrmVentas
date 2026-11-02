@@ -68,3 +68,12 @@ export function shortDate(iso: string): string {
 export function neverConnected(channel: ChannelWithMembers): boolean {
   return channel.phoneNumber === null && channel.connectedAt === null && channel.status !== 'connected';
 }
+
+/** Iniciales para el avatar: primera letra de las dos primeras palabras del nombre. */
+export function initials(name: string): string {
+  const words = name.trim().split(/\s+/).filter(Boolean);
+  return words
+    .slice(0, 2)
+    .map((word) => word[0]!.toLocaleUpperCase('es-AR'))
+    .join('');
+}

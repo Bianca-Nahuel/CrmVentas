@@ -6,7 +6,7 @@ import {
   MessagesSquare,
   Package,
   RadioTower,
-  UserCog,
+  TrendingUp,
   Users,
   type IconNode,
 } from 'lucide';
@@ -47,18 +47,18 @@ export const NAV_ITEMS: readonly NavItem[] = [
     soon: 'Acá vas a ver a cada interesado con su puntaje, su nivel y el resumen para atenderlo.',
   },
   {
-    path: 'canales',
-    label: 'Canales',
+    path: 'numeros',
+    label: 'Números',
     icon: RadioTower,
     permission: { channel: ['read'] },
-    soon: 'Acá vas a conectar los números de WhatsApp de la empresa.',
+    soon: 'Acá vas a conectar los números de WhatsApp de la empresa y elegir qué vendedores los atienden.',
   },
   {
-    path: 'numeros',
-    label: 'Números y vendedores',
-    icon: UserCog,
-    permission: { channel: ['assign'] },
-    soon: 'Acá elegís qué vendedores atienden cada número.',
+    path: 'rendimiento',
+    label: 'Rendimiento',
+    icon: TrendingUp,
+    permission: { performance: ['read'] },
+    soon: 'Acá vas a ver cómo trabaja el equipo: atendidas, tiempos de respuesta y calidad.',
   },
   {
     path: 'catalogo',
@@ -94,7 +94,7 @@ export function navFor(role: TenantRole | null | undefined): NavItem[] {
   return NAV_ITEMS.filter((item) => can(role, item.permission));
 }
 
-/** Primera sección permitida: adonde va el usuario al entrar (el viewer, a Métricas). */
+/** Primera sección permitida: adonde va el usuario al entrar (el viewer, a Rendimiento). */
 export function homePathFor(role: TenantRole | null | undefined): string {
   const first = navFor(role)[0];
   return first ? `/${first.path}` : '/sin-acceso';

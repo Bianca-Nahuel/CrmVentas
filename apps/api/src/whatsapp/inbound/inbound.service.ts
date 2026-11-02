@@ -25,8 +25,13 @@ import { errorCode } from '../../jobs/error-code.js';
 import type { SessionCloseJob } from './session-close.job.js';
 import { publishConversationEvent, publishNotice } from '../../realtime/publish.js';
 import { BOSS, QUEUES } from '../../jobs/jobs.module.js';
-import { ECHO_RECHECK_MAX, ECHO_RECONCILE_WINDOW_MS } from '../../messaging/outbound/outbound.constants.js';
+import {
+  ECHO_RECHECK_MAX,
+  ECHO_RECONCILE_WINDOW_MS,
+  REPLY_WINDOW_HOURS,
+} from '../../messaging/outbound/outbound.constants.js';
 import { pauseAiAfterHuman } from '../../messaging/outbound/outbound.service.js';
+import { refreshConversationMetrics } from '../../performance/conversation-metrics.js';
 
 /**
  * guardado/duplicado: mensaje entrante. propio: eco de algo que mandó el sistema. reconciliado: eco que
@@ -138,6 +143,7 @@ export class InboundService {
         lastInboundAt: sql`GREATEST(COALESCE(${conversations.lastInboundAt}, ${sentAt}), ${sentAt})`,
       })
       .where(eq(conversations.id, conversationId));
+    await refreshConversationMetrics(tx, conversationId);
 
     // Agente (tarea 006): un trabajo por entrante nuevo, en esta misma transacción (existe solo si el
     // mensaje se guarda). Espera AI_DEBOUNCE_SECONDS para juntar mensajes seguidos; si al correr hay un
@@ -226,6 +232,46 @@ export class InboundService {
   }
 
   /**
+   * Conversación de un eco: la abierta; si no hay, la última cerrada de este contacto en este número si se
+   * cerró dentro de la ventana de respuesta (tarea 026: el "gracias" del vendedor después de cerrar no abre
+   * un lead nuevo ni la reabre); si no, una nueva (el número le escribe desde el teléfono a alguien de antes).
+   */
+  private async echoConversation(
+    tx: AppTx,
+    channel: ResolvedChannel,
+    contactId: string,
+    sentAt: Date,
+  ): Promise<string> {
+    const [open] = await tx
+      .select({ id: conversations.id })
+      .from(conversations)
+      .where(
+        and(
+          eq(conversations.channelId, channel.channelId),
+          eq(conversations.contactId, contactId),
+          eq(conversations.status, 'open'),
+        ),
+      )
+      .limit(1);
+    if (open) return open.id;
+    const [closed] = await tx
+      .select({ id: conversations.id })
+      .from(conversations)
+      .where(
+        and(
+          eq(conversations.channelId, channel.channelId),
+          eq(conversations.contactId, contactId),
+          eq(conversations.status, 'closed'),
+          gt(conversations.closedAt, sql`now() - make_interval(hours => ${REPLY_WINDOW_HOURS})`),
+        ),
+      )
+      .orderBy(desc(conversations.closedAt), desc(conversations.id))
+      .limit(1);
+    if (closed) return closed.id;
+    return this.openConversation(tx, channel, contactId, sentAt);
+  }
+
+  /**
    * Eco (mensaje que salió del número del canal). En orden:
    * 1. su id ya está en messages u outbound_messages → es nuestro (o un reenvío): no se toca nada;
    * 2. hay un envío en 'sending' en el canal → todavía no se sabe si es ese: se reprograma (hasta
@@ -259,7 +305,7 @@ export class InboundService {
 
     const sentAt = new Date(event.sentAt);
     const contactId = await this.upsertContact(tx, channel, event, sentAt, { touchLastSeen: false });
-    const conversationId = await this.openConversation(tx, channel, contactId, sentAt);
+    const conversationId = await this.echoConversation(tx, channel, contactId, sentAt);
 
     // Visibilidad: el claim (queued → sending) se confirma antes de llamar al proveedor, así que un envío
     // en curso siempre se ve acá en 'sending'. Si terminó entre la consulta de arriba y esta, su mensaje
@@ -354,6 +400,7 @@ export class InboundService {
       .update(conversations)
       .set({ lastMessageAt: sql`GREATEST(${conversations.lastMessageAt}, ${sentAt})` })
       .where(eq(conversations.id, conversationId));
+    await refreshConversationMetrics(tx, conversationId);
     return inserted.id;
   }
 
