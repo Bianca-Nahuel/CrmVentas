@@ -45,7 +45,8 @@ export const channels = pgTable(
     id: id(),
     tenantId: tenantId(),
     name: text('name').notNull(),
-    phoneNumber: text('phone_number').notNull(),
+    // Sale del escaneo del QR (decisión #27): NULL mientras el canal nunca se conectó.
+    phoneNumber: text('phone_number'),
     provider: text('provider').notNull(),
     connectionType: text('connection_type').notNull(),
     // Sesión de WAHA o phone_number_id de Meta. Lo usa resolve_channel() para el webhook.
@@ -61,12 +62,19 @@ export const channels = pgTable(
     // un código (blocked_risk:463), sin datos personales.
     sendingPausedUntil: timestamp('sending_paused_until', { withTimezone: true }),
     sendingPausedReason: text('sending_paused_reason'),
+    // Conexión (tarea 011): desde cuándo está conectado y, si se cayó, por qué (un código, sin datos
+    // personales). Quién hizo cada acción queda en channel_events.
+    connectedAt: timestamp('connected_at', { withTimezone: true }),
+    disconnectedAt: timestamp('disconnected_at', { withTimezone: true }),
+    disconnectReason: text('disconnect_reason'),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
   (t) => [
     unique('channels_tenant_id_id_unique').on(t.tenantId, t.id),
-    unique('channels_tenant_phone_unique').on(t.tenantId, t.phoneNumber),
+    // Global y no por empresa: un número conectado en dos empresas les mandaría los mismos leads a las dos
+    // (tarea 011). Los NULL (canales que nunca se conectaron) no chocan entre sí.
+    unique('channels_phone_unique').on(t.phoneNumber),
     unique('channels_provider_external_id_unique').on(t.provider, t.externalId),
     check('channels_phone_e164_check', sql`${t.phoneNumber} ~ '^\\+[1-9][0-9]{6,14}$'`),
     check('channels_provider_check', sql`${t.provider} IN ('waha', 'cloud_api')`),
@@ -81,6 +89,40 @@ export const channels = pgTable(
       sql`${t.connectionType} <> 'unofficial' OR (${t.riskAcceptedAt} IS NOT NULL AND ${t.riskAcceptedBy} IS NOT NULL)`,
     ),
     check('channels_provider_config_object_check', sql`jsonb_typeof(${t.providerConfig}) = 'object'`),
+    check('channels_connected_phone_check', sql`${t.status} <> 'connected' OR ${t.phoneNumber} IS NOT NULL`),
+    check(
+      'channels_disconnect_reason_check',
+      sql`${t.disconnectReason} IN ('logged_out', 'phone_mismatch', 'number_in_use', 'pairing_expired', 'session_failed')`,
+    ),
+  ],
+);
+
+// Historial de la conexión de un canal: quién lo creó, desconectó, reconectó o le levantó la pausa, y los
+// rechazos del escaneo. Solo INSERT: es un registro. Sin números ni datos personales en data.
+export const channelEvents = pgTable(
+  'channel_events',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    channelId: uuid('channel_id').notNull(),
+    type: text('type').notNull(),
+    // NULL si lo hizo el sistema (un evento del proveedor) o si se quitó la membresía.
+    userId: uuid('user_id'),
+    data: jsonb('data').notNull().default({}),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    foreignKey({
+      name: 'channel_events_channel_fk',
+      columns: [t.tenantId, t.channelId],
+      foreignColumns: [channels.tenantId, channels.id],
+    }).onDelete('cascade'),
+    index('channel_events_channel_idx').on(t.channelId, t.createdAt.desc()),
+    check(
+      'channel_events_type_check',
+      sql`${t.type} IN ('created', 'connected', 'disconnected', 'reconnect_requested', 'sending_resumed', 'phone_mismatch', 'number_in_use')`,
+    ),
+    check('channel_events_data_check', sql`jsonb_typeof(${t.data}) = 'object'`),
   ],
 );
 

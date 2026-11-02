@@ -19,6 +19,18 @@ export type { ReactivateAi$Params as ReactivateAi$Params } from './fn/panel/reac
 export { reactivateAi as reactivateAi } from './fn/panel/reactivate-ai';
 export type { ListChannels$Params as ListChannels$Params } from './fn/panel/list-channels';
 export { listChannels as listChannels } from './fn/panel/list-channels';
+export type { CreateChannel$Params as CreateChannel$Params } from './fn/panel/create-channel';
+export { createChannel as createChannel } from './fn/panel/create-channel';
+export type { CancelChannel$Params as CancelChannel$Params } from './fn/panel/cancel-channel';
+export { cancelChannel as cancelChannel } from './fn/panel/cancel-channel';
+export type { GetChannelPairing$Params as GetChannelPairing$Params } from './fn/panel/get-channel-pairing';
+export { getChannelPairing as getChannelPairing } from './fn/panel/get-channel-pairing';
+export type { ReconnectChannel$Params as ReconnectChannel$Params } from './fn/panel/reconnect-channel';
+export { reconnectChannel as reconnectChannel } from './fn/panel/reconnect-channel';
+export type { DisconnectChannel$Params as DisconnectChannel$Params } from './fn/panel/disconnect-channel';
+export { disconnectChannel as disconnectChannel } from './fn/panel/disconnect-channel';
+export type { ResumeChannelSending$Params as ResumeChannelSending$Params } from './fn/panel/resume-channel-sending';
+export { resumeChannelSending as resumeChannelSending } from './fn/panel/resume-channel-sending';
 export type { SetChannelMembers$Params as SetChannelMembers$Params } from './fn/panel/set-channel-members';
 export { setChannelMembers as setChannelMembers } from './fn/panel/set-channel-members';
 export type { ListSellers$Params as ListSellers$Params } from './fn/panel/list-sellers';

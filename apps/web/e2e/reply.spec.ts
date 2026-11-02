@@ -5,6 +5,8 @@ import { USERS, expectInLayout, login } from './helpers';
 
 async function openConversation(page: Page, name: string) {
   await page.goto('/conversaciones');
+  // Por nombre: las conversaciones que dejan otras corridas pueden sacarla de las 50 más recientes.
+  await page.getByLabel('Buscar conversación').fill(name);
   await page.getByTestId('inbox-item').filter({ hasText: name }).click();
   await expect(page.getByTestId('conversation-title')).toHaveText(name);
 }

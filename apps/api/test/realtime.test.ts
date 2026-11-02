@@ -412,6 +412,8 @@ describe('4b. puntos de publicación (empresa y número correctos)', () => {
         channelExternalId: channels.A1.session,
         eventId: `evt_${uid()}`,
         status: 'disconnected',
+        phoneNumber: null,
+        failed: false,
       },
       { channelId: channels.A1.id, tenantId: tenantA },
     );

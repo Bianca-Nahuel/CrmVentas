@@ -4,12 +4,13 @@ import { NAV_ITEMS } from './core/nav';
 import { DEV_ROUTES } from './dev/dev.routes';
 import { Shell } from './pages/layout/shell';
 
-// Secciones que ya tienen su pantalla (tarea 014), todas del mismo módulo lazy (ver inbox.routes.ts).
+// Secciones que ya tienen su pantalla (tareas 014 y 011), todas del mismo módulo lazy (ver inbox.routes.ts).
 // El resto muestra "próximamente".
 const SECTIONS: Record<string, Pick<Route, 'loadChildren'>> = {
   leads: { loadChildren: () => import('./pages/inbox.routes').then((m) => m.LEADS_ROUTES) },
   conversaciones: { loadChildren: () => import('./pages/inbox.routes').then((m) => m.INBOX_ROUTES) },
   numeros: { loadChildren: () => import('./pages/inbox.routes').then((m) => m.CHANNEL_MEMBERS_ROUTES) },
+  canales: { loadChildren: () => import('./pages/inbox.routes').then((m) => m.CHANNELS_ROUTES) },
 };
 const comingSoon = () => import('./pages/coming-soon/coming-soon-page').then((m) => m.ComingSoonPage);
 

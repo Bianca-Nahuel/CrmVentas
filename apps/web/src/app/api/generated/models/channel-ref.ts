@@ -4,5 +4,5 @@
 export interface ChannelRef {
   id: string;
   name: string;
-  phoneNumber: string;
+  phoneNumber: (string | null);
 }

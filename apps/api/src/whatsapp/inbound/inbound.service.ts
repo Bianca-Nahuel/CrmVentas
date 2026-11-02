@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import type {
   MessageDeliveryStatus,
   MessageEchoEvent,
@@ -12,8 +12,17 @@ import { fromDrizzle, type PgBoss } from 'pg-boss';
 import { AI_DEBOUNCE_SECONDS } from '../../ai/ai.constants.js';
 import type { AiReplyJob } from '../../ai/reply/ai-reply.job.js';
 import { APP_DB, type AppDatabase } from '../../db/database.module.js';
-import { channels, contacts, conversations, messages, outboundMessages } from '../../db/schema/messaging.js';
+import {
+  channelEvents,
+  channels,
+  contacts,
+  conversations,
+  messages,
+  outboundMessages,
+} from '../../db/schema/messaging.js';
 import { withTenantTransaction, type AppTx } from '../../db/tenant-context.js';
+import { errorCode } from '../../jobs/error-code.js';
+import type { SessionCloseJob } from './session-close.job.js';
 import { publishConversationEvent, publishNotice } from '../../realtime/publish.js';
 import { BOSS, QUEUES } from '../../jobs/jobs.module.js';
 import { ECHO_RECHECK_MAX, ECHO_RECONCILE_WINDOW_MS } from '../../messaging/outbound/outbound.constants.js';
@@ -23,7 +32,7 @@ import { pauseAiAfterHuman } from '../../messaging/outbound/outbound.service.js'
  * guardado/duplicado: mensaje entrante. propio: eco de algo que mandó el sistema. reconciliado: eco que
  * confirmó un envío de resultado desconocido. pausado: eco escrito por una persona (la IA se pausa).
  * reprogramar: eco con un envío en curso en el chat, hay que volver a mirarlo. actualizado/sin_cambios:
- * estado del canal o acuse.
+ * estado del canal o acuse. rechazado: el escaneo vinculó otro teléfono o un número que ya está en otro canal.
  */
 export type InboundResult =
   | 'guardado'
@@ -33,7 +42,8 @@ export type InboundResult =
   | 'pausado'
   | 'reprogramar'
   | 'actualizado'
-  | 'sin_cambios';
+  | 'sin_cambios'
+  | 'rechazado';
 
 export interface ResolvedChannel {
   channelId: string;
@@ -47,6 +57,8 @@ const OPEN_CONVERSATION_ATTEMPTS = 3;
 // la empresa sale de resolve_channel() (por el external_id que generó el sistema), nunca del payload.
 @Injectable()
 export class InboundService {
+  private readonly logger = new Logger('InboundService');
+
   constructor(
     @Inject(APP_DB) private readonly database: AppDatabase,
     @Inject(BOSS) private readonly boss: PgBoss,
@@ -388,21 +400,173 @@ export class InboundService {
     channel: ResolvedChannel,
     event: SessionStatusEvent,
   ): Promise<InboundResult> {
-    const updated = await tx
+    const [current] = await tx
+      .select({
+        status: channels.status,
+        phoneNumber: channels.phoneNumber,
+        connectedAt: channels.connectedAt,
+        disconnectReason: channels.disconnectReason,
+      })
+      .from(channels)
+      .where(eq(channels.id, channel.channelId))
+      .for('update');
+    if (!current || current.status === 'banned') return 'sin_cambios';
+    if (event.status === 'connected') return this.connectChannel(tx, channel, current, event);
+    if (current.status === event.status) return 'sin_cambios';
+    // Un canal esperando el escaneo pasa por STOPPED cuando se pide un QR nuevo (restartPairing): eso no
+    // es una desconexión. Sí lo es que la sesión falle (por ejemplo, se agotaron los QR).
+    if (current.status === 'pending' && event.status === 'disconnected' && !event.failed)
+      return 'sin_cambios';
+
+    const disconnected = event.status === 'disconnected';
+    const failure =
+      disconnected && event.failed
+        ? (await this.waitingForScan(tx, channel.channelId))
+          ? 'pairing_expired'
+          : 'session_failed'
+        : null;
+    await tx
       .update(channels)
-      .set({ status: event.status })
+      .set(
+        disconnected
+          ? {
+              status: 'disconnected',
+              disconnectedAt: sql`now()`,
+              disconnectReason: failure,
+            }
+          : { status: event.status },
+      )
+      .where(eq(channels.id, channel.channelId));
+    if (disconnected && current.status === 'connected') {
+      await tx.insert(channelEvents).values({
+        tenantId: channel.tenantId,
+        channelId: channel.channelId,
+        type: 'disconnected',
+        data: { by: 'provider', failed: event.failed },
+      });
+    }
+    await publishNotice(tx, { kind: 'channel', type: 'channel.updated', ...ids(channel) });
+    return 'actualizado';
+  }
+
+  /**
+   * La sesión esperaba un escaneo: lo último del canal fue el alta o un pedido de reconectar (QR nuevo). Si
+   * falla así, se agotaron los QR. Un canal que se cae y el proveedor vuelve a levantar también pasa por
+   * pending, pero sin pedido de por medio: esa falla es de la sesión.
+   */
+  private async waitingForScan(tx: AppTx, channelId: string): Promise<boolean> {
+    const [last] = await tx
+      .select({ type: channelEvents.type })
+      .from(channelEvents)
       .where(
         and(
-          eq(channels.id, channel.channelId),
-          ne(channels.status, 'banned'),
-          ne(channels.status, event.status),
+          eq(channelEvents.channelId, channelId),
+          inArray(channelEvents.type, ['created', 'reconnect_requested', 'connected']),
         ),
       )
-      .returning({ id: channels.id });
-    if (updated.length > 0) {
-      await publishNotice(tx, { kind: 'channel', type: 'channel.updated', ...ids(channel) });
+      .orderBy(desc(channelEvents.createdAt), desc(channelEvents.id))
+      .limit(1);
+    return last?.type === 'created' || last?.type === 'reconnect_requested';
+  }
+
+  /**
+   * Sesión vinculada. El número sale del escaneo (decisión #27) y nunca pisa al que ya tenía el canal:
+   * - otro teléfono que el del canal → phone_mismatch;
+   * - un número que ya tiene otro canal (de esta empresa o de otra: UNIQUE global) → number_in_use.
+   * En los dos casos el canal queda desconectado con su motivo, sin reintentos, y se encola la
+   * desvinculación en el proveedor (hasta entonces resolve_channel descarta lo que llegue por esa sesión).
+   */
+  private async connectChannel(
+    tx: AppTx,
+    channel: ResolvedChannel,
+    current: {
+      status: string;
+      phoneNumber: string | null;
+      connectedAt: Date | null;
+      disconnectReason: string | null;
+    },
+    event: SessionStatusEvent,
+  ): Promise<InboundResult> {
+    // Lo desconectó una persona: un WORKING que ya estaba en la cola no lo vuelve a conectar (el camino es
+    // reconectar, que lo pasa a pending).
+    if (current.status === 'disconnected' && current.disconnectReason === 'logged_out') return 'sin_cambios';
+    // Sin el número en el evento, el del canal vale solo si no hubo un QR de por medio (el proveedor volvió a
+    // levantar la misma sesión). Después de un escaneo, el número viejo no sirve: podría ser otro teléfono
+    // o uno de otra empresa.
+    const keepsPhone =
+      !event.phoneNumber &&
+      current.phoneNumber !== null &&
+      (current.status === 'connected' || !(await this.waitingForScan(tx, channel.channelId)));
+    const phone = event.phoneNumber ?? (keepsPhone ? current.phoneNumber : null);
+    if (!phone) {
+      // Sin número no se puede marcar conectado (CHECK): queda como estaba y se registra.
+      this.logger.warn({ msg: 'session.status', channelId: channel.channelId, result: 'sin_numero' });
+      return 'sin_cambios';
     }
-    return updated.length > 0 ? 'actualizado' : 'sin_cambios';
+    if (current.phoneNumber && event.phoneNumber && current.phoneNumber !== event.phoneNumber) {
+      return this.rejectScan(tx, channel, 'phone_mismatch', {});
+    }
+    if (current.status === 'connected' && current.phoneNumber === phone) return 'sin_cambios';
+
+    try {
+      // Savepoint: si el UNIQUE choca, la transacción sigue para registrar el rechazo.
+      await tx.transaction(async (savepoint) => {
+        await savepoint
+          .update(channels)
+          .set({
+            status: 'connected',
+            phoneNumber: phone,
+            connectedAt: sql`now()`,
+            disconnectedAt: null,
+            disconnectReason: null,
+          })
+          .where(eq(channels.id, channel.channelId));
+      });
+    } catch (error) {
+      if (errorCode(error) !== '23505') throw error;
+      // RLS: solo se ven los canales de esta empresa. Si no aparece, está en otra (no se dice cuál).
+      const [sameTenant] = await tx
+        .select({ id: channels.id })
+        .from(channels)
+        .where(and(eq(channels.phoneNumber, phone), ne(channels.id, channel.channelId)))
+        .limit(1);
+      return this.rejectScan(tx, channel, 'number_in_use', {
+        scope: sameTenant ? 'same_tenant' : 'other_tenant',
+        ...(sameTenant ? { otherChannelId: sameTenant.id } : {}),
+      });
+    }
+    await tx.insert(channelEvents).values({
+      tenantId: channel.tenantId,
+      channelId: channel.channelId,
+      type: 'connected',
+      data: { first: current.connectedAt === null && current.phoneNumber === null },
+    });
+    await publishNotice(tx, { kind: 'channel', type: 'channel.updated', ...ids(channel) });
+    return 'actualizado';
+  }
+
+  private async rejectScan(
+    tx: AppTx,
+    channel: ResolvedChannel,
+    reason: 'phone_mismatch' | 'number_in_use',
+    data: Record<string, string>,
+  ): Promise<InboundResult> {
+    await tx
+      .update(channels)
+      .set({ status: 'disconnected', disconnectedAt: sql`now()`, disconnectReason: reason })
+      .where(eq(channels.id, channel.channelId));
+    await tx.insert(channelEvents).values({
+      tenantId: channel.tenantId,
+      channelId: channel.channelId,
+      type: reason,
+      data,
+    });
+    const job: SessionCloseJob = { tenantId: channel.tenantId, channelId: channel.channelId };
+    await this.boss.send(QUEUES.whatsappSessionClose, job, { db: fromDrizzle(tx, sql) });
+    await publishNotice(tx, { kind: 'channel', type: 'channel.updated', ...ids(channel) });
+    // Sin el número: solo ids y el motivo.
+    this.logger.warn({ msg: 'session.status', channelId: channel.channelId, result: 'rechazado', reason });
+    return 'rechazado';
   }
 }
 

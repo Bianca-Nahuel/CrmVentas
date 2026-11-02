@@ -22,7 +22,8 @@ export interface AssignSellersData {
   template: `
     <h2 class="text-lg font-semibold text-text" id="assign-title">Vendedores de {{ data.channel.name }}</h2>
     <p class="mt-1 text-sm text-muted" id="assign-hint">
-      Van a ver las conversaciones de {{ data.channel.phoneNumber }}. Usá las flechas y la barra espaciadora.
+      Van a ver las conversaciones de {{ data.channel.phoneNumber ?? data.channel.name }}. Usá las flechas y
+      la barra espaciadora.
     </p>
     @if (data.sellers.length === 0) {
       <p class="mt-4 text-muted">Todavía no hay vendedores en la empresa.</p>

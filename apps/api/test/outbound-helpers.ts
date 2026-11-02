@@ -10,6 +10,7 @@ import type {
   WhatsAppProvider,
   WhatsAppProviderRegistry,
 } from '../src/whatsapp/provider.js';
+import { FakeWhatsAppProvider } from '../src/whatsapp/providers/fake/fake.provider.js';
 import { normalizeWahaEvent } from '../src/whatsapp/providers/waha/waha-normalize.js';
 import { createTenant, createUser, withTenant, type TestContext } from './helpers.js';
 
@@ -42,9 +43,10 @@ export async function createChannelTenant(ctx: TestContext, label: string) {
     const { rows } = await c.query<{ id: string }>(
       `INSERT INTO channels (tenant_id, name, phone_number, provider, connection_type, external_id,
          status, risk_accepted_at, risk_accepted_by)
-       VALUES ($1, 'ventas', '+5491100000099', 'waha', 'unofficial', $2, 'connected', now(), $3)
+       VALUES ($1, 'ventas', $4, 'waha', 'unofficial', $2, 'connected', now(), $3)
        RETURNING id`,
-      [tenantId, session, ownerId],
+      // Número al azar: es único en toda la base (tarea 011).
+      [tenantId, session, ownerId, `+${fakePhone()}`],
     );
     return rows[0]!.id;
   });
@@ -87,15 +89,26 @@ export interface ProviderCall {
   seen?: string[];
 }
 
-/** Proveedor falso: registra las llamadas y cuántos sendText hubo en paralelo. */
+/**
+ * Proveedor falso: registra las llamadas y cuántos sendText hubo en paralelo. La conexión por QR es la del
+ * proveedor falso de los e2e.
+ */
 export class FakeProvider implements WhatsAppProvider {
   readonly id = 'waha' as const;
+  readonly connectionType = 'unofficial' as const;
   readonly capabilities = {
     templates: false,
     within24hWindowOnly: false,
     adAttribution: false,
     outboundCampaigns: false,
+    pairing: 'qr' as const,
   };
+  private readonly pairing = new FakeWhatsAppProvider();
+  sessionIdFor = (channelId: string) => this.pairing.sessionIdFor(channelId);
+  openSession = (externalId: string) => this.pairing.openSession(externalId);
+  restartPairing = (externalId: string) => this.pairing.restartPairing(externalId);
+  getPairingQr = (externalId: string) => this.pairing.getPairingQr(externalId);
+  closeSession = (externalId: string) => this.pairing.closeSession(externalId);
   calls: ProviderCall[] = [];
   inFlight = 0;
   maxInFlight = 0;

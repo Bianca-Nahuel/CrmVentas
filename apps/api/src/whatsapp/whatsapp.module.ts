@@ -26,7 +26,8 @@ import { WahaProvider } from './providers/waha/waha.provider.js';
           new Logger('WhatsappModule').warn({ msg: 'proveedor de WhatsApp falso: no se envía nada real' });
           return new Map([['waha', new FakeWhatsAppProvider()]]);
         }
-        return new Map([['waha', new WahaProvider(waha)]]);
+        const webhook = { webhookUrl: env.WAHA_WEBHOOK_URL, hmacKey: env.WAHA_WEBHOOK_HMAC_KEY };
+        return new Map([['waha', new WahaProvider(waha, webhook)]]);
       },
     },
   ],

@@ -1,12 +1,17 @@
 # Estado del proyecto
 
-_Última actualización: 2026-11-01 (tarea 025, tiempo real de la bandeja)_
+_Última actualización: 2026-11-02 (tarea 011, canales y conexión por QR)_
 
 > Esta rama (`claude/bandeja-y-leads`) sale de `claude/panel-angular-base`, que sale de `main`. El estado de
 > la tarea 010 del agente (rama `claude/hopeful-darwin-mfj88r`, decisiones #63–#67) no está acá: al mergear,
 > juntar los dos `ESTADO.md`.
 
 ## Hecho
+
+- **Tarea 011 (canales, conexión por QR):** hecha el 2026-11-02 en la rama `claude/canales-qr` (sale de `46b6e92`), commiteada y pusheada. Ver el "Resultado" en `docs/tareas/hechas/011-canales-conexion-por-qr.md`, las decisiones #94 a #101 y la deuda de la 011.
+  - **Qué hay:** alta de números por QR desde `/canales` (sin cartel de riesgo, #101), reconectar, desconectar, cancelar y levantar la pausa; número único en toda la base; `channel_events`; cola `whatsapp-session-close`; tope de 20 sesiones abiertas por empresa.
+  - **Verificación:** API 722/722, panel 101/101, e2e de canales, capturas y respuesta 84/84; lint y typecheck OK. Los dos revisores aprobaron; el usuario aprobó las capturas.
+  - **Falta:** la prueba real con WAHA.
 
 - **Tarea 025 (tiempo real de la bandeja, SSE):** hecha el 2026-11-01 en la rama `claude/tiempo-real-bandeja` (sale de `claude/responder-desde-panel`). Ver el "Resultado" en `docs/tareas/hechas/025-tiempo-real-bandeja.md` y las decisiones #88 a #93. El usuario aprobó las capturas. **Sin commitear todavía.**
   - **Qué hay:**
@@ -80,10 +85,14 @@ _Última actualización: 2026-11-01 (tarea 025, tiempo real de la bandeja)_
 
 ## En curso
 
-- (nada)
+- Nada.
 
 ## Siguiente
 
+- **Prueba real de la 011 con WAHA** (con el OK del usuario y el número de prueba): alta desde el panel, escaneo, entrante en la bandeja, desconectar y reconectar. Confirmar qué responde `/logout` en una sesión sin teléfono (se asumió 422).
+- **Antes de desplegar:** `db:migrate` sobre una base vacía (la 0020 se editó después de aplicarla en local).
+- **Bundle inicial en 501,25 kB** (aviso en 500 kB): decidir si se recorta o se sube el presupuesto.
+- **Worktree de comparación de la 011:** en el scratchpad (`.../scratchpad/base`) hay uno con `node_modules` como junction. **No** usar `git worktree remove --force`: borraría el `node_modules` real. Quitar primero la junction (`rmdir`) y después `git worktree prune`.
 - **Commit de la 025** (mensaje propuesto en la sesión). Pendiente de antes: commit de la 024 y la prueba real con WAHA (con el OK del usuario). Limpiar los datos de los e2e en la base de desarrollo (con el OK del usuario).
 - **Seguimiento de la 024 (BAJO de seguridad):** con `dev:api` normal (WAHA real), responder a un lead del seed podría salir a un número inventado. Opción: que el seed deje el canal principal desconectado salvo que se pida otra cosa.
 

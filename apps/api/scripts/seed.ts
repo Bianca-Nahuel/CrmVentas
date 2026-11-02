@@ -9,7 +9,7 @@
 //
 // Credenciales y números SOLO de desarrollo (dominio reservado .test, teléfonos ficticios). Nunca
 // usar datos reales.
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { loadLocalEnv } from '../src/config/load-env.js';
 
 if (process.env.NODE_ENV === 'production') {
@@ -361,6 +361,11 @@ async function ensureInboxDemo(tenantId: string, ownerId: string, sellerId: stri
         .returning({ id: channels.id });
     }
     const channelIds = { principal: principal!.id, sucursal: sucursal!.id };
+    // Tarea 011: "conectado desde" en Canales (los canales del seed se crearon conectados).
+    await tx
+      .update(channels)
+      .set({ connectedAt: sql`COALESCE(${channels.connectedAt}, ${channels.createdAt})` })
+      .where(and(inArray(channels.id, [principal!.id, sucursal!.id]), eq(channels.status, 'connected')));
     // Tarea 024: la sucursal tiene los envíos pausados por riesgo de bloqueo (el panel lo explica y no deja
     // responder). Se vuelve a poner en cada corrida.
     await tx

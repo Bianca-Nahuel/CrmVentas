@@ -72,9 +72,10 @@ async function createChannel(label: string): Promise<Channel> {
   const session = `${ctx.prefix}_waha_${label}`;
   const channelId = await withTenant(ctx, tenantId, async (c) => {
     const { rows } = await c.query<{ id: string }>(
-      `INSERT INTO channels (tenant_id, name, phone_number, provider, connection_type, external_id,
+      // Sin número, como un alta desde el panel (tarea 011): el número sale del session.status WORKING.
+      `INSERT INTO channels (tenant_id, name, provider, connection_type, external_id,
          status, risk_accepted_at, risk_accepted_by)
-       VALUES ($1, 'ventas', '+5491100000099', 'waha', 'unofficial', $2, 'pending', now(), $3)
+       VALUES ($1, 'ventas', 'waha', 'unofficial', $2, 'pending', now(), $3)
        RETURNING id`,
       [tenantId, session, ownerId],
     );

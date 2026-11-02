@@ -1,8 +1,14 @@
-import { Body, Controller, Get, HttpCode, Param, Post, Put, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Header, HttpCode, Param, Post, Put, Query } from '@nestjs/common';
 import { RequirePermission } from '../auth/decorators.js';
 import { currentTenantContext, currentTx } from '../db/tenant-context.js';
 import { ZodValidationPipe } from '../http/zod-validation.pipe.js';
-import { channelParamsSchema, setChannelMembersSchema } from './channels.contracts.js';
+import { ChannelConnectionService } from './channel-connection.service.js';
+import {
+  channelParamsSchema,
+  createChannelBodySchema,
+  setChannelMembersSchema,
+  type CreateChannelBody,
+} from './channels.contracts.js';
 import { ChannelsService } from './channels.service.js';
 import {
   conversationParamsSchema,
@@ -79,9 +85,16 @@ export class InboxController {
   }
 }
 
+const channelIdParam = new ZodValidationPipe(channelParamsSchema, { notFound: true });
+
+// Conexión por QR (tarea 011): conectar, reconectar, ver el QR y levantar la pausa piden channel:connect;
+// desconectar y cancelar, channel:disconnect (owner y admin en libs/shared). Otra empresa → 404 (RLS).
 @Controller()
 export class ChannelsController {
-  constructor(private readonly channels: ChannelsService) {}
+  constructor(
+    private readonly channels: ChannelsService,
+    private readonly connection: ChannelConnectionService,
+  ) {}
 
   @RequirePermission({ channel: ['read'] })
   @Get('channels')
@@ -89,10 +102,53 @@ export class ChannelsController {
     return { items: await this.channels.list(currentTx()) };
   }
 
+  @RequirePermission({ channel: ['connect'] })
+  @HttpCode(200)
+  @Post('channels')
+  create(@Body(new ZodValidationPipe(createChannelBodySchema)) body: CreateChannelBody) {
+    return this.connection.create(currentTx(), currentTenantContext(), body);
+  }
+
+  @RequirePermission({ channel: ['disconnect'] })
+  @HttpCode(204)
+  @Delete('channels/:id')
+  async cancel(@Param(channelIdParam) params: { id: string }) {
+    await this.connection.cancel(currentTx(), currentTenantContext(), params.id);
+  }
+
+  // El QR permite vincular un teléfono a la sesión de la empresa: nunca se cachea ni se loguea.
+  @RequirePermission({ channel: ['connect'] })
+  @Header('Cache-Control', 'no-store')
+  @Get('channels/:id/pairing')
+  pairing(@Param(channelIdParam) params: { id: string }) {
+    return this.connection.pairing(currentTx(), params.id);
+  }
+
+  @RequirePermission({ channel: ['connect'] })
+  @HttpCode(200)
+  @Post('channels/:id/reconnect')
+  reconnect(@Param(channelIdParam) params: { id: string }) {
+    return this.connection.reconnect(currentTx(), currentTenantContext(), params.id);
+  }
+
+  @RequirePermission({ channel: ['disconnect'] })
+  @HttpCode(200)
+  @Post('channels/:id/disconnect')
+  disconnect(@Param(channelIdParam) params: { id: string }) {
+    return this.connection.disconnect(currentTx(), currentTenantContext(), params.id);
+  }
+
+  @RequirePermission({ channel: ['connect'] })
+  @HttpCode(200)
+  @Post('channels/:id/resume-sending')
+  resumeSending(@Param(channelIdParam) params: { id: string }) {
+    return this.connection.resumeSending(currentTx(), currentTenantContext(), params.id);
+  }
+
   @RequirePermission({ channel: ['assign'] })
   @Put('channels/:id/members')
   setMembers(
-    @Param(new ZodValidationPipe(channelParamsSchema, { notFound: true })) params: { id: string },
+    @Param(channelIdParam) params: { id: string },
     @Body(new ZodValidationPipe(setChannelMembersSchema)) body: { userIds: string[] },
   ) {
     return this.channels.setMembers(currentTx(), currentTenantContext(), params.id, body.userIds);

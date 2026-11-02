@@ -3,6 +3,8 @@
 import { toE164 } from './waha-normalize.js';
 
 const TIMEOUT_MS = 3000;
+// Detener o desvincular una sesión puede tardar más (WAHA cierra el motor).
+const SESSION_TIMEOUT_MS = 10_000;
 
 export interface WahaSessionWebhook {
   url: string;
@@ -71,10 +73,31 @@ export class WahaClient {
    * POST de una acción de chat (sendText, sendSeen, startTyping, stopTyping). Nunca lanza: devuelve la
    * respuesta (status y cuerpo como texto) o, si no la hubo, si el pedido llegó a salir o no.
    */
-  async chatAction(path: string, body: Record<string, unknown>, timeoutMs: number): Promise<WahaCallOutcome> {
+  chatAction(path: string, body: Record<string, unknown>, timeoutMs: number): Promise<WahaCallOutcome> {
+    return this.call('POST', path, body, timeoutMs);
+  }
+
+  /**
+   * Una llamada a la API de sesiones (iniciar, detener, desvincular, QR). Nunca lanza, igual que
+   * chatAction. Quien llama no loguea el cuerpo: la respuesta del QR permite vincular un teléfono.
+   */
+  sessionCall(
+    method: 'GET' | 'POST' | 'PUT' | 'DELETE',
+    path: string,
+    body?: unknown,
+  ): Promise<WahaCallOutcome> {
+    return this.call(method, path, body, SESSION_TIMEOUT_MS);
+  }
+
+  private async call(
+    method: string,
+    path: string,
+    body: unknown,
+    timeoutMs: number,
+  ): Promise<WahaCallOutcome> {
     let response: Response;
     try {
-      response = await this.request('POST', path, body, timeoutMs);
+      response = await this.request(method, path, body, timeoutMs);
     } catch (error) {
       const code = networkErrorCode(error);
       return { kind: NOT_SENT_CODES.has(code) ? 'not_sent' : 'no_response', code };

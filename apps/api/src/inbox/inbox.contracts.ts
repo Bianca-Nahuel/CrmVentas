@@ -38,7 +38,8 @@ export const leadListQuerySchema = z
 export type LeadListQuery = z.infer<typeof leadListQuerySchema>;
 
 const channelRefSchema = z
-  .object({ id: uuid, name: z.string(), phoneNumber: z.string() })
+  // phoneNumber null: un número que nunca terminó de conectarse (tarea 011).
+  .object({ id: uuid, name: z.string(), phoneNumber: z.string().nullable() })
   .meta({ id: 'ChannelRef' });
 const contactRefSchema = z
   .object({

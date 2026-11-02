@@ -1,7 +1,7 @@
 // Capturas de cada pantalla en claro y oscuro, a 375 px (celular) y 1280 px (escritorio).
 // Se guardan en test-results/capturas/ (fuera de git). Correr con: npm run e2e:web -- capturas
 import { expect, test, type Page } from '@playwright/test';
-import { USERS, expectInLayout, inbound, login, randomPhone } from './helpers';
+import { USERS, expectInLayout, inbound, login, randomPhone, sessionStatus } from './helpers';
 
 const WIDTHS = [
   { name: '375', width: 375, height: 812 },
@@ -135,6 +135,8 @@ for (const theme of THEMES) {
         await login(page, USERS.ownerCeramicos);
         await expectInLayout(page, 'Cerámicos Demo');
         await page.goto('/conversaciones');
+        // Por nombre: las conversaciones que dejan otras corridas pueden sacarla de las 50 más recientes.
+        await page.getByLabel('Buscar conversación').fill(name);
         await page.getByTestId('inbox-item').filter({ hasText: name }).click();
         await expect(page.getByTestId('conversation-title')).toHaveText(name);
         await expect(page.getByTestId('message').first()).toBeVisible();
@@ -217,6 +219,72 @@ for (const theme of THEMES) {
         await expect(indicator(page)).toHaveAttribute('data-status', 'offline');
         await shot(page, '22d-indicador-sin-conexion');
         await context.setOffline(false);
+      });
+
+      // Tarea 011: canales. El escaneo se simula con el webhook firmado (proveedor falso, números ficticios).
+      // El canal "Capturas" se reutiliza entre corridas (reconectar): no se acumulan canales en la lista.
+      test('canales: lista, alta, QR, rechazo, conectado y desconectar', async ({ page, request }) => {
+        await login(page, USERS.ownerCeramicos);
+        await expectInLayout(page, 'Cerámicos Demo');
+        await page.goto('/canales');
+        const rows = page.getByTestId('channel-row');
+        const row = (name: string) => rows.filter({ hasText: name });
+        const dialog = page.getByRole('dialog');
+        await expect(row('ventas-principal')).toBeVisible();
+        await shot(page, '23-canales-lista', true);
+
+        await page.getByTestId('connect-new').click();
+        await dialog.getByLabel('Nombre del canal').fill('Ventas Centro');
+        await shot(page, '24-canales-alta');
+        await dialog.getByTestId('create-channel').click();
+        await expect(dialog.getByTestId('qr-image')).toBeVisible();
+        await shot(page, '25-canales-qr');
+
+        // Se escanea con un número que ya está en otro canal: el diálogo lo explica.
+        const id = (await row('Ventas Centro').last().getAttribute('data-channel-id'))!;
+        const principal = (await row('ventas-principal').getByTestId('channel-phone').textContent())!.match(
+          /\+(\d+)/,
+        )![1]!;
+        await sessionStatus(request, id, 'WORKING', principal);
+        await expect(dialog.getByTestId('pairing-status')).toContainText('No se conectó', { timeout: 8_000 });
+        await shot(page, '26-canales-qr-rechazado');
+        await dialog.getByRole('button', { name: 'Cerrar' }).click();
+        await expect(row('Ventas Centro').last().getByTestId('channel-reason')).toBeVisible();
+        await shot(page, '27-canales-lista-rechazado', true);
+        await row('Ventas Centro').last().getByTestId('cancel-channel').click();
+        await expect(page.getByRole('alertdialog')).toBeVisible();
+        await shot(page, '28-canales-cancelar-confirmacion');
+        await page.getByRole('alertdialog').getByTestId('confirm').click();
+        await expect(row('Ventas Centro')).toHaveCount(0);
+
+        // Conectado: el canal Capturas (se crea la primera vez y después se reconecta).
+        let phone: string;
+        if ((await row('Capturas').count()) === 0) {
+          await page.getByTestId('connect-new').click();
+          await dialog.getByLabel('Nombre del canal').fill('Capturas');
+          await dialog.getByTestId('create-channel').click();
+          phone = randomPhone();
+        } else {
+          phone = (await row('Capturas').getByTestId('channel-phone').textContent())!.match(/\+(\d+)/)![1]!;
+          await row('Capturas').getByTestId('reconnect').click();
+        }
+        await expect(dialog.getByTestId('qr-image')).toBeVisible();
+        await sessionStatus(
+          request,
+          (await row('Capturas').getAttribute('data-channel-id'))!,
+          'WORKING',
+          phone,
+        );
+        await expect(dialog.getByTestId('pairing-status')).toContainText('¡Conectado!', { timeout: 8_000 });
+        await shot(page, '29-canales-conectado');
+        await dialog.getByTestId('pairing-done').click();
+
+        await row('Capturas').getByTestId('disconnect').click();
+        await expect(page.getByRole('alertdialog')).toBeVisible();
+        await shot(page, '30-canales-desconectar-confirmacion');
+        await page.getByRole('alertdialog').getByTestId('confirm').click();
+        await expect(row('Capturas').getByTestId('channel-status')).toHaveText('Desconectado');
+        await shot(page, '31-canales-lista-estados', true);
       });
 
       test('sistema de diseño', async ({ page }) => {

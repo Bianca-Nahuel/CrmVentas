@@ -12,7 +12,31 @@ export interface WhatsAppCapabilities {
   adAttribution: boolean;
   /** Permite campañas salientes (nunca en la conexión no oficial). */
   outboundCampaigns: boolean;
+  /**
+   * Cómo se vincula un número: `qr` (se escanea desde el teléfono, como WhatsApp Web) o `embedded_signup`
+   * (alta embebida de Meta). Los métodos de conexión de abajo solo sirven con `qr`.
+   */
+  pairing: 'qr' | 'embedded_signup';
 }
+
+/** Resultado de una acción sobre la sesión. `code`: corto, para logs, sin datos personales. */
+export type ConnectionResult = { ok: true } | { ok: false; code: string };
+
+/**
+ * Estado de la vinculación por QR, tal como lo ve el proveedor:
+ * - qr:          el código vigente (`data:image/png;base64,...`). Cambia solo cada pocos segundos.
+ * - starting:    la sesión está arrancando; el QR todavía no está.
+ * - connected:   ya hay un teléfono vinculado.
+ * - expired:     la sesión se detuvo o falló (por ejemplo, se agotaron los QR): hace falta uno nuevo.
+ * - unavailable: no se pudo consultar al proveedor.
+ * El QR nunca se guarda ni se loguea: quien lo tiene puede vincular su teléfono a la sesión.
+ */
+export type PairingQr =
+  | { state: 'qr'; image: string }
+  | { state: 'starting' }
+  | { state: 'connected' }
+  | { state: 'expired' }
+  | { state: 'unavailable'; code: string };
 
 export type NormalizeResult =
   { kind: 'event'; event: WhatsAppEvent } | { kind: 'ignored'; reason: string; eventId: string | null };
@@ -65,6 +89,8 @@ export interface ChatTarget {
 
 export interface WhatsAppProvider {
   readonly id: WhatsAppProviderId;
+  /** Lo que se guarda en channels.connection_type (y exige aceptar el riesgo si es `unofficial`). */
+  readonly connectionType: 'unofficial' | 'official';
   readonly capabilities: WhatsAppCapabilities;
   /** Traduce el payload crudo del webhook (ya autenticado) a un evento interno. Pura. */
   normalize(raw: unknown): NormalizeResult;
@@ -84,6 +110,20 @@ export interface WhatsAppProvider {
   markSeen(target: ChatTarget & { messages: SeenMessage[] }): Promise<PresenceResult>;
   startTyping(target: ChatTarget): Promise<PresenceResult>;
   stopTyping(target: ChatTarget): Promise<PresenceResult>;
+  // Conexión por QR (capabilities.pairing = 'qr'). Nunca lanzan: todo error vuelve tipado. El número
+  // vinculado no sale de acá sino del evento session.status (decisión #27).
+  /** Identificador de la sesión del canal en el proveedor (channels.external_id): lo genera el sistema. */
+  sessionIdFor(channelId: string): string;
+  /** Crea e inicia la sesión con su webhook firmado; queda esperando el escaneo. */
+  openSession(externalId: string): Promise<ConnectionResult>;
+  /** Desvincula lo que hubiera y vuelve a iniciar la sesión con un QR nuevo (la crea si no existe). */
+  restartPairing(externalId: string): Promise<ConnectionResult>;
+  getPairingQr(externalId: string): Promise<PairingQr>;
+  /**
+   * Desvincula el teléfono y detiene la sesión. Con `forget`, además la borra del proveedor (canal
+   * cancelado). Que la sesión ya no exista cuenta como éxito.
+   */
+  closeSession(externalId: string, options: { forget: boolean }): Promise<ConnectionResult>;
 }
 
 /** Token de inyección con todos los proveedores registrados. */

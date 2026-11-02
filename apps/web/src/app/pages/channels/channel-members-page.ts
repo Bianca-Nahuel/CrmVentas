@@ -27,7 +27,7 @@ export function initials(name: string): string {
 
 /**
  * Números y vendedores (tarea 014, owner y admin): qué vendedores atienden cada número. Un seller ve solo
- * las conversaciones de sus números. La pantalla completa de Canales (conectar por QR) es la 011.
+ * las conversaciones de sus números. Conectar y desconectar números está en Canales (tarea 011).
  */
 @Component({
   selector: 'app-channel-members-page',
@@ -65,7 +65,7 @@ export function initials(name: string): string {
                 <h2 class="truncate text-base font-semibold text-text" [id]="'channel-' + channel.id">
                   {{ channel.name }}
                 </h2>
-                <p class="tabular text-sm text-muted">{{ channel.phoneNumber }}</p>
+                <p class="tabular text-sm text-muted">{{ channel.phoneNumber ?? 'Sin número todavía' }}</p>
               </div>
               <span
                 class="inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold"

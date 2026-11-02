@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { WahaClient } from '../src/whatsapp/providers/waha/waha-client.js';
 import { classifyWahaFailure, toSendResult, wahaChatId } from '../src/whatsapp/providers/waha/waha-send.js';
 import { WahaProvider } from '../src/whatsapp/providers/waha/waha.provider.js';
+const TEST_WEBHOOK = { webhookUrl: 'http://api/api/webhooks/waha', hmacKey: 'k'.repeat(32) };
 
 interface Call {
   url: string;
@@ -15,7 +16,7 @@ function provider(respond: () => Promise<Response> | Response, calls: Call[] = [
     calls.push({ url: String(input), body: init?.body ? JSON.parse(String(init.body)) : undefined });
     return respond();
   }) as typeof fetch;
-  return new WahaProvider(new WahaClient('http://waha:3000', 'k', fetchImpl));
+  return new WahaProvider(new WahaClient('http://waha:3000', 'k', fetchImpl), TEST_WEBHOOK);
 }
 
 const json = (status: number, body: unknown) => () => new Response(JSON.stringify(body), { status });

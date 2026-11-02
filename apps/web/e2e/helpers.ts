@@ -57,6 +57,11 @@ export async function inbound(request: APIRequestContext, phone: string, text: s
       },
     },
   });
+  await postWebhook(request, body);
+}
+
+/** POST al webhook de WAHA firmado con la clave de esta corrida (playwright.config.ts). */
+async function postWebhook(request: APIRequestContext, body: string) {
   const secret = process.env['E2E_WAHA_HMAC_KEY'];
   if (!secret) throw new Error('Falta E2E_WAHA_HMAC_KEY (la pone playwright.config.ts)');
   const response = await request.post(WEBHOOK_URL, {
@@ -68,4 +73,29 @@ export async function inbound(request: APIRequestContext, phone: string, text: s
     },
   });
   expect(response.status()).toBe(200);
+}
+
+// Tarea 011: escaneo del QR simulado. La API corre con el proveedor falso; el escaneo llega como en
+// producción, con un session.status firmado de WAHA. La sesión de un canal es 'ch_' + su id sin guiones.
+const SESSION_FIXTURE = new URL(
+  '../../api/test/fixtures/whatsapp/waha/session-status-working.json',
+  import.meta.url,
+);
+
+/** session.status de la sesión del canal: WORKING con el número escaneado (solo dígitos), o el estado dado. */
+export async function sessionStatus(
+  request: APIRequestContext,
+  channelId: string,
+  status: 'WORKING' | 'FAILED' | 'STOPPED',
+  phone?: string,
+) {
+  const base = JSON.parse(readFileSync(SESSION_FIXTURE, 'utf8')) as Record<string, unknown>;
+  const body = JSON.stringify({
+    ...base,
+    id: `evt_${uid()}`,
+    session: `ch_${channelId.replaceAll('-', '')}`,
+    me: phone ? { id: `${phone}@c.us`, pushName: 'Negocio e2e' } : null,
+    payload: { status, statuses: [{ status, timestamp: Date.now() }], data: null },
+  });
+  await postWebhook(request, body);
 }

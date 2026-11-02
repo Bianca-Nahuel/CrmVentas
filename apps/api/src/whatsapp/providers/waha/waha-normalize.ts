@@ -231,12 +231,16 @@ function normalizeSessionStatus(envelope: WahaEnvelope): NormalizeResult {
   const wahaStatus = stringAt(envelope.payload, 'status');
   const status = wahaStatus ? SESSION_STATUS_MAP[wahaStatus] : undefined;
   if (!status) return ignored('unknown_status', envelope.id);
+  // El número vinculado viene en el sobre (`me.id`, `5491122334455@c.us`), no en el payload.
+  const me = status === 'connected' ? toE164(stringAt(asRecord(envelope.me), 'id') ?? '') : null;
   const event: SessionStatusEvent = {
     type: 'session.status',
     provider: 'waha',
     channelExternalId: envelope.session,
     eventId: envelope.id,
     status,
+    phoneNumber: me,
+    failed: wahaStatus === 'FAILED',
   };
   return { kind: 'event', event };
 }

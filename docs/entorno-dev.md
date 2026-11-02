@@ -68,17 +68,37 @@ En DBeaver: nueva conexión PostgreSQL con esos datos y la contraseña del `.env
 
 ## 5. Conectar un número en WAHA
 
-1. Abrí `http://localhost:3001/dashboard` y entrá con `WAHA_DASHBOARD_USERNAME` /
-   `WAHA_DASHBOARD_PASSWORD`. Si el dashboard pide la API key, es `WAHA_API_KEY`.
-2. Creá el canal y su sesión con el script (no desde el dashboard: así la sesión queda con el webhook
-   firmado y el nombre que genera el backend):
+Desde la tarea 011 un número se conecta desde el panel, con `npm run dev:api` y `npm run dev:web`
+corriendo (WAHA real, sin `WHATSAPP_FAKE_PROVIDER`):
 
-   ```bash
-   npm run dev:create-channel -- --tenant ceramicos-demo --name "Ventas prueba" --phone +549XXXXXXXXXX
-   ```
+1. Entrá como owner o admin a **Canales** (`/canales`) → **Conectar un número**.
+2. Poné un nombre, aceptá el riesgo de la conexión no oficial y tocá **Continuar**.
+3. Escaneá el QR desde WhatsApp → Dispositivos vinculados → Vincular un dispositivo. El QR se renueva solo
+   (WAHA da hasta 6, unos 2,5 minutos); si vence, **Generar QR nuevo**.
+4. El canal pasa a **Conectado** con el número que escaneó: el número sale del escaneo (`me.id` de
+   `session.status`), nunca se escribe a mano.
 
-3. En el dashboard, abrí la sesión que imprimió el script y escaneá el QR desde WhatsApp →
-   Dispositivos vinculados.
+Desde la misma pantalla se desconecta, se reconecta (QR nuevo, mismo canal y mismo historial), se cancela
+un alta que nunca se conectó y se levanta la pausa de envíos. El navegador nunca habla con WAHA: el QR lo
+pide la API (`GET /api/channels/:id/pairing`, sin caché).
+
+Sin el panel, el script crea el canal `pending` y su sesión (con el webhook firmado y el nombre que genera
+el backend; no crear sesiones desde el dashboard). El QR se escanea después desde el panel (Ver QR) o desde
+el dashboard de WAHA (`http://localhost:3001/dashboard`, con `WAHA_DASHBOARD_USERNAME` /
+`WAHA_DASHBOARD_PASSWORD`; si pide la API key, es `WAHA_API_KEY`):
+
+```bash
+npm run dev:create-channel -- --tenant ceramicos-demo --name "Ventas prueba"
+```
+
+Reglas del número (tarea 011):
+
+- Reescanear un canal con otro teléfono no pisa su número: queda desconectado ("se escaneó con otro
+  teléfono") y la sesión se desvincula sola.
+- Un número no puede estar en dos canales, ni de la misma empresa ni de dos empresas: el segundo queda
+  desconectado ("ya está conectado en…") y su sesión se desvincula.
+- Un alta sin escanear vence con los QR de WAHA (queda desconectada, "el QR venció") y se puede cancelar.
+- Hasta 20 canales esperando el escaneo o conectados por empresa.
 
 **Solo se usa el número de prueba del equipo. Nunca un número personal ni el de un cliente.**
 
@@ -119,7 +139,8 @@ bloqueado o con el canal desconectado o pausado, queda `rejected`. Antes de envi
 muestra "escribiendo…" unos segundos.
 
 Si WAHA avisa riesgo de bloqueo (errores 463/475), el canal queda con los envíos pausados sin vencimiento y
-no se reinicia la sesión. Para levantar la pausa (después de bajar el ritmo):
+no se reinicia la sesión. Para levantar la pausa (después de bajar el ritmo), desde el panel: Canales →
+**Levantar pausa** (queda registrado quién y cuándo). Sin el panel:
 
 ```bash
 npm run dev:resume-channel -- --tenant <id de la empresa> --channel <id del canal>

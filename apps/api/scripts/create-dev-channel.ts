@@ -1,5 +1,6 @@
 // Crea un canal de WhatsApp no oficial (WAHA) de desarrollo y su sesión en WAHA, con el webhook
-// firmado. Uso: npm run dev:create-channel -- --tenant <slug> --name <nombre> --phone <+54...>
+// firmado. Uso: npm run dev:create-channel -- --tenant <slug> --name <nombre>
+// Lo mismo que "Conectar un número" en la pantalla Canales del panel (tarea 011), que es el camino normal.
 //
 // - El external_id (nombre de la sesión de WAHA) lo genera este script: 'ch_' + id del canal sin
 //   guiones. Nunca se acepta por parámetro (ver "Secuestro de número entre empresas" en decisiones.md).
@@ -7,8 +8,8 @@
 //   app.user_id, no de un parámetro.
 // - El canal se inserta como ventas_app con la empresa activa (RLS). Si WAHA no crea la sesión, la
 //   transacción hace rollback y no queda un canal sin sesión.
-// - Provisorio: --phone no se verifica contra el teléfono que escanea el QR. En la tarea 008 el número
-//   sale del escaneo (me.id de session.status WORKING); ver decisión #27 en docs/decisiones.md.
+// - Sin número: el canal queda pending y el número sale del escaneo del QR (me.id de session.status
+//   WORKING, decisión #27). El QR se escanea desde el panel (/canales → Ver QR) o el dashboard de WAHA.
 // Solo para desarrollo: no corre con NODE_ENV=production ni contra una base que no sea local.
 import { parseArgs } from 'node:util';
 import { and, asc, eq, sql } from 'drizzle-orm';
@@ -26,27 +27,21 @@ const { withTenantTransaction } = await import('../src/db/tenant-context.js');
 const { memberships, tenants } = await import('../src/db/schema/auth.js');
 const { channels } = await import('../src/db/schema/messaging.js');
 const { WahaClient } = await import('../src/whatsapp/providers/waha/waha-client.js');
-const { wahaSessionFor } = await import('./lib/waha-session.js');
+const { WahaProvider } = await import('../src/whatsapp/providers/waha/waha.provider.js');
 
-const USAGE = 'Uso: npm run dev:create-channel -- --tenant <slug> --name <nombre> --phone <+54...>';
+const USAGE = 'Uso: npm run dev:create-channel -- --tenant <slug> --name <nombre>';
 
 const { values } = parseArgs({
   options: {
     tenant: { type: 'string' },
     name: { type: 'string' },
-    phone: { type: 'string' },
   },
   strict: true,
 });
 const tenantSlug = values.tenant?.trim();
 const channelName = values.name?.trim();
-const phone = values.phone?.trim();
-if (!tenantSlug || !channelName || !phone) {
+if (!tenantSlug || !channelName) {
   console.error(USAGE);
-  process.exit(1);
-}
-if (!/^\+[1-9][0-9]{6,14}$/.test(phone)) {
-  console.error('--phone tiene que estar en formato E.164 (por ejemplo +5491122334455).');
   process.exit(1);
 }
 if (channelName.length > 100) {
@@ -63,7 +58,10 @@ if (env.NODE_ENV === 'production' || !isLocalHost(env.DATABASE_URL) || !isLocalH
 
 const authDatabase = createAuthDatabase(env.DATABASE_URL_AUTH);
 const appDatabase = createAppDatabase(env.DATABASE_URL);
-const waha = new WahaClient(env.WAHA_BASE_URL, env.WAHA_API_KEY);
+const waha = new WahaProvider(new WahaClient(env.WAHA_BASE_URL, env.WAHA_API_KEY), {
+  webhookUrl: env.WAHA_WEBHOOK_URL,
+  hmacKey: env.WAHA_WEBHOOK_HMAC_KEY,
+});
 
 try {
   // Empresa y owner (tablas de autenticación: pool de ventas_auth).
@@ -92,34 +90,32 @@ try {
     async (tx) => {
       const idResult = await tx.execute<{ id: string }>(sql`SELECT uuidv7() AS id`);
       const channelId = idResult.rows[0]!.id;
-      // Letras, números y guion bajo: válido como nombre de sesión de WAHA.
-      const externalId = `ch_${channelId.replaceAll('-', '')}`;
+      const externalId = waha.sessionIdFor(channelId);
       await tx.insert(channels).values({
         id: channelId,
         tenantId: owner.tenantId,
         name: channelName,
-        phoneNumber: phone,
-        provider: 'waha',
-        connectionType: 'unofficial',
+        phoneNumber: null,
+        provider: waha.id,
+        connectionType: waha.connectionType,
         externalId,
         status: 'pending',
         riskAcceptedAt: sql`now()`,
         riskAcceptedBy: sql`app_user_id()`,
       });
-      await waha.createSession(wahaSessionFor(env, externalId));
-      return externalId;
+      const opened = await waha.openSession(externalId);
+      if (!opened.ok) throw new Error(`WAHA respondió ${opened.code} al crear la sesión`);
+      return { channelId, externalId };
     },
   );
 
-  console.log(`Canal creado. Sesión de WAHA: ${session}`);
-  console.log(`Escaneá el QR desde el dashboard: ${new URL('/dashboard', env.WAHA_BASE_URL).href}`);
+  console.log(`Canal creado (${session.channelId}). Sesión de WAHA: ${session.externalId}`);
+  console.log('Escaneá el QR desde el panel (Canales → Ver QR) o desde el dashboard de WAHA.');
 } catch (error) {
-  // Los errores de Drizzle traen la consulta con sus parámetros (el teléfono): solo se muestra el código.
+  // Los errores de Drizzle traen la consulta con sus parámetros: solo se muestra el código.
   const failure = error as { message?: string; code?: string; cause?: { code?: string } };
   const code = failure.cause?.code ?? failure.code;
-  if (code === '23505') {
-    console.error('Esa empresa ya tiene un canal con ese número.');
-  } else if (failure.message?.startsWith('WAHA respondió')) {
+  if (failure.message?.startsWith('WAHA respondió')) {
     console.error(`No se pudo crear el canal: ${failure.message}`);
   } else {
     console.error(`No se pudo crear el canal (código ${code ?? 'desconocido'}).`);
