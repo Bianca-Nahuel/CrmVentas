@@ -1,6 +1,6 @@
 import { createHmac, randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import { expect, type APIRequestContext, type Page } from '@playwright/test';
+import { expect, type APIRequestContext, type Cookie, type Page } from '@playwright/test';
 
 // Usuarios del seed (apps/api/scripts/seed.ts). Contraseña pública de desarrollo (SEED_PASSWORD), nunca
 // datos reales.
@@ -16,6 +16,29 @@ export async function login(page: Page, email: string, password = SEED_PASSWORD,
   await page.getByLabel('Email').fill(email);
   await page.getByLabel('Contraseña', { exact: true }).fill(password);
   await page.getByRole('button', { name: 'Ingresar' }).click();
+}
+
+/** Cookies de la sesión de cada usuario, para no pasar por el login en cada test (workers: 1). */
+const sessions = new Map<string, Cookie[]>();
+
+/**
+ * Entra al panel como un usuario de una sola empresa: el primer test inicia sesión y los demás reusan la
+ * cookie. Si la sesión ya no vale (por ejemplo, un logout), vuelve a iniciarla. Los tests del login, de
+ * elegir empresa y de la membresía dada de baja usan login().
+ */
+export async function loginAs(page: Page, email: string) {
+  const layout = page.getByTestId('tenant-name');
+  const cached = sessions.get(email);
+  if (cached) {
+    await page.context().addCookies(cached);
+    await page.goto('/');
+    const loginForm = page.getByRole('heading', { name: 'Ingresá a tu cuenta' });
+    await expect(layout.or(loginForm)).toBeVisible();
+    if (await layout.isVisible()) return;
+  }
+  await login(page, email);
+  await expect(layout).toBeVisible();
+  sessions.set(email, await page.context().cookies());
 }
 
 export async function expectInLayout(page: Page, tenantName: string) {

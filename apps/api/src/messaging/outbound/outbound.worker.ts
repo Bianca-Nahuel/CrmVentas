@@ -1,5 +1,5 @@
 import { setTimeout as sleep } from 'node:timers/promises';
-import { Inject, Injectable, Logger, Optional, type OnApplicationBootstrap } from '@nestjs/common';
+import { Inject, Injectable, Logger, type OnApplicationBootstrap, Optional } from '@nestjs/common';
 import { and, eq, inArray, ne, sql } from 'drizzle-orm';
 import type { PgBoss } from 'pg-boss';
 import { APP_DB, type AppDatabase } from '../../db/database.module.js';
@@ -7,7 +7,9 @@ import { conversations, messages, outboundMessages } from '../../db/schema/messa
 import { withTenantTransaction, type AppTx } from '../../db/tenant-context.js';
 import { publishConversationEvent } from '../../realtime/publish.js';
 import { errorCode } from '../../jobs/error-code.js';
-import { BOSS, QUEUES } from '../../jobs/jobs.module.js';
+import { ENV } from '../../config/config.module.js';
+import type { Env } from '../../config/env.js';
+import { BOSS, pollingSeconds, QUEUES } from '../../jobs/jobs.module.js';
 import {
   WHATSAPP_PROVIDER_REGISTRY,
   type ChatTarget,
@@ -35,7 +37,8 @@ import {
   type SendContext,
 } from './outbound.service.js';
 
-const WORK_OPTIONS = { localConcurrency: 4, pollingIntervalSeconds: 1, includeMetadata: true } as const;
+const WORK_OPTIONS = { localConcurrency: 4, includeMetadata: true } as const;
+type WorkOptions = typeof WORK_OPTIONS & { pollingIntervalSeconds: number };
 
 // Si otro envío del chat está en curso (solo pasa si un trabajo venció o se cayó el proceso), se vuelve a
 // mirar en este lapso.
@@ -66,6 +69,8 @@ type ClaimResult =
 @Injectable()
 export class OutboundWorker implements OnApplicationBootstrap {
   private readonly logger = new Logger('OutboundWorker');
+  // Inyección por propiedad: los tests que crean el worker a mano no la pasan (queda el valor por defecto).
+  @Optional() @Inject(ENV) private readonly env?: Env;
   private readonly timing: OutboundTiming;
 
   constructor(
@@ -77,10 +82,14 @@ export class OutboundWorker implements OnApplicationBootstrap {
     this.timing = timing ?? REAL_TIMING;
   }
 
+  private workOptions(): WorkOptions {
+    return { ...WORK_OPTIONS, pollingIntervalSeconds: pollingSeconds(this.env) };
+  }
+
   async onApplicationBootstrap(): Promise<void> {
-    await this.boss.work<OutboundJob, unknown, typeof WORK_OPTIONS>(
+    await this.boss.work<OutboundJob, unknown, WorkOptions>(
       QUEUES.whatsappOutbound,
-      WORK_OPTIONS,
+      this.workOptions(),
       async (jobs) => {
         for (const job of jobs) await this.handle(job.data, job);
       },

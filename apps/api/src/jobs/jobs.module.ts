@@ -15,6 +15,14 @@ export const QUEUES = {
   catalogRefresh: 'catalog-refresh',
 } as const;
 
+/**
+ * Cada cuánto busca trabajos un worker (JOBS_POLLING_SECONDS × factor). Sin env (un worker creado a mano
+ * en un test), el valor por defecto.
+ */
+export function pollingSeconds(env: Env | undefined, factor = 1): number {
+  return (env?.JOBS_POLLING_SECONDS ?? 1) * factor;
+}
+
 // pg-boss corre como ventas_app (DATABASE_URL) sobre el schema pgboss que crea ventas_owner en la
 // migración: sin crear schema, sin migrar y sin REINDEX (ventas_app no es dueño de nada ahí).
 // Sin estadísticas ni warnings persistidos: no hacen falta y crearían particiones (DDL).

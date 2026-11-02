@@ -1,7 +1,7 @@
 // Tarea 024: responder desde el panel. La API de los e2e arranca con el proveedor de WhatsApp falso
 // (playwright.config.ts): el envío pasa por el outbox y el worker de verdad, pero nada sale por WhatsApp.
 import { expect, test, type Page } from '@playwright/test';
-import { USERS, expectInLayout, login } from './helpers';
+import { expectInLayout, login, loginAs, USERS } from './helpers';
 
 async function openConversation(page: Page, name: string) {
   await page.goto('/conversaciones');
@@ -41,7 +41,7 @@ test.describe('responder desde el panel', () => {
   });
 
   test('número con los envíos pausados: caja deshabilitada y el motivo en texto', async ({ page }) => {
-    await login(page, USERS.ownerCeramicos);
+    await loginAs(page, USERS.ownerCeramicos);
     await expectInLayout(page, 'Cerámicos Demo');
     await openConversation(page, 'Sofía Herrera');
     const box = page.getByTestId('reply-box');
@@ -52,7 +52,7 @@ test.describe('responder desde el panel', () => {
   });
 
   test('más de 24 h sin que escriba el cliente: no se puede responder y se explica', async ({ page }) => {
-    await login(page, USERS.ownerCeramicos);
+    await loginAs(page, USERS.ownerCeramicos);
     await expectInLayout(page, 'Cerámicos Demo');
     await openConversation(page, 'Diego Ventana');
     const box = page.getByTestId('reply-box');
@@ -63,7 +63,7 @@ test.describe('responder desde el panel', () => {
   test('estado de cada mensaje con ícono y texto; reintento solo en lo que seguro no salió', async ({
     page,
   }) => {
-    await login(page, USERS.ownerCeramicos);
+    await loginAs(page, USERS.ownerCeramicos);
     await expectInLayout(page, 'Cerámicos Demo');
     await openConversation(page, 'Carla Estados');
     const state = (text: string) =>
