@@ -577,17 +577,47 @@ describe('7. límites, latido y reconexión', () => {
 
   it('un pedido que se corta antes de quedar abierto no queda contado', async () => {
     const client = await login('seller', tenantA);
-    for (let i = 0; i < 6; i++) {
-      // Se corta apenas salen los headers del pedido, mientras la API todavía calcula el scope.
-      const abort = new AbortController();
-      const pending = fetch(`${ctx.baseUrl}/api/events`, {
-        headers: { Cookie: client.cookieHeader() },
-        signal: abort.signal,
-      }).catch(() => undefined);
-      await new Promise((resolve) => setTimeout(resolve, 5));
-      abort.abort();
-      await pending;
+    const limit = ctx.env.REALTIME_MAX_STREAMS_PER_USER;
+    // Se frena el cálculo del scope para cortar los pedidos justo ahí, con su lugar ya reservado (sin
+    // depender de cuánto tarda el guard). Se guarda la respuesta de cada uno para saber cuándo la API vio
+    // el corte.
+    type Hub = {
+      open: RealtimeHub['open'];
+      resolveScope: (context: unknown) => Promise<unknown>;
+    };
+    const spied = hub as unknown as Hub;
+    const originalOpen = spied.open;
+    const originalScope = spied.resolveScope;
+    const responses: { destroyed: boolean }[] = [];
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    spied.open = (session, context, cookie, response) => {
+      responses.push(response);
+      return originalOpen.call(hub, session, context, cookie, response);
+    };
+    spied.resolveScope = async (context) => {
+      await gate;
+      return originalScope.call(hub, context);
+    };
+    try {
+      const aborts = Array.from({ length: limit }, () => new AbortController());
+      const pending = aborts.map((abort) =>
+        fetch(`${ctx.baseUrl}/api/events`, {
+          headers: { Cookie: client.cookieHeader() },
+          signal: abort.signal,
+        }).catch(() => undefined),
+      );
+      // Los N pedidos están adentro, calculando el scope: ocupan todos los lugares del usuario.
+      await waitFor(async () => hub.countFor(users.seller.id) === limit, 5_000);
+      for (const abort of aborts) abort.abort();
+      await Promise.all(pending);
+      await waitFor(async () => responses.length === limit && responses.every((r) => r.destroyed), 5_000);
+    } finally {
+      spied.open = originalOpen;
+      spied.resolveScope = originalScope;
+      release();
     }
+    // Al terminar el scope, los cortados liberan su lugar y no se registran: el usuario puede abrir uno.
     await waitFor(async () => hub.countFor(users.seller.id) === 0, 3_000);
     const stream = await open(client);
     expect(stream.status).toBe(200);
