@@ -9,11 +9,12 @@ import { Button } from '../../ui/button';
 import { BrandMark } from '../../ui/brand-mark';
 import { Icon } from '../../ui/icon';
 import { ROLE_LABELS } from '../../core/roles';
+import { Spinner } from '../../ui/spinner';
 
 @Component({
   selector: 'app-choose-tenant-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [BrandMark, Icon, Button],
+  imports: [BrandMark, Icon, Button, Spinner],
   host: { class: 'flex min-h-dvh flex-col items-center px-4 py-10 sm:justify-center sm:py-16' },
   template: `
     <main class="w-full max-w-md">
@@ -25,7 +26,9 @@ import { ROLE_LABELS } from '../../core/roles';
         </p>
 
         @if (loading()) {
-          <p class="mt-6 text-sm text-muted" role="status">Cargando empresas…</p>
+          <p class="flex items-center gap-2 mt-6 text-sm text-muted" role="status">
+            <app-spinner /> Cargando empresas…
+          </p>
         } @else {
           <ul class="mt-6 flex flex-col gap-2" aria-label="Empresas">
             @for (tenant of tenants(); track tenant.id) {

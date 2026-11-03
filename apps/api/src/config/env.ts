@@ -93,6 +93,12 @@ const envSchema = z.object({
     .enum(['true', 'false'])
     .default('true')
     .transform((value) => value === 'true'),
+  // Vigía de reconexión: cada minuto revisa en el proveedor los números que quedaron sin conectar y los
+  // reconecta (sin QR). Los tests lo apagan: comparten la base con desarrollo.
+  CHANNEL_WATCH_ENABLED: z
+    .enum(['true', 'false'])
+    .default('true')
+    .transform((value) => value === 'true'),
   // Modelo por defecto si la empresa no eligió otro; tiene que estar en ALLOWED_MODELS.
   AI_DEFAULT_MODEL: z
     .string()

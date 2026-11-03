@@ -9,6 +9,7 @@ import type { ImportApplyResult, ImportPreview, ImportRowList } from '../../api/
 import { ConfirmService } from '../../ui/confirm-dialog';
 import { Icon } from '../../ui/icon';
 import { Paginator } from '../../ui/table';
+import { Spinner } from '../../ui/spinner';
 
 const MAX_BYTES = 5 * 1024 * 1024;
 
@@ -73,7 +74,7 @@ function emptyMapping(): Mapping {
 @Component({
   selector: 'app-catalog-import-wizard',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [FormField, Icon, Paginator, RouterLink],
+  imports: [FormField, Icon, Paginator, RouterLink, Spinner],
   template: `
     <ol class="mb-5 flex flex-wrap gap-2 text-sm" aria-label="Pasos">
       @for (label of stepLabels; track $index; let i = $index) {
@@ -104,7 +105,12 @@ function emptyMapping(): Mapping {
         <p class="font-semibold text-text">Arrastrá el Excel acá</p>
         <p class="text-sm text-subtle">Hasta 5 MB y 10.000 filas, solo .xlsx.</p>
         <label class="btn btn-primary cursor-pointer">
-          <app-icon [icon]="uploadIcon" [size]="18" /> {{ busy() ? 'Subiendo…' : 'Elegir archivo' }}
+          @if (busy()) {
+            <app-spinner [size]="18" />
+          } @else {
+            <app-icon [icon]="uploadIcon" [size]="18" />
+          }
+          {{ busy() ? 'Subiendo…' : 'Elegir archivo' }}
           <input
             type="file"
             class="sr-only"
@@ -168,6 +174,9 @@ function emptyMapping(): Mapping {
             (click)="seeChanges()"
             data-testid="see-changes"
           >
+            @if (busy()) {
+              <app-spinner [size]="18" />
+            }
             {{ busy() ? 'Calculando…' : 'Ver cambios' }}
           </button>
         </div>
@@ -251,7 +260,7 @@ function emptyMapping(): Mapping {
             (pageChange)="loadRows($event)"
           />
         } @else {
-          <p class="text-muted">Cargando…</p>
+          <p class="flex items-center gap-2 text-muted" role="status"><app-spinner /> Cargando…</p>
         }
       </div>
 
@@ -283,6 +292,9 @@ function emptyMapping(): Mapping {
           (click)="apply()"
           data-testid="apply-import"
         >
+          @if (busy()) {
+            <app-spinner [size]="18" />
+          }
           {{ busy() ? 'Aplicando…' : 'Aplicar' }}
         </button>
       </div>

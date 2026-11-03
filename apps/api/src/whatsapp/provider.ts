@@ -38,6 +38,21 @@ export type PairingQr =
   | { state: 'expired' }
   | { state: 'unavailable'; code: string };
 
+/**
+ * Estado de una sesión ya vinculada, para el vigía de reconexión (channel-watch):
+ * - connected:  funcionando; `phoneNumber` es el número vinculado (E.164) si el proveedor lo informa.
+ * - starting:   arrancando (todavía no se sabe si va a conectar).
+ * - stopped:    detenida o fallada, pero con la vinculación guardada: se puede volver a iniciar sin QR.
+ * - needs_scan: el teléfono ya no está vinculado (o la sesión no existe): hace falta escanear un QR.
+ * - unavailable: no se pudo consultar al proveedor.
+ */
+export type SessionState =
+  | { state: 'connected'; phoneNumber: string | null }
+  | { state: 'starting' }
+  | { state: 'stopped' }
+  | { state: 'needs_scan' }
+  | { state: 'unavailable'; code: string };
+
 export type NormalizeResult =
   { kind: 'event'; event: WhatsAppEvent } | { kind: 'ignored'; reason: string; eventId: string | null };
 
@@ -119,6 +134,10 @@ export interface WhatsAppProvider {
   /** Desvincula lo que hubiera y vuelve a iniciar la sesión con un QR nuevo (la crea si no existe). */
   restartPairing(externalId: string): Promise<ConnectionResult>;
   getPairingQr(externalId: string): Promise<PairingQr>;
+  /** Estado actual de la sesión (sin el QR). Lo usa el vigía para no depender de un webhook perdido. */
+  getSessionState(externalId: string): Promise<SessionState>;
+  /** Vuelve a iniciar una sesión detenida conservando la vinculación (sin desvincular ni pedir QR). */
+  resumeSession(externalId: string): Promise<ConnectionResult>;
   /**
    * Desvincula el teléfono y detiene la sesión. Con `forget`, además la borra del proveedor (canal
    * cancelado). Que la sesión ya no exista cuenta como éxito.

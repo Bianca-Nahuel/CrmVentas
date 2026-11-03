@@ -26,6 +26,7 @@ import { Score } from '../../ui/score';
 import { contactName, previewText, shortWhen, waitingFor } from './format';
 import { InboxReads } from './inbox-reads';
 import { LeadStateBadge } from './lead-state-badge';
+import { Spinner } from '../../ui/spinner';
 
 const SEARCH_DELAY_MS = 300;
 const LIST_SIZE = 50;
@@ -50,7 +51,7 @@ const FILTERS: readonly { value: Attention; label: string }[] = [
 @Component({
   selector: 'app-inbox-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink, RouterOutlet, Icon, Score, LeadStateBadge],
+  imports: [RouterLink, RouterOutlet, Icon, Score, LeadStateBadge, Spinner],
   host: { class: 'block lg:h-[calc(100dvh-8rem)]' },
   template: `
     <h1 class="sr-only">Conversaciones</h1>
@@ -134,7 +135,7 @@ const FILTERS: readonly { value: Attention; label: string }[] = [
               </button>
             </div>
           } @else if (!list.hasValue()) {
-            <p class="p-4 text-muted">Cargando…</p>
+            <p class="flex items-center gap-2 p-4 text-muted" role="status"><app-spinner /> Cargando…</p>
           } @else if (rows().length === 0) {
             <div class="p-4" data-testid="inbox-empty">
               @if (list.value().noChannels) {

@@ -2,12 +2,13 @@ import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { DOCUMENT } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, DestroyRef, computed, inject, signal } from '@angular/core';
-import { CircleCheck, Clock, LoaderCircle, RotateCw, TriangleAlert } from 'lucide';
+import { CircleCheck, Clock, RotateCw, TriangleAlert } from 'lucide';
 import { filter } from 'rxjs';
 import { ChannelsApi } from '../../api/channels-api';
 import type { ChannelPairing, ChannelWithMembers } from '../../api/generated';
 import { RealtimeService } from '../../core/realtime';
 import { Icon } from '../../ui/icon';
+import { Spinner } from '../../ui/spinner';
 import { disconnectExplanation } from './channel-state';
 
 export interface ConnectChannelData {
@@ -41,7 +42,7 @@ function errorCode(error: unknown): string | null {
   selector: 'app-connect-channel-dialog',
   changeDetection: ChangeDetectionStrategy.OnPush,
   // Sin app-field: lo usa solo el login y así no pasa al chunk inicial compartido.
-  imports: [Icon],
+  imports: [Icon, Spinner],
   host: {
     class:
       'card flex h-dvh w-screen flex-col overflow-y-auto rounded-none p-5 shadow-3 sm:h-auto sm:max-h-[92dvh] sm:w-[min(92vw,620px)] sm:rounded-lg sm:p-6',
@@ -83,7 +84,7 @@ function errorCode(error: unknown): string | null {
             data-testid="create-channel"
           >
             @if (busy()) {
-              <app-icon [icon]="loadingIcon" [size]="16" />
+              <app-spinner [size]="16" />
             }
             Continuar
           </button>
@@ -117,7 +118,7 @@ function errorCode(error: unknown): string | null {
               <app-icon [icon]="warningIcon" [size]="56" class="text-error" />
             }
             @default {
-              <app-icon [icon]="loadingIcon" [size]="40" class="text-primary" />
+              <app-spinner [size]="40" class="text-primary" />
             }
           }
         </div>
@@ -183,7 +184,7 @@ function errorCode(error: unknown): string | null {
               }
               @case ('qr') {
                 <p class="flex items-center gap-2 text-muted">
-                  <app-icon [icon]="loadingIcon" [size]="16" class="text-primary" />
+                  <app-spinner [size]="16" class="text-primary" />
                   Esperando el escaneo… El código se renueva solo.
                 </p>
               }
@@ -195,7 +196,7 @@ function errorCode(error: unknown): string | null {
               }
               @default {
                 <p class="flex items-center gap-2 text-muted">
-                  <app-icon [icon]="loadingIcon" [size]="16" class="text-primary" />
+                  <app-spinner [size]="16" class="text-primary" />
                   Preparando el código…
                 </p>
               }
@@ -257,7 +258,6 @@ export class ConnectChannelDialog {
     'Tocá Vincular un dispositivo y apuntá la cámara a este código.',
   ];
   protected readonly warningIcon = TriangleAlert;
-  protected readonly loadingIcon = LoaderCircle;
   protected readonly okIcon = CircleCheck;
   protected readonly clockIcon = Clock;
   protected readonly renewIcon = RotateCw;

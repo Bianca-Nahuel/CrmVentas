@@ -9,11 +9,12 @@ import { Button } from '../../ui/button';
 import { BrandMark } from '../../ui/brand-mark';
 import { Field } from '../../ui/field';
 import { Icon } from '../../ui/icon';
+import { Spinner } from '../../ui/spinner';
 
 @Component({
   selector: 'app-login-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [FormField, Button, BrandMark, Field, Icon],
+  imports: [FormField, Button, BrandMark, Field, Icon, Spinner],
   host: { class: 'flex min-h-dvh flex-col items-center px-4 py-10 sm:justify-center sm:py-16' },
   template: `
     <main class="w-full max-w-sm">
@@ -74,6 +75,9 @@ import { Icon } from '../../ui/icon';
           </div>
 
           <button appButton type="submit" class="mt-1 w-full" [disabled]="pending()">
+            @if (pending()) {
+              <app-spinner [size]="18" />
+            }
             {{ pending() ? 'Ingresando…' : 'Ingresar' }}
           </button>
         </form>

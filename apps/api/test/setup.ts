@@ -11,5 +11,7 @@ process.env.WAHA_API_KEY = 'test-only-waha-api-key';
 process.env.WAHA_WEBHOOK_URL = 'http://host.docker.internal:3000/api/webhooks/waha';
 // El trabajo diario de la tarea 026 cerraría y revisaría conversaciones de desarrollo: los tests lo llaman a mano.
 process.env.PERFORMANCE_DAILY_ENABLED = 'false';
+// El vigía de reconexión tocaría los canales de desarrollo cada minuto.
+process.env.CHANNEL_WATCH_ENABLED = 'false';
 // Los workers buscan trabajos cada 0,5 s (el mínimo de pg-boss) y no cada 1 s: los tests esperan menos.
 process.env.JOBS_POLLING_SECONDS = '0.5';

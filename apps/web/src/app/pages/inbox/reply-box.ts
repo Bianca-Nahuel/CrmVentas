@@ -16,6 +16,7 @@ import { InboxApi } from '../../api/inbox-api';
 import type { ConversationDetail, Message } from '../../api/generated';
 import { Icon } from '../../ui/icon';
 import { REPLY_BLOCKED_TEXT, REPLY_CONFLICT_CODES, type ReplyBlockedReason } from './format';
+import { Spinner } from '../../ui/spinner';
 
 /** Tope de un mensaje de WhatsApp (el mismo que valida la API, en caracteres). */
 export const REPLY_MAX_CHARS = 4096;
@@ -31,7 +32,7 @@ const COUNTER_FROM = 3500;
 @Component({
   selector: 'app-reply-box',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [FormField, Icon],
+  imports: [FormField, Icon, Spinner],
   host: { class: 'block', 'data-testid': 'reply-box' },
   template: `
     <form class="flex flex-col gap-2" novalidate (submit)="onSubmit($event)">
@@ -66,7 +67,11 @@ const COUNTER_FROM = 3500;
           [disabled]="!canSend()"
           [attr.aria-label]="sending() ? 'Enviando' : 'Enviar'"
         >
-          <app-icon [icon]="sendIcon" [size]="18" />
+          @if (sending()) {
+            <app-spinner [size]="18" />
+          } @else {
+            <app-icon [icon]="sendIcon" [size]="18" />
+          }
           <span class="hidden sm:inline">{{ sending() ? 'Enviando…' : 'Enviar' }}</span>
         </button>
       </div>

@@ -9,6 +9,7 @@ import { NotifyService } from '../../ui/toast';
 import { AgentDraft, type ServerIssue } from './agent-draft';
 import { TRANSPARENCY_TEXT, describePath, diffConfigs, sectionOf, type FieldChange } from './config-model';
 import { Playground } from './playground';
+import { Spinner } from '../../ui/spinner';
 
 export const AGENT_SECTIONS = [
   { path: 'general', label: 'General' },
@@ -30,7 +31,7 @@ export const AGENT_SECTIONS = [
 @Component({
   selector: 'app-agent-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Icon, Playground, RouterLink, RouterLinkActive, RouterOutlet],
+  imports: [Icon, Playground, RouterLink, RouterLinkActive, RouterOutlet, Spinner],
   providers: [AgentDraft],
   host: { class: 'block pb-28' },
   template: `
@@ -73,7 +74,7 @@ export const AGENT_SECTIONS = [
         <button type="button" class="btn btn-secondary btn-sm" (click)="draft.load()">Reintentar</button>
       </div>
     } @else if (draft.status() === 'loading') {
-      <p class="mt-5 text-muted">Cargando…</p>
+      <p class="flex items-center gap-2 mt-5 text-muted" role="status"><app-spinner /> Cargando…</p>
     } @else {
       @if (draft.loadedInvalid()) {
         <p class="mt-4 flex items-start gap-2 rounded-md bg-warning-soft p-3 text-sm text-text">
@@ -213,7 +214,12 @@ export const AGENT_SECTIONS = [
               (click)="save()"
               data-testid="save-config"
             >
-              <app-icon [icon]="saveIcon" [size]="18" /> {{ draft.saving() ? 'Guardando…' : 'Guardar' }}
+              @if (draft.saving()) {
+                <app-spinner [size]="18" />
+              } @else {
+                <app-icon [icon]="saveIcon" [size]="18" />
+              }
+              {{ draft.saving() ? 'Guardando…' : 'Guardar' }}
             </button>
           </div>
         </div>

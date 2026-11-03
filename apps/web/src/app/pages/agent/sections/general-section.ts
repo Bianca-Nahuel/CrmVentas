@@ -5,18 +5,13 @@ import { ChannelsApi } from '../../../api/channels-api';
 import { query } from '../../../core/query';
 import { AgentDraft } from '../agent-draft';
 import { fieldError } from '../form-ui';
-
-/** Precio en USD por conversación, legible ("USD 0,005"). */
-export function usdLabel(usd: string): string {
-  const value = Number(usd);
-  return `USD ${value.toLocaleString('es-AR', { maximumSignificantDigits: 2 })}`;
-}
+import { Spinner } from '../../../ui/spinner';
 
 /** General: si el asistente responde, en qué números y con qué modelo. */
 @Component({
   selector: 'app-agent-general-section',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [FormField],
+  imports: [FormField, Spinner],
   template: `
     <div class="card flex flex-col gap-5 p-5">
       <h2 class="text-lg font-semibold text-text">General</h2>
@@ -52,7 +47,7 @@ export function usdLabel(usd: string): string {
         } @else if (channels.loadFailed()) {
           <p class="text-sm text-error">No pudimos cargar los números.</p>
         } @else {
-          <p class="text-sm text-muted">Cargando…</p>
+          <p class="flex items-center gap-2 text-sm text-muted" role="status"><app-spinner /> Cargando…</p>
         }
         @if (error(form.ai.channel_ids); as message) {
           <p class="text-sm font-medium text-error">{{ message }}</p>
@@ -66,20 +61,12 @@ export function usdLabel(usd: string): string {
           class="input"
           [value]="draft.model().ai.model ?? ''"
           (change)="setModel($any($event.target).value)"
-          aria-describedby="agent-model-hint"
         >
           <option value="">El recomendado</option>
           @for (model of models.value()?.items ?? []; track model.id) {
-            <option [value]="model.id">
-              {{ model.id }} · {{ price(model.usdPerConversation) }} por conversación
-              {{ model.estimateSource === 'estimated' ? '(estimado)' : '(promedio real)' }}
-            </option>
+            <option [value]="model.id">{{ model.id }}</option>
           }
         </select>
-        <p id="agent-model-hint" class="text-sm text-subtle">
-          El costo es aproximado: depende de cuánto conversa cada cliente. "Promedio real" sale de los últimos
-          30 días de tu empresa.
-        </p>
         @if (error(form.ai.model); as message) {
           <p class="text-sm font-medium text-error">{{ message }}</p>
         }
@@ -91,7 +78,6 @@ export class GeneralSection {
   protected readonly draft = inject(AgentDraft);
   protected readonly form = this.draft.form;
   protected readonly error = fieldError;
-  protected readonly price = usdLabel;
   private readonly channelsApi = inject(ChannelsApi);
   private readonly configApi = inject(AgentConfigApi);
   protected readonly channels = query(

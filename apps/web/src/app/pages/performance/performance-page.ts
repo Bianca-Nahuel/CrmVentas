@@ -31,6 +31,7 @@ import {
   type WeekRange,
 } from './performance-format';
 import { WeeklyChart, type ChartSeries } from './weekly-chart';
+import { Spinner } from '../../ui/spinner';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const KEY = /^[a-z][a-z0-9_]{0,39}$/;
@@ -76,7 +77,7 @@ interface Metric {
 @Component({
   selector: 'app-performance-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink, Icon, Paginator, WeeklyChart],
+  imports: [RouterLink, Icon, Paginator, WeeklyChart, Spinner],
   template: `
     <h1 class="text-2xl sm:text-[28px] sm:leading-[34px]">Rendimiento</h1>
 
@@ -132,7 +133,7 @@ interface Metric {
         <button type="button" class="btn btn-secondary btn-sm" (click)="weekly.reload()">Reintentar</button>
       </div>
     } @else if (!weekly.hasValue()) {
-      <p class="mt-5 text-muted">Cargando…</p>
+      <p class="flex items-center gap-2 mt-5 text-muted" role="status"><app-spinner /> Cargando…</p>
     } @else {
       <section class="mt-5" aria-labelledby="perf-cards-title">
         <h2 id="perf-cards-title" class="text-lg font-semibold text-text">

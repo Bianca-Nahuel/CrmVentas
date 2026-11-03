@@ -2,8 +2,9 @@
 // las usa WahaProvider.
 // Documentación: https://waha.devlike.pro/docs/how-to/sessions/ — el primer QR vence a los 60 s y cada
 // uno de los siguientes a los 20 s; después de 6, la sesión pasa a FAILED y hay que reiniciarla.
-import type { ConnectionResult, PairingQr } from '../../provider.js';
+import type { ConnectionResult, PairingQr, SessionState } from '../../provider.js';
 import type { WahaCallOutcome } from './waha-client.js';
+import { toE164 } from './waha-normalize.js';
 
 // Un PNG de QR de WAHA pesa unos pocos kB: más que esto no es un QR y no se le pasa al panel.
 const MAX_QR_BASE64 = 100_000;
@@ -87,4 +88,33 @@ export function pairingFromQr(outcome: WahaCallOutcome): PairingQr {
     return { state: 'unavailable', code: 'qr_ilegible' };
   }
   return { state: 'qr', image: `data:image/png;base64,${data}` };
+}
+
+/**
+ * `GET /api/sessions/{session}` → estado para el vigía de reconexión. WORKING trae el número vinculado en
+ * `me.id`. STOPPED y FAILED conservan la vinculación (se reinicia sin QR); SCAN_QR_CODE o 404 quieren
+ * decir que el teléfono ya no está vinculado.
+ */
+export function sessionStateFrom(outcome: WahaCallOutcome): SessionState {
+  if (isNotFound(outcome)) return { state: 'needs_scan' };
+  if (!isOk(outcome) || outcome.kind !== 'response')
+    return { state: 'unavailable', code: outcomeCode(outcome) };
+  const body = parseJson(outcome.text);
+  switch (field(body, 'status')) {
+    case 'WORKING': {
+      const me = field(field(body, 'me'), 'id');
+      return { state: 'connected', phoneNumber: typeof me === 'string' ? toE164(me) : null };
+    }
+    case 'STARTING':
+    case 'PASSKEY_REQUIRED':
+    case 'PASSKEY_CONFIRMATION_REQUIRED':
+      return { state: 'starting' };
+    case 'STOPPED':
+    case 'FAILED':
+      return { state: 'stopped' };
+    case 'SCAN_QR_CODE':
+      return { state: 'needs_scan' };
+    default:
+      return { state: 'unavailable', code: 'estado_desconocido' };
+  }
 }

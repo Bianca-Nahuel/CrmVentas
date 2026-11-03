@@ -17,6 +17,7 @@ import { NotifyService } from '../../ui/toast';
 import { AssignSellersDialog, type AssignSellersData } from './assign-sellers-dialog';
 import { channelStatus, disconnectExplanation, initials, neverConnected, shortDate } from './channel-state';
 import { ConnectChannelDialog, type ConnectChannelData } from './connect-channel-dialog';
+import { Spinner } from '../../ui/spinner';
 
 /**
  * Números (tareas 011 y 014, owner y admin): los números de WhatsApp de la empresa, su estado en vivo
@@ -27,7 +28,7 @@ import { ConnectChannelDialog, type ConnectChannelData } from './connect-channel
 @Component({
   selector: 'app-channels-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Icon],
+  imports: [Icon, Spinner],
   template: `
     <div class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
       <div>
@@ -58,7 +59,7 @@ import { ConnectChannelDialog, type ConnectChannelData } from './connect-channel
           </button>
         </div>
       } @else if (!channels.hasValue()) {
-        <p class="text-muted">Cargando…</p>
+        <p class="flex items-center gap-2 text-muted" role="status"><app-spinner /> Cargando…</p>
       } @else {
         <ul class="card" aria-label="Números de WhatsApp">
           @for (channel of channels.value().items; track channel.id) {

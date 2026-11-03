@@ -21,6 +21,7 @@ import { NotifyService } from '../../ui/toast';
 import { fieldAt, type ServerIssue } from '../agent/agent-draft';
 import { NumberInput, RowActions, TextInput, TextList, fieldError } from '../agent/form-ui';
 import { readErrorLabel } from './catalog-format';
+import { Spinner } from '../../ui/spinner';
 
 const FIELD_LABELS: Record<string, string> = {
   list_price: 'Precio de lista',
@@ -65,10 +66,10 @@ function starterCatalog(): CatalogConfig {
 @Component({
   selector: 'app-catalog-settings',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [FormField, Icon, NumberInput, RowActions, TextInput, TextList],
+  imports: [FormField, Icon, NumberInput, RowActions, TextInput, TextList, Spinner],
   template: `
     @if (status() === 'loading') {
-      <p class="text-muted">Cargando…</p>
+      <p class="flex items-center gap-2 text-muted" role="status"><app-spinner /> Cargando…</p>
     } @else if (status() === 'failed') {
       <div class="card flex flex-col items-start gap-3 p-5">
         <p class="font-semibold text-text">No pudimos cargar la configuración.</p>
@@ -204,174 +205,183 @@ function starterCatalog(): CatalogConfig {
           />
         </div>
 
-        <div class="card flex flex-col gap-4 p-5" data-testid="extractor">
-          <div>
-            <h2 class="text-lg font-semibold text-text">Lectura de la web (extractor)</h2>
-            <p class="text-sm text-subtle">
-              Muchas páginas ya traen el precio en datos estructurados. Si no, o si lo traen mal, agregá una
-              regla por campo con el selector del elemento de la página.
-            </p>
-          </div>
-          @for (field of extractorFields; track field) {
-            <div class="flex flex-col gap-3 rounded-md border border-border p-4">
-              <label class="flex items-center gap-3">
+        @if (showExtractor) {
+          <div class="card flex flex-col gap-4 p-5" data-testid="extractor">
+            <div>
+              <h2 class="text-lg font-semibold text-text">Lectura de la web (extractor)</h2>
+              <p class="text-sm text-subtle">
+                Muchas páginas ya traen el precio en datos estructurados. Si no, o si lo traen mal, agregá una
+                regla por campo con el selector del elemento de la página.
+              </p>
+            </div>
+            @for (field of extractorFields; track field) {
+              <div class="flex flex-col gap-3 rounded-md border border-border p-4">
+                <label class="flex items-center gap-3">
+                  <input
+                    type="checkbox"
+                    class="size-5"
+                    [checked]="!!rule(field)"
+                    (change)="toggleRule(field, $any($event.target).checked)"
+                  />
+                  <span class="font-semibold text-text">{{ fieldLabels[field] }}</span>
+                </label>
+                @if (rule(field); as current) {
+                  <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                    <label class="flex flex-col gap-1.5 lg:col-span-2">
+                      <span class="text-sm font-semibold text-text">Selector</span>
+                      <input
+                        class="input font-mono text-sm"
+                        [value]="current.selector"
+                        (input)="patchRule(field, { selector: $any($event.target).value })"
+                        placeholder=".precio-lista"
+                      />
+                    </label>
+                    <label class="flex flex-col gap-1.5">
+                      <span class="text-sm font-semibold text-text">Atributo (opcional)</span>
+                      <input
+                        class="input font-mono text-sm"
+                        [value]="current.attribute ?? ''"
+                        (input)="patchRule(field, { attribute: $any($event.target).value || undefined })"
+                        placeholder="content"
+                      />
+                    </label>
+                    <label class="flex flex-col gap-1.5">
+                      <span class="text-sm font-semibold text-text">Posición</span>
+                      <input
+                        class="input w-24"
+                        type="number"
+                        inputmode="numeric"
+                        [value]="current.index"
+                        (input)="patchRule(field, { index: +$any($event.target).value || 0 })"
+                      />
+                    </label>
+                    <label class="flex flex-col gap-1.5">
+                      <span class="text-sm font-semibold text-text">Expresión regular (opcional)</span>
+                      <input
+                        class="input font-mono text-sm"
+                        [value]="current.regex ?? ''"
+                        (input)="patchRule(field, { regex: $any($event.target).value || undefined })"
+                      />
+                    </label>
+                    <label class="flex flex-col gap-1.5">
+                      <span class="text-sm font-semibold text-text">Tipo de dato</span>
+                      <select
+                        class="input"
+                        [value]="current.parse ?? ''"
+                        (change)="patchRule(field, { parse: $any($event.target).value || undefined })"
+                      >
+                        <option value="">Automático</option>
+                        @for (parser of parsers; track parser) {
+                          <option [value]="parser">{{ parserLabels[parser] }}</option>
+                        }
+                      </select>
+                    </label>
+                    <label class="flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        class="size-4"
+                        [checked]="current.prefer"
+                        (change)="patchRule(field, { prefer: $any($event.target).checked })"
+                      />
+                      Gana sobre los datos de la página
+                    </label>
+                    <label class="flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        class="size-4"
+                        [checked]="current.exclusive"
+                        (change)="patchRule(field, { exclusive: $any($event.target).checked })"
+                      />
+                      Usar solo esta regla
+                    </label>
+                  </div>
+                  @for (message of ruleIssues(field); track $index) {
+                    <p class="text-sm font-medium text-error">{{ message }}</p>
+                  }
+                }
+              </div>
+            }
+
+            <div class="flex flex-col gap-2 rounded-md bg-surface-2 p-4">
+              <label class="text-sm font-semibold text-text" for="extractor-url"
+                >Probar con la página de un producto</label
+              >
+              <div class="flex flex-col gap-2 sm:flex-row">
                 <input
-                  type="checkbox"
-                  class="size-5"
-                  [checked]="!!rule(field)"
-                  (change)="toggleRule(field, $any($event.target).checked)"
+                  id="extractor-url"
+                  class="input flex-1"
+                  type="url"
+                  placeholder="https://www.tuempresa.com.ar/producto/…"
+                  [value]="testUrl()"
+                  (input)="testUrl.set($any($event.target).value)"
+                  data-testid="extractor-url"
                 />
-                <span class="font-semibold text-text">{{ fieldLabels[field] }}</span>
-              </label>
-              @if (rule(field); as current) {
-                <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                  <label class="flex flex-col gap-1.5 lg:col-span-2">
-                    <span class="text-sm font-semibold text-text">Selector</span>
-                    <input
-                      class="input font-mono text-sm"
-                      [value]="current.selector"
-                      (input)="patchRule(field, { selector: $any($event.target).value })"
-                      placeholder=".precio-lista"
-                    />
-                  </label>
-                  <label class="flex flex-col gap-1.5">
-                    <span class="text-sm font-semibold text-text">Atributo (opcional)</span>
-                    <input
-                      class="input font-mono text-sm"
-                      [value]="current.attribute ?? ''"
-                      (input)="patchRule(field, { attribute: $any($event.target).value || undefined })"
-                      placeholder="content"
-                    />
-                  </label>
-                  <label class="flex flex-col gap-1.5">
-                    <span class="text-sm font-semibold text-text">Posición</span>
-                    <input
-                      class="input w-24"
-                      type="number"
-                      inputmode="numeric"
-                      [value]="current.index"
-                      (input)="patchRule(field, { index: +$any($event.target).value || 0 })"
-                    />
-                  </label>
-                  <label class="flex flex-col gap-1.5">
-                    <span class="text-sm font-semibold text-text">Expresión regular (opcional)</span>
-                    <input
-                      class="input font-mono text-sm"
-                      [value]="current.regex ?? ''"
-                      (input)="patchRule(field, { regex: $any($event.target).value || undefined })"
-                    />
-                  </label>
-                  <label class="flex flex-col gap-1.5">
-                    <span class="text-sm font-semibold text-text">Tipo de dato</span>
-                    <select
-                      class="input"
-                      [value]="current.parse ?? ''"
-                      (change)="patchRule(field, { parse: $any($event.target).value || undefined })"
-                    >
-                      <option value="">Automático</option>
-                      @for (parser of parsers; track parser) {
-                        <option [value]="parser">{{ parserLabels[parser] }}</option>
+                <button
+                  type="button"
+                  class="btn btn-primary"
+                  [disabled]="testing() || !testUrl().trim()"
+                  (click)="test()"
+                  data-testid="extractor-test"
+                >
+                  @if (testing()) {
+                    <app-spinner [size]="18" />
+                  } @else {
+                    <app-icon [icon]="testIcon" [size]="18" />
+                  }
+                  {{ testing() ? 'Leyendo…' : 'Probar' }}
+                </button>
+              </div>
+              <p class="text-xs text-subtle">
+                Prueba lo que estás editando, sin guardarlo. Como mucho 10 pruebas por minuto.
+              </p>
+              @if (testError(); as message) {
+                <p class="text-sm font-medium text-error" role="alert">{{ message }}</p>
+              }
+              @if (result(); as r) {
+                @if (r.ok) {
+                  <div class="flex flex-col gap-1 text-sm" data-testid="extractor-result">
+                    @if (r.title) {
+                      <p class="text-muted">Página: {{ r.title }}</p>
+                    }
+                    <ul class="divide-y divide-border rounded-md border border-border bg-surface">
+                      @for (item of r.fields; track item.field) {
+                        <li class="flex flex-col gap-0.5 p-2 sm:flex-row sm:gap-3">
+                          <span class="w-44 shrink-0 font-medium text-text">{{
+                            fieldLabels[item.field]
+                          }}</span>
+                          <span class="text-text">{{ item.value ?? '—' }}</span>
+                          @if (item.source) {
+                            <span class="text-xs text-subtle sm:ml-auto"
+                              >de {{ sourceLabels[item.source]
+                              }}{{ item.matched ? ' (texto: "' + item.matched + '")' : '' }}</span
+                            >
+                          }
+                        </li>
                       }
-                    </select>
-                  </label>
-                  <label class="flex items-center gap-2 text-sm">
-                    <input
-                      type="checkbox"
-                      class="size-4"
-                      [checked]="current.prefer"
-                      (change)="patchRule(field, { prefer: $any($event.target).checked })"
-                    />
-                    Gana sobre los datos de la página
-                  </label>
-                  <label class="flex items-center gap-2 text-sm">
-                    <input
-                      type="checkbox"
-                      class="size-4"
-                      [checked]="current.exclusive"
-                      (change)="patchRule(field, { exclusive: $any($event.target).checked })"
-                    />
-                    Usar solo esta regla
-                  </label>
-                </div>
-                @for (message of ruleIssues(field); track $index) {
-                  <p class="text-sm font-medium text-error">{{ message }}</p>
+                    </ul>
+                    @for (issue of r.ruleIssues; track $index) {
+                      <p class="text-warning">Regla sin resultado: {{ issue }}</p>
+                    }
+                    <p [class]="r.sanity.ok ? 'text-success' : 'text-error'">
+                      {{
+                        r.sanity.ok
+                          ? 'Los precios pasan los controles.'
+                          : 'Los precios no pasan los controles: ' + readError(r.sanity.errorCode)
+                      }}
+                    </p>
+                    @if (r.noAvailability) {
+                      <p class="text-warning">
+                        La página no informa disponibilidad: el asistente va a derivar cuando se la pregunten.
+                      </p>
+                    }
+                  </div>
+                } @else {
+                  <p class="text-sm font-medium text-error" role="alert">{{ readError(r.errorCode) }}</p>
                 }
               }
             </div>
-          }
-
-          <div class="flex flex-col gap-2 rounded-md bg-surface-2 p-4">
-            <label class="text-sm font-semibold text-text" for="extractor-url"
-              >Probar con la página de un producto</label
-            >
-            <div class="flex flex-col gap-2 sm:flex-row">
-              <input
-                id="extractor-url"
-                class="input flex-1"
-                type="url"
-                placeholder="https://www.tuempresa.com.ar/producto/…"
-                [value]="testUrl()"
-                (input)="testUrl.set($any($event.target).value)"
-                data-testid="extractor-url"
-              />
-              <button
-                type="button"
-                class="btn btn-primary"
-                [disabled]="testing() || !testUrl().trim()"
-                (click)="test()"
-                data-testid="extractor-test"
-              >
-                <app-icon [icon]="testIcon" [size]="18" /> {{ testing() ? 'Leyendo…' : 'Probar' }}
-              </button>
-            </div>
-            <p class="text-xs text-subtle">
-              Prueba lo que estás editando, sin guardarlo. Como mucho 10 pruebas por minuto.
-            </p>
-            @if (testError(); as message) {
-              <p class="text-sm font-medium text-error" role="alert">{{ message }}</p>
-            }
-            @if (result(); as r) {
-              @if (r.ok) {
-                <div class="flex flex-col gap-1 text-sm" data-testid="extractor-result">
-                  @if (r.title) {
-                    <p class="text-muted">Página: {{ r.title }}</p>
-                  }
-                  <ul class="divide-y divide-border rounded-md border border-border bg-surface">
-                    @for (item of r.fields; track item.field) {
-                      <li class="flex flex-col gap-0.5 p-2 sm:flex-row sm:gap-3">
-                        <span class="w-44 shrink-0 font-medium text-text">{{ fieldLabels[item.field] }}</span>
-                        <span class="text-text">{{ item.value ?? '—' }}</span>
-                        @if (item.source) {
-                          <span class="text-xs text-subtle sm:ml-auto"
-                            >de {{ sourceLabels[item.source]
-                            }}{{ item.matched ? ' (texto: "' + item.matched + '")' : '' }}</span
-                          >
-                        }
-                      </li>
-                    }
-                  </ul>
-                  @for (issue of r.ruleIssues; track $index) {
-                    <p class="text-warning">Regla sin resultado: {{ issue }}</p>
-                  }
-                  <p [class]="r.sanity.ok ? 'text-success' : 'text-error'">
-                    {{
-                      r.sanity.ok
-                        ? 'Los precios pasan los controles.'
-                        : 'Los precios no pasan los controles: ' + readError(r.sanity.errorCode)
-                    }}
-                  </p>
-                  @if (r.noAvailability) {
-                    <p class="text-warning">
-                      La página no informa disponibilidad: el asistente va a derivar cuando se la pregunten.
-                    </p>
-                  }
-                </div>
-              } @else {
-                <p class="text-sm font-medium text-error" role="alert">{{ readError(r.errorCode) }}</p>
-              }
-            }
           </div>
-        </div>
+        }
       </div>
 
       <div
@@ -390,7 +400,12 @@ function starterCatalog(): CatalogConfig {
           (click)="save()"
           data-testid="save-catalog"
         >
-          <app-icon [icon]="saveIcon" [size]="18" /> {{ saving() ? 'Guardando…' : 'Guardar' }}
+          @if (saving()) {
+            <app-spinner [size]="18" />
+          } @else {
+            <app-icon [icon]="saveIcon" [size]="18" />
+          }
+          {{ saving() ? 'Guardando…' : 'Guardar' }}
         </button>
       </div>
     }
@@ -411,6 +426,11 @@ export class CatalogSettings implements OnInit {
   protected readonly addIcon = Plus;
   protected readonly testIcon = FlaskConical;
   protected readonly saveIcon = Save;
+  /**
+   * La lectura de la web (selectores, "Probar") es técnica y no la entiende el usuario del panel: queda oculta.
+   * Las reglas que ya tenga la configuración se conservan al guardar (el modelo no se toca).
+   */
+  protected readonly showExtractor = false;
 
   protected readonly status = signal<'loading' | 'ready' | 'failed'>('loading');
   protected readonly version = signal(0);

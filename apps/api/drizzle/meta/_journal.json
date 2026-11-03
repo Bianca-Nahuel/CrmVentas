@@ -204,6 +204,13 @@
       "when": 1793640801695,
       "tag": "0028_purga_vistas_previas",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1793664569917,
+      "tag": "0029_vigia_reconexion",
+      "breakpoints": true
     }
   ]
 }

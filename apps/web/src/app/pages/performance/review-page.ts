@@ -18,6 +18,7 @@ import {
   highlightSegments,
   type Segment,
 } from './performance-format';
+import { Spinner } from '../../ui/spinner';
 
 let nextId = 0;
 
@@ -62,7 +63,7 @@ export class DisputeDialog {
 @Component({
   selector: 'app-review-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink, Icon],
+  imports: [RouterLink, Icon, Spinner],
   template: `
     <a class="btn btn-ghost btn-sm mb-3" routerLink="/rendimiento">
       <app-icon [icon]="backIcon" [size]="16" /> Rendimiento
@@ -252,8 +253,12 @@ export class DisputeDialog {
                 </div>
               </div>
             } @empty {
-              <p class="py-6 text-center text-muted">
-                {{ firstPage.isLoading() ? 'Cargando mensajes…' : 'No hay mensajes.' }}
+              <p class="flex items-center justify-center gap-2 py-6 text-muted">
+                @if (firstPage.isLoading()) {
+                  <app-spinner /> Cargando mensajes…
+                } @else {
+                  No hay mensajes.
+                }
               </p>
             }
           </div>
@@ -262,7 +267,7 @@ export class DisputeDialog {
     } @else if (review.loadFailed()) {
       <div class="card p-5"><p class="font-semibold text-text">No pudimos cargar la revisión.</p></div>
     } @else {
-      <p class="text-muted">Cargando revisión…</p>
+      <p class="flex items-center gap-2 text-muted" role="status"><app-spinner /> Cargando revisión…</p>
     }
   `,
 })

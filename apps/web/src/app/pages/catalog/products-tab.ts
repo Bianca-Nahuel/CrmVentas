@@ -9,12 +9,13 @@ import { Icon } from '../../ui/icon';
 import { Paginator } from '../../ui/table';
 import { NotifyService } from '../../ui/toast';
 import { money, readErrorLabel, shortDateTime, sourceLabel, unitLabel } from './catalog-format';
+import { Spinner } from '../../ui/spinner';
 
 /** Productos: búsqueda, activos o inactivos, tabla (tarjetas en el celular) y el detalle de cada uno. */
 @Component({
   selector: 'app-catalog-products-tab',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Icon, Paginator],
+  imports: [Icon, Paginator, Spinner],
   template: `
     <div class="flex flex-col gap-3 sm:flex-row">
       <label class="relative flex-1">
@@ -54,7 +55,7 @@ import { money, readErrorLabel, shortDateTime, sourceLabel, unitLabel } from './
             </button>
           </div>
         } @else if (!products.hasValue()) {
-          <p class="text-muted">Cargando…</p>
+          <p class="flex items-center gap-2 text-muted" role="status"><app-spinner /> Cargando…</p>
         } @else if (products.value().items.length === 0) {
           <div class="card p-5 text-muted">
             No hay productos{{ search() ? ' con esa búsqueda' : '' }}. Se cargan desde la pestaña Importar.
@@ -186,7 +187,11 @@ import { money, readErrorLabel, shortDateTime, sourceLabel, unitLabel } from './
               (click)="refresh(product.sku)"
               data-testid="refresh-price"
             >
-              <app-icon [icon]="refreshIcon" [size]="16" />
+              @if (refreshing()) {
+                <app-spinner />
+              } @else {
+                <app-icon [icon]="refreshIcon" [size]="16" />
+              }
               {{ refreshing() ? 'Leyendo la página…' : 'Actualizar precio' }}
             </button>
             @if (product.unitsPerPackage || product.piecesPerPackage) {
@@ -232,7 +237,7 @@ import { money, readErrorLabel, shortDateTime, sourceLabel, unitLabel } from './
               }
             </ul>
           } @else {
-            <p class="text-muted">Cargando…</p>
+            <p class="flex items-center gap-2 text-muted" role="status"><app-spinner /> Cargando…</p>
           }
         </aside>
       }

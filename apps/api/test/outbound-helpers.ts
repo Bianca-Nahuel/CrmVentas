@@ -109,6 +109,8 @@ export class FakeProvider implements WhatsAppProvider {
   restartPairing = (externalId: string) => this.pairing.restartPairing(externalId);
   getPairingQr = (externalId: string) => this.pairing.getPairingQr(externalId);
   closeSession = (externalId: string) => this.pairing.closeSession(externalId);
+  getSessionState = () => this.pairing.getSessionState();
+  resumeSession = () => this.pairing.resumeSession();
   calls: ProviderCall[] = [];
   inFlight = 0;
   maxInFlight = 0;

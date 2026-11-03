@@ -35,6 +35,8 @@ function setup(service: Partial<InboundService>) {
     restartPairing: vi.fn(),
     getPairingQr: vi.fn(),
     closeSession: vi.fn(),
+    getSessionState: vi.fn(),
+    resumeSession: vi.fn(),
   };
   const registry: WhatsAppProviderRegistry = new Map([['waha', provider]]);
   const worker = new InboundWorker({} as PgBoss, registry, service as InboundService);

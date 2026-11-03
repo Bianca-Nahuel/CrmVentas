@@ -55,6 +55,7 @@ import { DeliveryStatus } from './delivery-status';
 import { InboxReads } from './inbox-reads';
 import { ReplyBox } from './reply-box';
 import { CloseConversation } from './close-dialog';
+import { Spinner } from '../../ui/spinner';
 
 const DESKTOP = '(min-width: 1024px)';
 
@@ -67,7 +68,7 @@ const DESKTOP = '(min-width: 1024px)';
 @Component({
   selector: 'app-conversation-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink, Icon, Score, ReplyBox, DeliveryStatus],
+  imports: [RouterLink, Icon, Score, ReplyBox, DeliveryStatus, Spinner],
   host: { class: 'flex flex-col lg:h-full lg:min-h-0' },
   template: `
     <a class="btn btn-ghost btn-sm mb-3 self-start lg:hidden" routerLink="/conversaciones">
@@ -348,7 +349,9 @@ const DESKTOP = '(min-width: 1024px)';
                 @if (firstPage.hasValue()) {
                   <p class="py-6 text-center text-muted">Todavía no hay mensajes.</p>
                 } @else {
-                  <p class="py-6 text-center text-muted">Cargando mensajes…</p>
+                  <p class="flex items-center justify-center gap-2 py-6 text-muted" role="status">
+                    <app-spinner /> Cargando mensajes…
+                  </p>
                 }
               }
             </div>
@@ -370,7 +373,9 @@ const DESKTOP = '(min-width: 1024px)';
         }
       </div>
     } @else {
-      <p class="p-5 text-muted">Cargando conversación…</p>
+      <p class="flex items-center gap-2 p-5 text-muted" role="status">
+        <app-spinner /> Cargando conversación…
+      </p>
     }
   `,
 })

@@ -7,6 +7,7 @@ import { ConfirmService } from '../../ui/confirm-dialog';
 import { Icon } from '../../ui/icon';
 import { NotifyService } from '../../ui/toast';
 import { shortDateTime } from './catalog-format';
+import { Spinner } from '../../ui/spinner';
 
 const STATUS_LABELS: Record<string, string> = {
   applied: 'Aplicada',
@@ -19,7 +20,7 @@ const STATUS_LABELS: Record<string, string> = {
 @Component({
   selector: 'app-catalog-imports-history',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Icon],
+  imports: [Icon, Spinner],
   template: `
     @if (imports.hasValue()) {
       @if (imports.value().canRevert) {
@@ -70,7 +71,7 @@ const STATUS_LABELS: Record<string, string> = {
         <button type="button" class="btn btn-secondary btn-sm" (click)="imports.reload()">Reintentar</button>
       </div>
     } @else {
-      <p class="text-muted">Cargando…</p>
+      <p class="flex items-center gap-2 text-muted" role="status"><app-spinner /> Cargando…</p>
     }
   `,
 })

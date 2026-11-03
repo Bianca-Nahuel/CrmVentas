@@ -6,6 +6,7 @@ import type {
   PairingQr,
   PresenceResult,
   SendResult,
+  SessionState,
   WhatsAppCapabilities,
   WhatsAppProvider,
 } from '../../provider.js';
@@ -82,6 +83,15 @@ export class FakeWhatsAppProvider implements WhatsAppProvider {
 
   async getPairingQr(externalId: string): Promise<PairingQr> {
     return this.sessions.has(externalId) ? { state: 'qr', image: FAKE_QR_IMAGE } : { state: 'expired' };
+  }
+
+  // El vigía de reconexión no toca nada con el proveedor falso: los estados se simulan con webhooks.
+  async getSessionState(): Promise<SessionState> {
+    return { state: 'unavailable', code: 'fake' };
+  }
+
+  async resumeSession(): Promise<ConnectionResult> {
+    return { ok: true };
   }
 
   async closeSession(externalId: string): Promise<ConnectionResult> {

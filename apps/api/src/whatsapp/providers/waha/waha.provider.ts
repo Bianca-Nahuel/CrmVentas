@@ -9,6 +9,7 @@ import {
   type PresenceResult,
   type SeenMessage,
   type SendResult,
+  type SessionState,
   type WhatsAppCapabilities,
   type WhatsAppProvider,
 } from '../../provider.js';
@@ -20,6 +21,7 @@ import {
   isUnprocessable,
   pairingFromQr,
   pairingFromSession,
+  sessionStateFrom,
   toConnectionResult,
 } from './waha-pairing.js';
 import { toPresenceResult, toSendResult, wahaChatId, wahaSeenRequest } from './waha-send.js';
@@ -83,6 +85,15 @@ export class WahaProvider implements WhatsAppProvider {
     return pairingFromQr(
       await this.client.sessionCall('GET', `/api/${encodeURIComponent(externalId)}/auth/qr`),
     );
+  }
+
+  async getSessionState(externalId: string): Promise<SessionState> {
+    return sessionStateFrom(await this.client.sessionCall('GET', sessionPath(externalId)));
+  }
+
+  // restart sirve tanto para STOPPED como para FAILED y no toca la vinculación guardada.
+  async resumeSession(externalId: string): Promise<ConnectionResult> {
+    return toConnectionResult(await this.client.sessionCall('POST', `${sessionPath(externalId)}/restart`));
   }
 
   async closeSession(externalId: string, options: { forget: boolean }): Promise<ConnectionResult> {

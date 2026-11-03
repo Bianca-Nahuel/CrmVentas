@@ -10,6 +10,7 @@ import { Icon } from '../../../ui/icon';
 import { NotifyService } from '../../../ui/toast';
 import { AgentDraft } from '../agent-draft';
 import { TRANSPARENCY_TEXT, describePath, diffConfigs } from '../config-model';
+import { Spinner } from '../../../ui/spinner';
 
 /**
  * Historial: las versiones (número, quién y cuándo), la comparación de dos campo por campo (texto plano) y
@@ -18,7 +19,7 @@ import { TRANSPARENCY_TEXT, describePath, diffConfigs } from '../config-model';
 @Component({
   selector: 'app-agent-history-section',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Icon],
+  imports: [Icon, Spinner],
   template: `
     <div class="flex flex-col gap-5">
       <div class="card flex flex-col gap-3 p-5">
@@ -97,7 +98,7 @@ import { TRANSPARENCY_TEXT, describePath, diffConfigs } from '../config-model';
         } @else if (versions.loadFailed()) {
           <p class="text-sm text-error">No pudimos cargar el historial.</p>
         } @else {
-          <p class="text-sm text-muted">Cargando…</p>
+          <p class="flex items-center gap-2 text-sm text-muted" role="status"><app-spinner /> Cargando…</p>
         }
         <button
           type="button"
