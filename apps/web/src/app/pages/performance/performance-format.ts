@@ -64,6 +64,11 @@ export interface Delta {
 }
 
 /** Variación contra la semana anterior. higherIsBetter: false para lo que conviene que baje. */
+/** Cerradas por una persona: el total sin las que se cerraron solas por inactividad. */
+export function closedByPerson(closed: { total: number; auto_inactive: number }): number {
+  return closed.total - closed.auto_inactive;
+}
+
 export function delta(
   current: number | null | undefined,
   previous: number | null | undefined,

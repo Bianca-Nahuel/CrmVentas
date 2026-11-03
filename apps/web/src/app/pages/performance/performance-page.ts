@@ -22,6 +22,7 @@ import {
   CUSTOMER_OUTCOME_LABELS,
   ISSUE_LABELS,
   WEEK_RANGES,
+  closedByPerson,
   delta,
   durationLabel,
   percentLabel,
@@ -217,6 +218,7 @@ interface Metric {
                     <th scope="col" class="px-4 py-2.5 font-semibold text-muted">Vendedor</th>
                     <th scope="col" class="px-4 py-2.5 font-semibold text-muted">Atendidas</th>
                     <th scope="col" class="px-4 py-2.5 font-semibold text-muted">Cerradas</th>
+                    <th scope="col" class="px-4 py-2.5 font-semibold text-muted">Cerradas automáticamente</th>
                     <th scope="col" class="px-4 py-2.5 font-semibold text-muted">Derivadas sin respuesta</th>
                     <th scope="col" class="px-4 py-2.5 font-semibold text-muted">
                       1.ª respuesta (mediana · p90)
@@ -231,7 +233,8 @@ interface Metric {
                     <tr class="border-b border-border last:border-0" data-testid="seller-row">
                       <th scope="row" class="px-4 py-2.5 font-semibold text-text">{{ seller.user.name }}</th>
                       <td class="tabular px-4">{{ w?.attended ?? 0 }}</td>
-                      <td class="tabular px-4">{{ w?.closed?.total ?? 0 }}</td>
+                      <td class="tabular px-4">{{ w ? closedByPerson(w.closed) : 0 }}</td>
+                      <td class="tabular px-4">{{ w?.closed?.auto_inactive ?? 0 }}</td>
                       <td class="tabular px-4">{{ w?.handedOffUnanswered ?? 0 }}</td>
                       <td class="tabular px-4">
                         {{ duration(w?.handoffResponse?.p50Seconds) }} ·
@@ -253,7 +256,9 @@ interface Metric {
                     <dt class="text-muted">Atendidas</dt>
                     <dd class="tabular text-text">{{ w?.attended ?? 0 }}</dd>
                     <dt class="text-muted">Cerradas</dt>
-                    <dd class="tabular text-text">{{ w?.closed?.total ?? 0 }}</dd>
+                    <dd class="tabular text-text">{{ w ? closedByPerson(w.closed) : 0 }}</dd>
+                    <dt class="text-muted">Cerradas automáticamente</dt>
+                    <dd class="tabular text-text">{{ w?.closed?.auto_inactive ?? 0 }}</dd>
                     <dt class="text-muted">Sin respuesta</dt>
                     <dd class="tabular text-text">{{ w?.handedOffUnanswered ?? 0 }}</dd>
                     <dt class="text-muted">1.ª respuesta</dt>
@@ -503,7 +508,7 @@ export class PerformancePage {
       {
         // Las que cerró una persona: sin las que se cerraron solas por inactividad (van en su propia línea).
         label: 'Cerradas',
-        values: sum((week) => week.closed.total - week.closed.auto_inactive),
+        values: sum((week) => closedByPerson(week.closed)),
         line: 'dashed',
         marker: 'square',
         tone: 'warning',
@@ -561,6 +566,7 @@ export class PerformancePage {
   protected readonly issueLabels = ISSUE_LABELS;
   protected readonly reviewsPageSize = REVIEWS_PAGE_SIZE;
   protected readonly duration = durationLabel;
+  protected readonly closedByPerson = closedByPerson;
   protected readonly minutes = (value: number) => `${Math.round(value)} min`;
   protected readonly percent = percentLabel;
   protected readonly score = scoreLabel;
@@ -583,9 +589,17 @@ export class PerformancePage {
       { label: 'Atendidas', value: String(now.attended), delta: delta(now.attended, before?.attended, true) },
       {
         label: 'Cerradas',
-        value: String(closed.total),
-        delta: delta(closed.total, before?.closed.total, true),
-        detail: closed.total ? `${closed.sold} vendidas · ${closed.not_sold} no compraron` : undefined,
+        value: String(closedByPerson(closed)),
+        delta: delta(closedByPerson(closed), before ? closedByPerson(before.closed) : undefined, true),
+        detail: closedByPerson(closed)
+          ? `${closed.sold} vendidas · ${closed.not_sold} no compraron`
+          : undefined,
+      },
+      {
+        label: 'Cerradas automáticamente',
+        value: String(closed.auto_inactive),
+        delta: delta(closed.auto_inactive, before?.closed.auto_inactive, false),
+        detail: 'Por inactividad',
       },
       {
         label: 'Derivadas sin respuesta',
