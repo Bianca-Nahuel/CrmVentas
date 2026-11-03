@@ -501,11 +501,19 @@ export class PerformancePage {
         tone: 'primary',
       },
       {
+        // Las que cerró una persona: sin las que se cerraron solas por inactividad (van en su propia línea).
         label: 'Cerradas',
-        values: sum((week) => week.closed.total),
+        values: sum((week) => week.closed.total - week.closed.auto_inactive),
         line: 'dashed',
         marker: 'square',
         tone: 'warning',
+      },
+      {
+        label: 'Cerradas automáticamente',
+        values: sum((week) => week.closed.auto_inactive),
+        line: 'dotted',
+        marker: 'triangle',
+        tone: 'muted',
       },
     ];
   });
