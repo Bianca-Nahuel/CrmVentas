@@ -8,7 +8,7 @@ import {
   toFunnelParams,
   weeksIn,
 } from './funnel-query';
-import { listTitle } from './funnel-format';
+import { listTitle, trendPoints } from './funnel-format';
 
 const UUID = '0193a5b2-1c2d-7e3f-8a9b-0c1d2e3f4a5b';
 
@@ -84,5 +84,29 @@ describe('estado del embudo en la URL (tarea 028)', () => {
     expect(listTitle('hot', false, 'not_sold')).toBe('Caliente · no compró');
     expect(listTitle('written', false, null)).toBe('Llegaron a «Escribió»');
     expect(listTitle(null, false, 'open')).toBe('En curso');
+  });
+});
+
+describe('tendencia por cohorte (tarea 028)', () => {
+  const block = (written: number, hot: number, sold: number, soldWithoutHot: number) =>
+    ({
+      stages: [
+        { stage: 'written', count: written },
+        { stage: 'hot', count: hot },
+        { stage: 'sold', count: sold },
+      ],
+      shortcuts: { attendedWithoutHandoff: 0, soldWithoutHot, soldAiOnly: 0 },
+    }) as unknown as import('../../api/generated').FunnelBlock;
+
+  it('escribió → vendido y caliente → vendido sin contar las vendidas por el atajo', () => {
+    expect(
+      trendPoints([
+        { weekStart: '2026-10-05', block: block(20, 8, 5, 1) },
+        { weekStart: '2026-10-12', block: block(0, 0, 0, 0) },
+      ]),
+    ).toEqual([
+      { weekStart: '2026-10-05', written: 25, hot: 50 },
+      { weekStart: '2026-10-12', written: null, hot: null },
+    ]);
   });
 });

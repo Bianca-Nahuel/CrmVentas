@@ -144,3 +144,74 @@ un rol con visibilidad limitada tiene este permiso, ve solo sus números.
 Resumen: migraciones y backfill, definición final de cada etapa, SQL principal con su `EXPLAIN`, resultado de
 cada punto de la verificación con las capturas, veredicto de `revisor-codigo` y `revisor-seguridad`,
 decisiones nuevas en `docs/decisiones.md` y mensaje de commit propuesto.
+
+## Resultado
+
+_Hecha el 2026-11-03 en la rama `claude/gallant-allen-l45xxr`. La 026 estaba mergeada en `main` (`0f74298`)._
+
+### Qué se hizo
+- **Migraciones:**
+  - `0030_embudo_de_ventas` agrega `conversations.lead_tier_peak` y `conversations.close_amount numeric(14,2)` (CHECK: NULL, o mayor que 0 y `close_outcome = 'sold'`). En `conversation_metrics` agrega `handoff_seconds_business`, `sold_seconds_business` y `close_amount`. Suma los índices `conversation_metrics_first_inbound_idx` y `conversations_stalled_idx`.
+  - `0031_embudo_de_ventas_rls` da grants de UPDATE solo de esas columnas.
+  - **No se creó `first_handed_off_at`:** se reusa `conversation_metrics.handed_off_at`, que ya era la primera derivación y no se borra al reactivar.
+- **Datos:**
+  - El worker de la IA guarda `lead_tier_peak` con los umbrales vigentes y solo lo hace subir.
+  - `refreshConversationMetrics` copia el nivel máximo (ya no lo recalcula con los umbrales de hoy), calcula los dos tiempos y copia el monto.
+  - El cierre acepta `amount` opcional, solo con "vendido".
+  - Backfill: `npm run dev:backfill-funnel` (`src/funnel/funnel-backfill.ts`).
+- **API (`src/funnel/`):**
+  - `GET /api/funnel` pide `metrics.read`.
+  - `GET /api/funnel/leads` y `GET /api/funnel/stalled` piden además `lead.read`.
+  - Las definiciones de las etapas viven en un solo lugar (`funnel-sql.ts`).
+  - `InboxService.leadRowsWhere` comparte las filas con la grilla.
+- **Panel:**
+  - `/embudo` reemplaza al lugar reservado "Métricas" (`/metricas` redirige).
+  - Tiene barras con su tabla, listas por etapa, pérdida o salida, por qué se pierden, tiempos, atajos, tendencia (tabla corta en el celular), estancados y montos, más el aviso de pocas conversaciones.
+  - `LeadTable` se sacó de la grilla de leads y se comparte con el embudo.
+  - El diálogo de cierre tiene el monto en formato argentino.
+- **Seed:** seis semanas con todos los caminos.
+
+### Verificación
+1. **Etapas:** el test `test/funnel.test.ts` (18 casos) tiene una cohorte de 15 conversaciones con cada camino; los conteos, la conversión, las pérdidas, los atajos y las salidas están calculados a mano. Para confirmar que los tests no pasan de vacío, se rompió a propósito una expectativa y el test falló.
+2. **Reactivación** con la API: la conversación sigue contando como derivada.
+3. **Umbrales**, pasando por el worker real con el modelo falso: con puntaje 80 queda caliente; al subir el umbral a 95, `lead_tier` pasa a tibio y `lead_tier_peak` sigue caliente, también en las métricas.
+4. **Cohortes:** la conversación del domingo 23:30 cae en su semana; se respetan los topes de 26 semanas y de 366 días.
+5. **Tiempos:** coinciden con `businessSecondsBetween`, incluido el fin de semana.
+6. **Montos:** total, promedio y conteo correctos; la validación funciona y el CHECK de la base también.
+7. **Listas** por etapa, pérdida y salida, con paginación; `stalled` respeta los días y el orden.
+8. **Permisos y aislamiento:** seller → 403; el viewer ve el embudo, pero las listas le dan 403; la empresa B no ve nada de A; un rol con visibilidad por número ve solo sus números.
+9. **Backfill:** completa con los umbrales de cada versión, después con `lead_tier` y, si no hay nada, con `lead_score_peak`; no duplica. En la base local, la primera corrida completó 24 y la segunda, 0.
+10. **Panel:** `e2e/funnel.spec.ts` (5 tests) y capturas `37` a `41` en claro y oscuro, a 375 y 1280 px.
+11. **Logs y secretos:** logs sin textos ni teléfonos; ningún secreto en el repo.
+
+**Totales:**
+- **Tests:** API 788/789 (la falla es la de `catalog-db.test.ts:392`, previa); `waha-inbound` falló una vez a nivel de archivo y pasó en las dos corridas siguientes (intermitente); panel 117/117; e2e 46/46.
+- **Lint:** OK.
+- **Typecheck:** OK salvo `test/inbox-reply.test.ts:317`, que es previo.
+- **Build:** OK; el bundle inicial pasó de 515,76 kB a 517,96 kB.
+
+**Otros ajustes:**
+- **e2e previo:** se ajustó una expectativa de `e2e/inbox.spec.ts` que ya fallaba en `main`, porque el texto de la página había cambiado.
+
+**EXPLAIN** (30.000 conversaciones sintéticas, como `ventas_app` con la RLS activa):
+- La consulta principal hace un `Bitmap Index Scan` sobre `conversation_metrics_first_inbound_idx`, con la empresa y el rango como condición del índice.
+- La RLS se evalúa una sola vez (`InitPlan`).
+- 4 a 5 ms para 4 semanas y 12 a 18 ms para 3 meses, con `groupBy=week`.
+
+**Entorno:** este contenedor no tiene Docker y la red bloquea `postgresql.org`. Se usó PostgreSQL 18.6 de `@embedded-postgres/linux-x64`, instalado fuera del repo, en una base local creada como en `infra/postgres/init`.
+
+### Revisores
+- **`revisor-codigo`: APROBADO**, sin bloqueantes. Menores:
+  - (a) "Se perdieron" excluye las vendidas por un atajo: está documentado en la decisión #118 y queda así.
+  - (b) El período se calcula con la fecha del navegador y no con la zona de la empresa: queda como deuda.
+  - (c) Antes de producción hay que rellenar `lead_tier_peak`: el backfill de hoy es solo para desarrollo. Queda como deuda.
+  - (d) Hay helpers de fechas duplicados: queda.
+  - (e) Faltaba un test del cálculo de la tendencia: **corregido**, con `trendPoints` y su test.
+- **`revisor-seguridad`: APROBADO**, sin hallazgos críticos, altos ni medios. Uno bajo: una config local de Playwright para el Chromium del contenedor. **Corregido:** se borró y nunca se commiteó.
+
+### Decisiones
+#118 a #122 en `docs/decisiones.md`: definiciones, datos congelados, permisos, monto y backfill.
+
+### Deuda
+- **Producción:** rellenar `lead_tier_peak` y la primera derivación de las conversaciones existentes, que hoy se hace con un script solo de desarrollo. Hasta entonces, el nivel de Rendimiento de esas conversaciones queda en NULL después de un refresh.
+- **Período del panel:** calcularlo con el "hoy" de la empresa.

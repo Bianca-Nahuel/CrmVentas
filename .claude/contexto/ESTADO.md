@@ -1,12 +1,20 @@
 # Estado del proyecto
 
-_Última actualización: 2026-11-02 (tarea 027, paneles de catálogo y del agente)_
+_Última actualización: 2026-11-03 (tarea 028, embudo de ventas)_
 
 > Esta rama (`claude/bandeja-y-leads`) sale de `claude/panel-angular-base`, que sale de `main`. El estado de
 > la tarea 010 del agente (rama `claude/hopeful-darwin-mfj88r`, decisiones #63–#67) no está acá: al mergear,
 > juntar los dos `ESTADO.md`.
 
 ## Hecho
+
+- **Tarea 028 (embudo de ventas):** hecha el 2026-11-03 en la rama `claude/gallant-allen-l45xxr`, commiteada y pusheada. Ver el "Resultado" en `docs/tareas/hechas/028-embudo-de-ventas.md` y las decisiones #118 a #122.
+  - **Qué hay:** `/embudo` y `/api/funnel*`, el nivel máximo congelado, el monto al cerrar y `dev:backfill-funnel`.
+  - **Migraciones 0029 a 0031:** la 0029 es del vigía de reconexión de los números. Las tres se aplicaron en una base local temporal; **hay que correrlas en la base de desarrollo** con `npm run db:migrate`.
+  - **Verificación:** API 788/789 (la falla es la previa de catálogo), panel 117/117 y e2e 46/46.
+  - **Revisores:** aprobaron los dos.
+  - **Deuda:** rellenar los datos viejos en producción y calcular el "hoy" del panel con la zona de la empresa.
+  - **En esta misma rama, el mismo día:** el vigía de reconexión de números, la ruedita de carga, el modelo sin precio, el extractor oculto y las cerradas automáticamente en Rendimiento.
 
 - **Tarea 027 (paneles de catálogo y configuración del agente):** hecha el 2026-11-02 en la rama `claude/test-tiempo-real`, **sin commitear** (va encima de la 026, que tampoco está commiteada). Ver el "Resultado" en `docs/tareas/hechas/027-paneles-catalogo-y-agente.md`, las decisiones #113 a #117 y la deuda de la 027.
   - **Qué hay:**

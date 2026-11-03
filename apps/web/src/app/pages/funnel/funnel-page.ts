@@ -4,7 +4,7 @@ import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { Banknote, Clock, Flame, Info, Shuffle, TriangleAlert, X } from 'lucide';
 import { of } from 'rxjs';
 import { FunnelApi } from '../../api/funnel-api';
-import type { FunnelBlock, FunnelLossReasons, FunnelOutcome } from '../../api/generated';
+import type { FunnelLossReasons, FunnelOutcome } from '../../api/generated';
 import { AuthService } from '../../core/auth/auth.service';
 import { can } from '../../core/nav';
 import { query } from '../../core/query';
@@ -17,7 +17,7 @@ import { LeadTable } from '../leads/lead-table';
 import { durationLabel, percentLabel, weekLabel } from '../performance/performance-format';
 import { WeeklyChart, type ChartSeries } from '../performance/weekly-chart';
 import { FunnelBars, type StagePick } from './funnel-bars';
-import { LOW_VOLUME, OUTCOME_LABELS, listTitle } from './funnel-format';
+import { LOW_VOLUME, OUTCOME_LABELS, listTitle, stageCount, trendPoints } from './funnel-format';
 import {
   MAX_DAYS,
   PERIODS,
@@ -44,12 +44,6 @@ const LOSS_OUTCOMES: readonly (keyof FunnelLossReasons & FunnelOutcome)[] = [
   'auto_inactive',
 ];
 const TIER_LABELS: Record<LeadTier, string> = { hot: 'Caliente', warm: 'Tibio', cold: 'Frío' };
-
-const pct = (part: number, total: number) => (total > 0 ? Math.round((part / total) * 1000) / 10 : null);
-/** Caliente y vendido = vendidos menos los que se vendieron sin pasar por caliente. */
-const hotSold = (block: FunnelBlock) => block.amounts.sold - block.shortcuts.soldWithoutHot;
-const stageCount = (block: FunnelBlock, stage: string) =>
-  block.stages.find((s) => s.stage === stage)?.count ?? 0;
 
 /**
  * Embudo de ventas (tarea 028): de la gente que escribió en el período, cuántos llegan a cada etapa, dónde se
@@ -652,11 +646,7 @@ export class FunnelPage {
     this.funnel.hasValue() ? (this.funnel.value()!.weeks ?? []).map((week) => week.weekStart) : [],
   );
   private readonly trend = computed(() =>
-    (this.funnel.hasValue() ? (this.funnel.value()!.weeks ?? []) : []).map((week) => ({
-      weekStart: week.weekStart,
-      written: pct(week.block.amounts.sold, stageCount(week.block, 'written')),
-      hot: pct(hotSold(week.block), stageCount(week.block, 'hot')),
-    })),
+    trendPoints(this.funnel.hasValue() ? (this.funnel.value()!.weeks ?? []) : []),
   );
   protected readonly trendSeries = computed<ChartSeries[]>(() => [
     {
