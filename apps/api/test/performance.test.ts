@@ -560,18 +560,20 @@ describe('5 y 6. métricas semanales, horario de atención y atribución', () =>
   beforeAll(async () => {
     // a (A1): derivada lun 10:05, respondida 10:15 (600 s), cerrada vendida el martes.
     const a = await createConversation(tenantA, channels.A1.id, ar('2026-10-05T10:00'));
-    await ctx.ownerPool.query('UPDATE conversations SET lead_score_peak = 90 WHERE id = $1', [
-      a.conversationId,
-    ]);
+    await ctx.ownerPool.query(
+      `UPDATE conversations SET lead_score_peak = 90, lead_tier_peak = 'hot' WHERE id = $1`,
+      [a.conversationId],
+    );
     await handOff(a, ar('2026-10-05T10:05'));
     await addMsg(a, 'user', ar('2026-10-05T10:15'), 'Hola, te ayudo con eso');
     await closeAt(a, ar('2026-10-06T12:00'), 'sold');
     await refresh(a);
     // b (A1): derivada vie 17:55, respondida lun 9:10 → 5 + 10 min = 900 s. Atendida en la semana 2.
     const b = await createConversation(tenantA, channels.A1.id, ar('2026-10-09T17:50'));
-    await ctx.ownerPool.query('UPDATE conversations SET lead_score_peak = 50 WHERE id = $1', [
-      b.conversationId,
-    ]);
+    await ctx.ownerPool.query(
+      `UPDATE conversations SET lead_score_peak = 50, lead_tier_peak = 'warm' WHERE id = $1`,
+      [b.conversationId],
+    );
     await handOff(b, ar('2026-10-09T17:55'));
     await addMsg(b, 'user', ar('2026-10-12T09:10'), 'Buen día, ¿seguís interesado?');
     await refresh(b);

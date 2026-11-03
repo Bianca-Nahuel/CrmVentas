@@ -206,8 +206,19 @@ export const closeConversationBodySchema = z
     outcome: closeOutcomeSchema,
     // Opcional; vacía = sin nota.
     note: z.string().trim().max(500).optional(),
+    // Monto aproximado de la venta en ARS (tarea 028): opcional y solo con "vendido". Plata como texto
+    // decimal (numeric en la base, nunca float): hasta 12 enteros y 2 decimales, mayor que 0.
+    amount: z
+      .string()
+      .regex(/^\d{1,12}(\.\d{1,2})?$/)
+      .refine((value) => Number(value) > 0, 'tiene que ser mayor que 0')
+      .optional(),
   })
   .strict()
+  .refine((body) => body.amount === undefined || body.outcome === 'sold', {
+    path: ['amount'],
+    message: 'solo con el resultado vendido',
+  })
   .meta({ id: 'CloseConversationBody' });
 export type CloseConversationBody = z.infer<typeof closeConversationBodySchema>;
 

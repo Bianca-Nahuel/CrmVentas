@@ -8,6 +8,7 @@ import { InboxModule } from './inbox/inbox.module.js';
 import { JobsModule } from './jobs/jobs.module.js';
 import { MeController } from './me/me.controller.js';
 import { OutboundModule } from './messaging/outbound/outbound.module.js';
+import { FunnelModule } from './funnel/funnel.module.js';
 import { PerformanceModule } from './performance/performance.module.js';
 import { RealtimeModule } from './realtime/realtime.module.js';
 import { InboundModule } from './whatsapp/inbound/inbound.module.js';
@@ -25,6 +26,7 @@ import { WhatsappModule } from './whatsapp/whatsapp.module.js';
     AiModule,
     InboxModule,
     PerformanceModule,
+    FunnelModule,
     RealtimeModule,
   ],
   controllers: [HealthController, MeController],

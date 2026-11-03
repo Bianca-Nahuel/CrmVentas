@@ -12,7 +12,7 @@ describe('navegación por rol (permisos de libs/shared)', () => {
       'catalogo',
       'agente',
       'consumo',
-      'metricas',
+      'embudo',
     ]);
   });
 
@@ -24,7 +24,7 @@ describe('navegación por rol (permisos de libs/shared)', () => {
       'rendimiento',
       'catalogo',
       'agente',
-      'metricas',
+      'embudo',
     ]);
   });
 
@@ -32,8 +32,8 @@ describe('navegación por rol (permisos de libs/shared)', () => {
     expect(paths('seller')).toEqual(['conversaciones', 'leads']);
   });
 
-  it('viewer ve Rendimiento (solo totales) y Métricas', () => {
-    expect(paths('viewer')).toEqual(['rendimiento', 'metricas']);
+  it('viewer ve Rendimiento (solo totales) y el Embudo', () => {
+    expect(paths('viewer')).toEqual(['rendimiento', 'embudo']);
   });
 
   it('sin rol no ve nada', () => {

@@ -171,6 +171,9 @@ export const conversations = pgTable(
     scoreBreakdown: jsonb('score_breakdown'),
     // hot | warm | cold, derivado de los umbrales de la config: solo para mostrar y ordenar.
     leadTier: text('lead_tier'),
+    // Nivel máximo alcanzado (tarea 028), guardado en el momento con los umbrales vigentes: si la empresa
+    // cambia los umbrales, no se recalcula. Lo escribe el worker de la IA y nunca baja.
+    leadTierPeak: text('lead_tier_peak'),
     // Mensajes que mandó la IA (respuestas y preguntas de un disparador), y cuántos con el lead caliente.
     qualificationTurns: integer('qualification_turns').notNull().default(0),
     hotTurns: integer('hot_turns').notNull().default(0),
@@ -187,6 +190,8 @@ export const conversations = pgTable(
     closedBy: uuid('closed_by'),
     closeOutcome: text('close_outcome'),
     closeNote: text('close_note'),
+    // Monto aproximado de la venta en ARS (tarea 028), opcional y solo con close_outcome = 'sold'.
+    closeAmount: numeric('close_amount', { precision: 14, scale: 2 }),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
@@ -224,6 +229,15 @@ export const conversations = pgTable(
     check('conversations_lead_score_check', sql`${t.leadScore} BETWEEN 0 AND 100`),
     check('conversations_lead_score_peak_check', sql`${t.leadScorePeak} BETWEEN 0 AND 100`),
     check('conversations_lead_tier_check', sql`${t.leadTier} IN ('hot', 'warm', 'cold')`),
+    check('conversations_lead_tier_peak_check', sql`${t.leadTierPeak} IN ('hot', 'warm', 'cold')`),
+    check(
+      'conversations_close_amount_check',
+      sql`${t.closeAmount} IS NULL OR (${t.closeAmount} > 0 AND ${t.closeOutcome} = 'sold')`,
+    ),
+    // Estancados del embudo (tarea 028): abiertas, calientes, por puntaje.
+    index('conversations_stalled_idx')
+      .on(t.tenantId, t.leadScore.desc().nullsLast())
+      .where(sql`${t.status} = 'open' AND ${t.leadTierPeak} = 'hot'`),
     check(
       'conversations_turns_check',
       sql`${t.qualificationTurns} >= 0 AND ${t.hotTurns} >= 0 AND ${t.suggestionsCount} >= 0`,

@@ -211,6 +211,20 @@
       "when": 1793664569917,
       "tag": "0029_vigia_reconexion",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1793666805280,
+      "tag": "0030_embudo_de_ventas",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1793666806559,
+      "tag": "0031_embudo_de_ventas_rls",
+      "breakpoints": true
     }
   ]
 }

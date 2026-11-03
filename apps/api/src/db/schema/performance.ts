@@ -62,6 +62,12 @@ export const conversationMetrics = pgTable(
     unanswered: boolean('unanswered').notNull().default(false),
     // Nivel máximo alcanzado (lead_score_peak con los umbrales vigentes al calcular).
     leadTierPeak: text('lead_tier_peak'),
+    // Embudo (tarea 028), en horario de atención: primer mensaje del cliente → primera derivación, y
+    // primer mensaje del cliente → cierre vendido.
+    handoffSecondsBusiness: integer('handoff_seconds_business'),
+    soldSecondsBusiness: integer('sold_seconds_business'),
+    // Copia de conversations.close_amount: el viewer lee los totales sin leer conversations (#106).
+    closeAmount: numeric('close_amount', { precision: 14, scale: 2 }),
     closedAt: timestamp('closed_at', { withTimezone: true }),
     closeOutcome: text('close_outcome'),
     // A quién se le atribuyen las respuestas humanas (docs/decisiones.md, "Atribución por vendedor"):
@@ -89,6 +95,15 @@ export const conversationMetrics = pgTable(
       sql`${t.humanMessagesCount} >= 0 AND ${t.aiMessagesCount} >= 0 AND ${t.inboundCount} >= 0
         AND ${t.firstResponseSecondsBusiness} >= 0 AND ${t.handoffResponseSecondsBusiness} >= 0`,
     ),
+    check(
+      'conversation_metrics_funnel_seconds_check',
+      sql`${t.handoffSecondsBusiness} >= 0 AND ${t.soldSecondsBusiness} >= 0`,
+    ),
+    check('conversation_metrics_close_amount_check', sql`${t.closeAmount} > 0`),
+    // Cohorte del embudo (tarea 028): las que empezaron en el período.
+    index('conversation_metrics_first_inbound_idx')
+      .on(t.tenantId, t.firstInboundAt)
+      .where(sql`${t.firstInboundAt} IS NOT NULL`),
     check('conversation_metrics_tier_check', sql`${t.leadTierPeak} IN ('hot', 'warm', 'cold')`),
     check(
       'conversation_metrics_close_outcome_check',

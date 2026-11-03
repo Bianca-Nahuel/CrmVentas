@@ -14,12 +14,18 @@ import type { CloseOutcome } from './inbox.contracts.js';
 export async function closeLockedConversation(
   tx: AppTx,
   target: { tenantId: string; conversationId: string; channelId: string },
-  close: { outcome: CloseOutcome | 'auto_inactive'; note: string | null; userId: string | null },
+  close: {
+    outcome: CloseOutcome | 'auto_inactive';
+    note: string | null;
+    userId: string | null;
+    // Solo con 'sold' (el contrato y el CHECK de 0030 lo exigen).
+    amount?: string | null;
+  },
 ): Promise<void> {
   await tx.execute(sql`
     UPDATE conversations
     SET status = 'closed', closed_at = now(), close_outcome = ${close.outcome}, closed_by = ${close.userId},
-        close_note = ${close.note}
+        close_note = ${close.note}, close_amount = ${close.amount ?? null}::numeric
     WHERE id = ${target.conversationId}
   `);
   const superseded = await supersedeQueuedAiReplies(tx, target.conversationId);

@@ -44,7 +44,7 @@ export function permissionGuard(permission: Permission): CanActivateFn {
 }
 
 /**
- * Ruta vacía del panel → primera sección permitida (el viewer, a Métricas). Es un guard y no un
+ * Ruta vacía del panel → primera sección permitida (el viewer, a Rendimiento). Es un guard y no un
  * redirectTo porque los redirects se evalúan antes que los guards, cuando el rol todavía no se cargó.
  */
 export const homeGuard: CanActivateFn = async () => {

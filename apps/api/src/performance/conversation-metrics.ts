@@ -2,10 +2,10 @@
 // transacción, el worker de entrada (entrantes y ecos), el de salida (mensajes enviados), el de la IA (al
 // derivar), el cierre y el backfill. Recalcula todo desde messages y conversations (idempotente), así un
 // orden distinto de los trabajos no deja la fila desfasada.
-import { tenantConfigSchema, type TenantConfig } from '@ventas/shared';
+import { tenantConfigSchema } from '@ventas/shared';
 import { sql } from 'drizzle-orm';
 import { businessSecondsBetween } from '../ai/reply/business-hours.js';
-import { tierFor, type LeadTier } from '../ai/scoring/score.js';
+import type { LeadTier } from '../ai/scoring/score.js';
 import type { AppTx } from '../db/tenant-context.js';
 
 export type Attribution = 'panel' | 'single_seller' | 'none';
@@ -15,9 +15,10 @@ type Row = {
   channel_id: string;
   created_at: Date;
   conversation_handed_off_at: Date | null;
-  lead_score_peak: number | null;
+  lead_tier_peak: LeadTier | null;
   closed_at: Date | null;
   close_outcome: string | null;
+  close_amount: string | null;
   timezone: string;
   config: unknown;
   prev_handed_off_at: Date | null;
@@ -35,11 +36,6 @@ type Row = {
   human_reply_weeks: string[];
   single_seller_id: string | null;
 };
-
-/** Nivel máximo: lead_score_peak con los umbrales de la config (el mismo criterio que lead_tier). */
-function peakTier(score: number | null, config: TenantConfig | null): LeadTier | null {
-  return score === null || !config ? null : tierFor(score, config.scoring.thresholds);
-}
 
 /**
  * A quién se le atribuyen las respuestas humanas (docs/decisiones.md, "Atribución por vendedor"):
@@ -73,7 +69,7 @@ export function attributionFor(row: {
 export async function refreshConversationMetrics(tx: AppTx, conversationId: string): Promise<void> {
   const result = await tx.execute<Row>(sql`
     SELECT c.tenant_id, c.channel_id, c.created_at, c.handed_off_at AS conversation_handed_off_at,
-      c.lead_score_peak, c.closed_at, c.close_outcome, t.timezone,
+      c.lead_tier_peak, c.closed_at, c.close_outcome, c.close_amount, t.timezone,
       (SELECT tc.config FROM tenant_configs tc WHERE tc.tenant_id = c.tenant_id
         ORDER BY tc.version DESC LIMIT 1) AS config,
       prev.handed_off_at AS prev_handed_off_at, prev.first_human_reply_at AS prev_first_human_reply_at,
@@ -125,6 +121,10 @@ export async function refreshConversationMetrics(tx: AppTx, conversationId: stri
       ? seconds(firstInbound, firstHuman)
       : null;
   const afterHandoff = handedOffAt ? row.first_human_after_handoff_at : null;
+  // Embudo (tarea 028): desde el primer mensaje del cliente, si lo hubo antes (como la primera respuesta).
+  const sinceFirstInbound = (to: Date | null) =>
+    firstInbound && to && new Date(to) >= new Date(firstInbound) ? seconds(firstInbound, to) : null;
+  const sold = row.close_outcome === 'sold';
   const { attribution, userId } = attributionFor({
     humanCount: row.human_count,
     humanUserIds: row.human_user_ids,
@@ -143,20 +143,26 @@ export async function refreshConversationMetrics(tx: AppTx, conversationId: stri
     afterHandoff,
     firstResponse,
     handoffResponse: seconds(handedOffAt, afterHandoff),
-    tier: peakTier(row.lead_score_peak, config),
+    // El nivel máximo guardado en el momento por el worker de la IA (tarea 028): no se recalcula con los
+    // umbrales de hoy.
+    tier: row.lead_tier_peak,
+    handoffSeconds: sinceFirstInbound(handedOffAt),
+    soldSeconds: sold ? sinceFirstInbound(row.closed_at) : null,
+    closeAmount: sold ? row.close_amount : null,
   };
   await tx.execute(sql`
     INSERT INTO conversation_metrics (conversation_id, tenant_id, channel_id, opened_at, first_inbound_at,
       first_human_reply_at, handed_off_at, first_human_reply_after_handoff_at, first_response_seconds_business,
       handoff_response_seconds_business, human_messages_count, ai_messages_count, inbound_count,
       human_participated, human_reply_weeks, unanswered, lead_tier_peak, closed_at, close_outcome,
-      attributed_user_id, attribution)
+      attributed_user_id, attribution, handoff_seconds_business, sold_seconds_business, close_amount)
     VALUES (${conversationId}, ${row.tenant_id}, ${row.channel_id}, ${values.openedAt}, ${values.firstInboundAt},
       ${values.firstHumanReplyAt}, ${values.handedOffAt}, ${values.afterHandoff}, ${values.firstResponse},
       ${values.handoffResponse}, ${row.human_count}, ${row.ai_count}, ${row.inbound_count},
       ${row.human_count > 0}, ${sql.param(row.human_reply_weeks)}::date[], ${handedOffAt !== null && values.afterHandoff === null},
       ${values.tier},
-      ${row.closed_at}, ${row.close_outcome}, ${userId}, ${attribution})
+      ${row.closed_at}, ${row.close_outcome}, ${userId}, ${attribution}, ${values.handoffSeconds},
+      ${values.soldSeconds}, ${values.closeAmount}::numeric)
     ON CONFLICT (conversation_id) DO UPDATE SET
       opened_at = excluded.opened_at,
       first_inbound_at = excluded.first_inbound_at,
@@ -175,6 +181,9 @@ export async function refreshConversationMetrics(tx: AppTx, conversationId: stri
       closed_at = excluded.closed_at,
       close_outcome = excluded.close_outcome,
       attributed_user_id = excluded.attributed_user_id,
-      attribution = excluded.attribution
+      attribution = excluded.attribution,
+      handoff_seconds_business = excluded.handoff_seconds_business,
+      sold_seconds_business = excluded.sold_seconds_business,
+      close_amount = excluded.close_amount
   `);
 }

@@ -3,6 +3,7 @@
 
 import { CloseOutcome } from '../models/close-outcome';
 export interface CloseConversationBody {
+  amount?: string;
   note?: string;
   outcome: CloseOutcome;
 }

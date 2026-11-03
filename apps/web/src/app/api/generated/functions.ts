@@ -47,6 +47,12 @@ export type { DisputeReview$Params as DisputeReview$Params } from './fn/panel/di
 export { disputeReview as disputeReview } from './fn/panel/dispute-review';
 export type { ListReviewDigests$Params as ListReviewDigests$Params } from './fn/panel/list-review-digests';
 export { listReviewDigests as listReviewDigests } from './fn/panel/list-review-digests';
+export type { GetFunnel$Params as GetFunnel$Params } from './fn/panel/get-funnel';
+export { getFunnel as getFunnel } from './fn/panel/get-funnel';
+export type { ListFunnelLeads$Params as ListFunnelLeads$Params } from './fn/panel/list-funnel-leads';
+export { listFunnelLeads as listFunnelLeads } from './fn/panel/list-funnel-leads';
+export type { ListStalledLeads$Params as ListStalledLeads$Params } from './fn/panel/list-stalled-leads';
+export { listStalledLeads as listStalledLeads } from './fn/panel/list-stalled-leads';
 export type { ListCatalogImports$Params as ListCatalogImports$Params } from './fn/panel/list-catalog-imports';
 export { listCatalogImports as listCatalogImports } from './fn/panel/list-catalog-imports';
 export type { UploadCatalogImport$Params as UploadCatalogImport$Params } from './fn/panel/upload-catalog-import';

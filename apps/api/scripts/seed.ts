@@ -5,7 +5,8 @@
 // conversación y dos mensajes por empresa) van por el pool de ventas_app con app.tenant_id, como lo
 // hará el webhook. Cerámicos suma un segundo número, leads de demo para la bandeja y multi@ asignado al
 // número principal (tarea 014), leads para responder desde el panel con la sucursal pausada (tarea 024) y
-// seis semanas de historial con métricas y revisiones de calidad (tarea 026).
+// seis semanas de historial con métricas y revisiones de calidad (tarea 026) y seis semanas de caminos del
+// embudo de ventas (tarea 028).
 // Es idempotente.
 //
 // Credenciales y números SOLO de desarrollo (dominio reservado .test, teléfonos ficticios). Nunca
@@ -440,6 +441,7 @@ async function ensureInboxDemo(tenantId: string, ownerId: string, sellerId: stri
       await tx.execute(sql`
         UPDATE conversations SET
           lead_score = ${lead.score}, lead_score_peak = ${lead.score}, lead_tier = ${lead.tier},
+          lead_tier_peak = ${lead.tier},
           lead_score_at = now(), qualification_turns = 2, hot_turns = 0,
           extracted_data = ${JSON.stringify(lead.extracted ?? {})}::jsonb,
           handed_off_at = ${lead.handoff ? sql`now() - interval '5 minutes'` : sql`NULL`},
@@ -581,6 +583,7 @@ async function ensurePerformanceDemo(tenantId: string) {
               leadScore: plan.index === 1 ? 80 : 45,
               leadScorePeak: plan.index === 1 ? 80 : 45,
               leadTier: plan.index === 1 ? 'hot' : 'warm',
+              leadTierPeak: plan.index === 1 ? 'hot' : 'warm',
               handedOffAt: plan.handoffAt === null ? null : at(plan.handoffAt),
               handoffReason: plan.handoffAt === null ? null : 'asks_human',
               status: 'closed',
@@ -672,6 +675,249 @@ async function ensurePerformanceDemo(tenantId: string) {
   });
 }
 
+// Embudo de ventas (tarea 028): seis semanas de conversaciones que recorren cada camino (se caen en cada etapa,
+// se venden por el camino completo, sin pasar por caliente o solo con la IA, se derivan y se reactivan, no eran
+// un lead, quedan en curso o se cierran por inactividad), algunas ventas con monto y dos calientes estancadas.
+// Casi todas cerradas: no ocupan la grilla ni la bandeja de los e2e. Se crea una vez.
+type FunnelPlan = {
+  key: string;
+  name: string;
+  tier: 'cold' | 'warm' | 'hot' | null;
+  score: number | null;
+  /** Minutos desde el primer mensaje. */
+  handoff?: number;
+  human?: { at: number; panel: boolean };
+  ai?: number;
+  close?: { outcome: string; afterMinutes: number; amount?: string };
+  /** Se derivó y una persona volvió a activar la IA. */
+  reactivated?: boolean;
+};
+const funnelWaId = (week: number, index: number) => `+549110000${String(600 + week * 20 + index)}`;
+
+async function ensureFunnelDemo(tenantId: string, ownerId: string, sellerId: string) {
+  await appDatabase.db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT set_config('app.tenant_id', ${tenantId}, true)`);
+    const [principal] = await tx
+      .select({ id: channels.id })
+      .from(channels)
+      .where(eq(channels.phoneNumber, MESSAGING['ceramicos-demo'].channelPhone));
+    const [done] = await tx
+      .select({ id: contacts.id })
+      .from(contacts)
+      .where(eq(contacts.waId, funnelWaId(0, 1)));
+    if (done || !principal) return;
+
+    for (let week = 0; week < HISTORY_WEEKS; week++) {
+      // Tres días antes de hoy en cada semana hacia atrás, a las 10 (hora de Argentina).
+      const day = new Date(Date.now() - (3 + week * 7) * DAY * 60_000);
+      day.setUTCHours(13, 0, 0, 0);
+      const plans: FunnelPlan[] = [
+        {
+          key: 'completo',
+          name: 'Embudo completo',
+          tier: 'hot',
+          score: 85,
+          ai: 1,
+          handoff: 20,
+          human: { at: 35, panel: true },
+          close: {
+            outcome: 'sold',
+            afterMinutes: DAY,
+            amount: week % 2 === 0 ? `${180000 + week * 15000}` : undefined,
+          },
+        },
+        {
+          key: 'tibio-vendido',
+          name: 'Vendió sin caliente',
+          tier: 'warm',
+          score: 55,
+          human: { at: 25, panel: false },
+          close: { outcome: 'sold', afterMinutes: 4 * 60, amount: week === 1 ? '95000' : undefined },
+        },
+        {
+          key: 'solo-ia',
+          name: 'Vendió solo la IA',
+          tier: 'hot',
+          score: 78,
+          ai: 1,
+          close: { outcome: 'sold', afterMinutes: 90 },
+        },
+        {
+          key: 'sin-respuesta',
+          name: 'Escribió y no siguió',
+          tier: null,
+          score: null,
+          close: { outcome: 'no_response', afterMinutes: 2 * DAY },
+        },
+        {
+          key: 'frio',
+          name: 'Consulta fría',
+          tier: 'cold',
+          score: 20,
+          ai: 1,
+          close: { outcome: 'no_response', afterMinutes: DAY },
+        },
+        {
+          key: 'tibio-perdido',
+          name: 'Tibio no compró',
+          tier: 'warm',
+          score: 50,
+          ai: 1,
+          close: { outcome: 'not_sold', afterMinutes: DAY },
+        },
+        {
+          key: 'caliente-perdido',
+          name: 'Caliente sin derivar',
+          tier: 'hot',
+          score: 72,
+          ai: 1,
+          close: { outcome: 'other', afterMinutes: DAY },
+        },
+        {
+          key: 'derivado-perdido',
+          name: 'Derivado no compró',
+          tier: 'hot',
+          score: 80,
+          ai: 1,
+          handoff: 10,
+          human: { at: 40, panel: true },
+          close: { outcome: 'not_sold', afterMinutes: 2 * DAY },
+        },
+        {
+          key: 'derivado-sin-atender',
+          name: 'Derivado sin atender',
+          tier: 'hot',
+          score: 75,
+          ai: 1,
+          handoff: 8,
+          close: { outcome: 'no_response', afterMinutes: 3 * DAY },
+        },
+        {
+          key: 'no-lead',
+          name: 'No era un lead',
+          tier: 'cold',
+          score: 5,
+          ai: 1,
+          close: { outcome: 'not_a_lead', afterMinutes: 30 },
+        },
+        {
+          key: 'inactivo',
+          name: 'Se enfrió solo',
+          tier: 'warm',
+          score: 45,
+          ai: 1,
+          close: { outcome: 'auto_inactive', afterMinutes: 14 * DAY },
+        },
+        // Abiertas solo en la semana más reciente (no llenan la grilla).
+        ...(week === 0
+          ? [
+              { key: 'en-curso', name: 'Embudo en curso', tier: 'warm', score: 52, ai: 1 } as FunnelPlan,
+              {
+                key: 'reactivado',
+                name: 'Embudo reactivado',
+                tier: 'hot',
+                score: 74,
+                ai: 1,
+                handoff: 15,
+                reactivated: true,
+              } as FunnelPlan,
+              { key: 'estancado', name: 'Caliente estancado', tier: 'hot', score: 88, ai: 1 } as FunnelPlan,
+            ]
+          : []),
+      ];
+
+      for (const [index, plan] of plans.entries()) {
+        // Una hora entre una y otra, dentro del horario de atención.
+        const start = day.getTime() + index * 30 * 60_000;
+        const at = (minutes: number) => new Date(start + minutes * 60_000);
+        const timeline: { from: 'contact' | 'ai' | 'user'; text: string; at: number; by: string | null }[] = [
+          { from: 'contact', text: 'Hola, quería consultar por porcelanato para el living', at: 0, by: null },
+        ];
+        if (plan.ai !== undefined)
+          timeline.push({ from: 'ai', text: '¡Hola! ¿Cuántos m² necesitás?', at: plan.ai, by: null });
+        if (plan.handoff !== undefined)
+          timeline.push({
+            from: 'contact',
+            text: '¿Me puede atender una persona?',
+            at: plan.handoff - 1,
+            by: null,
+          });
+        if (plan.human)
+          timeline.push({
+            from: 'user',
+            text: 'Hola, soy del equipo. Te paso las opciones y el presupuesto.',
+            at: plan.human.at,
+            by: plan.human.panel ? sellerId : null,
+          });
+        const last = Math.max(...timeline.map((message) => message.at));
+        const stalled = plan.key === 'estancado';
+        const [contact] = await tx
+          .insert(contacts)
+          .values({
+            tenantId,
+            waId: funnelWaId(week, index + 1),
+            profileName: `${plan.name} ${week + 1}`,
+            firstSeenAt: at(0),
+            lastSeenAt: at(0),
+          })
+          .returning({ id: contacts.id });
+        const closedAt = plan.close ? at(last + plan.close.afterMinutes) : null;
+        const [conversation] = await tx
+          .insert(conversations)
+          .values({
+            tenantId,
+            channelId: principal.id,
+            contactId: contact!.id,
+            // El estancado no tiene mensajes hace 4 días.
+            lastMessageAt: stalled ? new Date(Date.now() - 4 * DAY * 60_000) : at(last),
+            lastInboundAt: at(0),
+            createdAt: at(0),
+            leadScore: plan.score,
+            leadScorePeak: plan.score,
+            leadTier: plan.tier,
+            leadTierPeak: plan.tier,
+            handedOffAt: plan.handoff !== undefined ? at(plan.handoff) : null,
+            handoffReason: plan.handoff !== undefined ? 'asks_human' : null,
+            status: plan.close ? 'closed' : 'open',
+            closedAt,
+            closeOutcome: plan.close?.outcome ?? null,
+            closedBy: plan.close && plan.close.outcome !== 'auto_inactive' ? ownerId : null,
+            closeAmount: plan.close?.amount ?? null,
+          })
+          .returning({ id: conversations.id });
+        await tx.insert(messages).values(
+          timeline.map((message, position) => ({
+            tenantId,
+            conversationId: conversation!.id,
+            channelId: principal.id,
+            externalId: `seed-funnel-${week}-${plan.key}-${position}`,
+            direction: message.from === 'contact' ? 'inbound' : 'outbound',
+            senderType: message.from,
+            sentByUserId: message.by,
+            type: 'text',
+            body: message.text,
+            status: message.from === 'contact' ? 'received' : 'read',
+            raw: { seed: true },
+            sentAt: stalled && position > 0 ? new Date(Date.now() - 4 * DAY * 60_000) : at(message.at),
+          })),
+        );
+        if (plan.reactivated) {
+          // Las métricas guardan la primera derivación antes de que la reactivación la borre de la conversación.
+          await refreshConversationMetrics(tx, conversation!.id);
+          await tx.execute(sql`
+            UPDATE conversations SET handed_off_at = NULL, handoff_reason = NULL WHERE id = ${conversation!.id}
+          `);
+          await tx.execute(sql`
+            INSERT INTO conversation_events (tenant_id, conversation_id, type, user_id, data)
+            VALUES (${tenantId}, ${conversation!.id}, 'ai_reactivated', ${ownerId},
+              ${JSON.stringify({ previous_handed_off_at: at(plan.handoff!), previous_handoff_reason: 'asks_human' })}::jsonb)
+          `);
+        }
+      }
+    }
+  });
+}
+
 // Los leads de demo vuelven a estar "sin ver" para los usuarios del seed (los e2e los abren). La RLS de
 // conversation_reads solo deja tocar las filas propias: se hace con el contexto de cada usuario.
 async function resetDemoReads(tenantId: string, userIds: string[]) {
@@ -720,6 +966,12 @@ try {
     userIds.get('multi@example.test')!,
   );
   await resetDemoReads(tenantIds.get('ceramicos-demo')!, [...userIds.values()]);
+  await ensureFunnelDemo(
+    tenantIds.get('ceramicos-demo')!,
+    userIds.get(USERS[0].email)!,
+    userIds.get('multi@example.test')!,
+  );
+  // Recalcula las métricas de todas las conversaciones (también las del embudo).
   await ensurePerformanceDemo(tenantIds.get('ceramicos-demo')!);
 
   console.log(

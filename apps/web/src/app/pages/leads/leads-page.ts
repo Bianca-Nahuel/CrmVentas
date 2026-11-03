@@ -10,7 +10,7 @@ import {
 } from '@angular/core';
 import { DOCUMENT } from '@angular/common';
 import { toSignal } from '@angular/core/rxjs-interop';
-import { ActivatedRoute, Router, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import { ArrowUp, RefreshCw, Search, Users } from 'lucide';
 import { InboxApi } from '../../api/inbox-api';
 import type { LeadRow } from '../../api/generated';
@@ -20,20 +20,12 @@ import { pollWhileNoRealtime } from '../../core/poll';
 import { query } from '../../core/query';
 import { onInboxChanges } from '../../core/realtime';
 import { Icon } from '../../ui/icon';
-import { Score } from '../../ui/score';
-import { Paginator, SortHeader, ariaSort, type SortState } from '../../ui/table';
+import { Paginator, type SortState } from '../../ui/table';
 import { AuthService } from '../../core/auth/auth.service';
 import { can } from '../../core/nav';
 import { CloseConversation } from '../inbox/close-dialog';
-import {
-  CLOSE_OUTCOME_LABELS,
-  contactName,
-  previewText,
-  shortWhen,
-  STATE_LABELS,
-  fullWhen,
-} from '../inbox/format';
-import { LeadStateBadge } from '../inbox/lead-state-badge';
+import { STATE_LABELS } from '../inbox/format';
+import { LeadTable } from './lead-table';
 import {
   DEFAULT_QUERY,
   LEADS_PAGE_SIZE,
@@ -65,7 +57,7 @@ const MOBILE_SORTS = [
 @Component({
   selector: 'app-leads-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink, Icon, Score, SortHeader, Paginator, LeadStateBadge],
+  imports: [Icon, Paginator, LeadTable],
   template: `
     <div class="flex items-center justify-between gap-3">
       <h1 class="text-2xl sm:text-[28px] sm:leading-[34px]">Leads</h1>
@@ -214,140 +206,16 @@ const MOBILE_SORTS = [
           }
         </div>
       } @else {
-        <div class="card hidden overflow-x-auto md:block">
-          <table class="w-full text-left text-sm" aria-label="Leads">
-            <thead>
-              <tr class="border-b border-border bg-surface-2">
-                <th scope="col" class="px-4 py-2.5 font-semibold text-muted">Contacto</th>
-                <th scope="col" class="px-4 py-2.5 font-semibold text-muted">Número</th>
-                <th scope="col" class="px-4 py-2.5" [attr.aria-sort]="ariaSort(sortState(), 'score')">
-                  <app-sort-header
-                    column="score"
-                    label="Puntaje"
-                    [sort]="sortState()"
-                    (sortChange)="setSort($event)"
-                  />
-                </th>
-                <th scope="col" class="px-4 py-2.5 font-semibold text-muted">Estado</th>
-                <th scope="col" class="px-4 py-2.5" [attr.aria-sort]="ariaSort(sortState(), 'last_message')">
-                  <app-sort-header
-                    column="last_message"
-                    label="Último mensaje"
-                    [sort]="sortState()"
-                    (sortChange)="setSort($event)"
-                  />
-                </th>
-                @if (canClose()) {
-                  <th scope="col" class="px-4 py-2.5"><span class="sr-only">Acciones</span></th>
-                }
-              </tr>
-            </thead>
-            <tbody>
-              @for (lead of rows(); track lead.id) {
-                <!-- Toda la fila abre la conversación con el mouse; con teclado, el link del nombre. -->
-                <tr
-                  class="h-[var(--row-height)] cursor-pointer border-b border-border last:border-0 hover:bg-surface-2"
-                  [class.live-new]="live.newIds().has(lead.id)"
-                  [class.live-flash]="live.flashIds().has(lead.id)"
-                  data-testid="lead-row"
-                  (click)="openRow($event, lead.id)"
-                >
-                  <td class="px-4 py-2.5">
-                    <span class="flex items-center gap-2">
-                      @if (live.newIds().has(lead.id)) {
-                        <span class="live-chip" data-testid="new-chip">Nueva</span>
-                      }
-                      <a
-                        class="block max-w-48 truncate font-semibold text-text hover:text-primary hover:underline"
-                        [routerLink]="['/conversaciones', lead.id]"
-                        >{{ name(lead) }}</a
-                      >
-                    </span>
-                    <span class="tabular block max-w-48 truncate text-subtle">{{ lead.contact.waId }}</span>
-                  </td>
-                  <td class="px-4">
-                    <span class="block max-w-40 truncate text-text">{{ lead.channel.name }}</span>
-                    <span class="tabular block max-w-40 truncate text-subtle">{{
-                      lead.channel.phoneNumber
-                    }}</span>
-                  </td>
-                  <td class="px-4"><app-score [score]="lead.score" [level]="lead.tier" /></td>
-                  <td class="px-4">
-                    @if (lead.closed; as closed) {
-                      <span class="text-muted">Cerrada · {{ outcomeLabel(closed.outcome) }}</span>
-                    } @else {
-                      <app-lead-state-badge [state]="lead.state" [pending]="lead.pendingHandoff" />
-                    }
-                  </td>
-                  <td class="px-4">
-                    <span class="block max-w-60 truncate text-text" [attr.title]="preview(lead)">{{
-                      preview(lead)
-                    }}</span>
-                    <time
-                      class="tabular block text-subtle"
-                      [attr.datetime]="lead.lastMessageAt"
-                      [attr.title]="fullWhen(lead.lastMessageAt)"
-                      >{{ when(lead.lastMessageAt) }}</time
-                    >
-                  </td>
-                  @if (canClose()) {
-                    <td class="px-4 text-right">
-                      @if (!lead.closed) {
-                        <button
-                          type="button"
-                          class="btn btn-ghost btn-sm"
-                          data-testid="row-close"
-                          [attr.aria-label]="'Cerrar la conversación con ' + name(lead)"
-                          (click)="closeRow(lead)"
-                        >
-                          Cerrar
-                        </button>
-                      }
-                    </td>
-                  }
-                </tr>
-              }
-            </tbody>
-          </table>
-        </div>
-
-        <ul class="flex flex-col gap-2 md:hidden" aria-label="Leads">
-          @for (lead of rows(); track lead.id) {
-            <li>
-              <a
-                class="card flex flex-col gap-1.5 p-3.5 hover:border-border-strong"
-                [class.live-new]="live.newIds().has(lead.id)"
-                [class.live-flash]="live.flashIds().has(lead.id)"
-                [routerLink]="['/conversaciones', lead.id]"
-                data-testid="lead-card"
-              >
-                <span class="flex items-center justify-between gap-3">
-                  <span class="flex min-w-0 items-center gap-2">
-                    @if (live.newIds().has(lead.id)) {
-                      <span class="live-chip" data-testid="new-chip">Nueva</span>
-                    }
-                    <span class="truncate font-semibold text-text">{{ name(lead) }}</span>
-                  </span>
-                  <app-score [score]="lead.score" [level]="lead.tier" variant="compact" />
-                </span>
-                <span class="flex flex-wrap items-center gap-2 text-sm text-muted">
-                  <span class="truncate">{{ lead.channel.name }}</span>
-                  @if (lead.closed; as closed) {
-                    <span>Cerrada · {{ outcomeLabel(closed.outcome) }}</span>
-                  } @else {
-                    <app-lead-state-badge [state]="lead.state" [pending]="lead.pendingHandoff" />
-                  }
-                </span>
-                <span class="flex items-baseline justify-between gap-3 text-sm">
-                  <span class="truncate text-text">{{ preview(lead) }}</span>
-                  <time class="tabular shrink-0 text-subtle" [attr.datetime]="lead.lastMessageAt">{{
-                    when(lead.lastMessageAt)
-                  }}</time>
-                </span>
-              </a>
-            </li>
-          }
-        </ul>
+        <app-lead-table
+          [rows]="rows()"
+          [sortable]="true"
+          [sort]="sortState()"
+          [canClose]="canClose()"
+          [newIds]="live.newIds()"
+          [flashIds]="live.flashIds()"
+          (sortChange)="setSort($event)"
+          (closeRow)="closeRow($event)"
+        />
 
         <app-paginator
           class="mt-4"
@@ -368,8 +236,6 @@ export class LeadsPage {
   private readonly auth = inject(AuthService);
   private readonly closer = inject(CloseConversation);
   protected readonly canClose = computed(() => can(this.auth.role(), { conversation: ['close'] }));
-  protected readonly outcomeLabel = (outcome: keyof typeof CLOSE_OUTCOME_LABELS) =>
-    CLOSE_OUTCOME_LABELS[outcome];
   private readonly document = inject(DOCUMENT);
 
   private readonly params = toSignal(this.route.queryParamMap, { requireSync: true });
@@ -408,11 +274,6 @@ export class LeadsPage {
   protected readonly upIcon = ArrowUp;
   protected readonly searchIcon = Search;
   protected readonly usersIcon = Users;
-  protected readonly ariaSort = ariaSort;
-  protected readonly name = (lead: LeadRow) => contactName(lead.contact);
-  protected readonly preview = (lead: LeadRow) => previewText(lead.lastMessage);
-  protected readonly when = (iso: string) => shortWhen(iso);
-  protected readonly fullWhen = fullWhen;
 
   /** Para lectores de pantalla: cambia solo cuando cambia el resultado, no en cada refresco. */
   protected readonly statusText = computed(() => {
@@ -486,12 +347,6 @@ export class LeadsPage {
       );
       this.summary.refresh();
     });
-  }
-
-  /** Clic en cualquier parte de la fila. Si fue en el link del nombre o en un botón, ya hace lo suyo. */
-  protected openRow(event: MouseEvent, id: string) {
-    if ((event.target as HTMLElement).closest('a, button')) return;
-    void this.router.navigate(['/conversaciones', id]);
   }
 
   protected clearFilters() {

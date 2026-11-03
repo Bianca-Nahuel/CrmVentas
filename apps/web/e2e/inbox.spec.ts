@@ -217,6 +217,6 @@ test.describe('números: vendedores', () => {
 
     // Se quita con el botón de la etiqueta (deja el seed como estaba).
     await sucursal.getByRole('button', { name: 'Quitar a Vendedor Sin Números de sucursal-norte' }).click();
-    await expect(sucursal).toContainText('Sin vendedores asignados.');
+    await expect(sucursal).toContainText('Sin vendedores asignados:');
   });
 });

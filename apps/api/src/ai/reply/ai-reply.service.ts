@@ -314,6 +314,9 @@ export class AiReplyService {
     const score = evaluation.score;
     const effectiveScore = score ?? snapshot.leadScore;
     const hot = effectiveScore !== null && effectiveScore >= config.scoring.thresholds.hot;
+    // Nivel de este turno con los umbrales vigentes (tarea 028): lead_tier_peak lo guarda si es mayor que el
+    // que ya tenía y nunca baja, así cambiar los umbrales después no recalcula conversaciones viejas.
+    const tier = score === null ? null : tierFor(score, config.scoring.thresholds);
 
     await tx.execute(sql`
       UPDATE conversations SET
@@ -322,7 +325,13 @@ export class AiReplyService {
                                ELSE GREATEST(COALESCE(lead_score_peak, 0), ${score}::smallint) END,
         lead_score_at = CASE WHEN ${score}::smallint IS NULL THEN lead_score_at ELSE now() END,
         score_breakdown = COALESCE(${evaluation.breakdown ? JSON.stringify(evaluation.breakdown) : null}::jsonb, score_breakdown),
-        lead_tier = COALESCE(${score === null ? null : tierFor(score, config.scoring.thresholds)}, lead_tier),
+        lead_tier = COALESCE(${tier}, lead_tier),
+        lead_tier_peak = CASE
+          WHEN ${tier}::text IS NULL THEN lead_tier_peak
+          WHEN lead_tier_peak IS NULL
+            OR array_position(ARRAY['cold', 'warm', 'hot'], ${tier}::text)
+               > array_position(ARRAY['cold', 'warm', 'hot'], lead_tier_peak) THEN ${tier}::text
+          ELSE lead_tier_peak END,
         extracted_data = extracted_data || ${JSON.stringify(evaluation.extracted)}::jsonb,
         discovered_notes = ${JSON.stringify(evaluation.discovered)}::jsonb
       WHERE id = ${job.conversationId}

@@ -33,7 +33,12 @@ export class CloseService {
       await closeLockedConversation(
         tx,
         { tenantId: context.tenantId, conversationId: id, channelId: row.channel_id },
-        { outcome: body.outcome, note: body.note || null, userId: context.userId },
+        {
+          outcome: body.outcome,
+          note: body.note || null,
+          userId: context.userId,
+          amount: body.outcome === 'sold' ? (body.amount ?? null) : null,
+        },
       );
     }
     return this.inbox.getConversation(tx, context, id);

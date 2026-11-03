@@ -1,7 +1,7 @@
 import { roleCan, type TenantPermission, type TenantRole } from '@ventas/shared/auth';
 import {
   Bot,
-  ChartColumn,
+  Funnel,
   Gauge,
   MessagesSquare,
   Package,
@@ -82,11 +82,11 @@ export const NAV_ITEMS: readonly NavItem[] = [
     soon: 'Acá vas a ver cuánto usó la empresa y los créditos disponibles.',
   },
   {
-    path: 'metricas',
-    label: 'Métricas',
-    icon: ChartColumn,
+    path: 'embudo',
+    label: 'Embudo',
+    icon: Funnel,
     permission: { metrics: ['read'] },
-    soon: 'Acá vas a ver el embudo y las métricas de ventas.',
+    soon: 'Acá vas a ver cuántos de los que escriben terminan comprando y en qué paso se pierden.',
   },
 ];
 

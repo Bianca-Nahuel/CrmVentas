@@ -55,10 +55,16 @@ export class InboxApi {
     return body(markConversationRead(this.http, this.rootUrl, { id }));
   }
 
-  /** Cerrar con un resultado (tarea 026). Idempotente: una ya cerrada vuelve sin cambios. */
-  close(id: string, outcome: CloseOutcome, note: string) {
+  /**
+   * Cerrar con un resultado (tarea 026) y, si se vendió, el monto aproximado (tarea 028, texto decimal).
+   * Idempotente: una ya cerrada vuelve sin cambios.
+   */
+  close(id: string, outcome: CloseOutcome, note: string, amount: string | null = null) {
     return body(
-      closeConversation(this.http, this.rootUrl, { id, body: { outcome, ...(note ? { note } : {}) } }),
+      closeConversation(this.http, this.rootUrl, {
+        id,
+        body: { outcome, ...(note ? { note } : {}), ...(amount && outcome === 'sold' ? { amount } : {}) },
+      }),
     );
   }
 

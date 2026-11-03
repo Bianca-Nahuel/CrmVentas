@@ -16,7 +16,7 @@ test.describe('login y empresa activa', () => {
       'Catálogo',
       'Configuración del agente',
       'Consumo',
-      'Métricas',
+      'Embudo',
     ]);
     await expect(page).toHaveTitle('Conversaciones · Panel');
   });
@@ -97,11 +97,11 @@ test.describe('login y empresa activa', () => {
     }
   });
 
-  test('6b. viewer ve solo Rendimiento y Métricas', async ({ page }) => {
+  test('6b. viewer ve solo Rendimiento y el Embudo', async ({ page }) => {
     await login(page, USERS.multi);
     await page.getByRole('button', { name: /Inmobiliaria Demo/ }).click();
     await expect(page).toHaveURL('/rendimiento');
-    await expect(navLinks(page)).toHaveText(['Rendimiento', 'Métricas']);
+    await expect(navLinks(page)).toHaveText(['Rendimiento', 'Embudo']);
     await page.goto('/leads');
     await expect(page).toHaveURL('/sin-acceso');
   });

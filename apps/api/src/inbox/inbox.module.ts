@@ -26,6 +26,6 @@ import { ReplyService } from './reply.service.js';
     ChannelsService,
     ChannelConnectionService,
   ],
-  exports: [ConversationScope],
+  exports: [ConversationScope, InboxService],
 })
 export class InboxModule {}

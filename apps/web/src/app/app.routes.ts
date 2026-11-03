@@ -5,7 +5,8 @@ import { DEV_ROUTES } from './dev/dev.routes';
 import { Shell } from './pages/layout/shell';
 
 // Secciones que ya tienen su pantalla: las de la bandeja (tareas 014 y 011) en un mismo módulo lazy (ver
-// inbox.routes.ts), Rendimiento (026) en el suyo, y Catálogo y Configuración del agente (027) en los suyos.
+// inbox.routes.ts), Rendimiento (026) en el suyo, Catálogo y Configuración del agente (027) en los suyos y el
+// Embudo (028) en el suyo.
 // El resto muestra "próximamente".
 const SECTIONS: Record<string, Pick<Route, 'loadChildren'>> = {
   leads: { loadChildren: () => import('./pages/inbox.routes').then((m) => m.LEADS_ROUTES) },
@@ -14,6 +15,7 @@ const SECTIONS: Record<string, Pick<Route, 'loadChildren'>> = {
   rendimiento: { loadChildren: () => import('./pages/performance.routes').then((m) => m.PERFORMANCE_ROUTES) },
   catalogo: { loadChildren: () => import('./pages/catalog.routes').then((m) => m.CATALOG_ROUTES) },
   agente: { loadChildren: () => import('./pages/agent.routes').then((m) => m.AGENT_ROUTES) },
+  embudo: { loadChildren: () => import('./pages/funnel.routes').then((m) => m.FUNNEL_ROUTES) },
 };
 const comingSoon = () => import('./pages/coming-soon/coming-soon-page').then((m) => m.ComingSoonPage);
 
@@ -45,6 +47,8 @@ export const routes: Routes = [
       { path: '', pathMatch: 'full', canActivate: [homeGuard], children: [] },
       // Canales se unificó con Números y vendedores: los links viejos van a Números.
       { path: 'canales', redirectTo: 'numeros' },
+      // "Métricas" era el lugar reservado del embudo (tarea 028).
+      { path: 'metricas', redirectTo: 'embudo' },
       ...NAV_ITEMS.map((item) => ({
         path: item.path,
         title: item.label,

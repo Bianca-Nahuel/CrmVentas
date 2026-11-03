@@ -323,6 +323,41 @@ for (const theme of THEMES) {
         await shot(page, '36-rendimiento-revision', true);
       });
 
+      test('embudo', async ({ page }) => {
+        // Monto al cerrar como vendido (tarea 028).
+        await openConversation(page, 'Diego Ventana');
+        await page.getByTestId('close-conversation').click();
+        await page.getByTestId('outcome-sold').check();
+        await page.getByTestId('close-amount').fill('150.000');
+        await shot(page, '37-cerrar-con-monto');
+        await page.getByRole('button', { name: 'Cancelar' }).click();
+
+        await page.goto('/embudo?period=3m');
+        await expect(page.getByTestId('funnel-bars')).toBeVisible();
+        await shot(page, '38-embudo', true);
+        await page.getByTestId('lost-hot').click();
+        await expect(
+          page
+            .getByTestId('funnel-list')
+            .getByTestId(size.width < 768 ? 'lead-card' : 'lead-row')
+            .first(),
+        ).toBeVisible();
+        await page.getByTestId('funnel-list').scrollIntoViewIfNeeded();
+        await shot(page, '39-embudo-lista');
+        await page.goto('/embudo?period=week');
+        await expect(page.getByTestId('low-volume').or(page.getByTestId('funnel-empty'))).toBeVisible();
+        await shot(page, '40-embudo-pocas');
+      });
+
+      test('embudo: viewer', async ({ page }) => {
+        await login(page, USERS.multi);
+        await page.getByRole('button', { name: /Inmobiliaria Demo/ }).click();
+        await expectInLayout(page, 'Inmobiliaria Demo');
+        await page.goto('/embudo?period=3m');
+        await expect(page.getByTestId('funnel-bars')).toBeVisible();
+        await shot(page, '41-embudo-viewer', true);
+      });
+
       test('sistema de diseño', async ({ page }) => {
         await page.goto('/dev/diseno');
         await expect(page.getByRole('heading', { name: 'Sistema de diseño' })).toBeVisible();

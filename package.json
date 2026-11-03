@@ -35,6 +35,7 @@
     "dev:import-catalog": "npm run build:shared && npm run dev:import-catalog -w @ventas/api --",
     "dev:test-extractor": "npm run build:shared && npm run dev:test-extractor -w @ventas/api --",
     "dev:backfill-metrics": "npm run build:shared && npm run dev:backfill-metrics -w @ventas/api --",
+    "dev:backfill-funnel": "npm run build:shared && npm run dev:backfill-funnel -w @ventas/api --",
     "dev:review": "npm run build:shared && npm run dev:review -w @ventas/api --",
     "evals": "npm run build:shared && npm run evals -w @ventas/api --",
     "evals:review": "npm run build:shared && npm run evals:review -w @ventas/api --"

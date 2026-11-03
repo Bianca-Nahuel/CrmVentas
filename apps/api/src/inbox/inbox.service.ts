@@ -143,8 +143,35 @@ export class InboxService {
         : query.attention === 'unread'
           ? sql`c.unread`
           : sql`true`;
+    const page = await this.leadRows(tx, base, attention, sql.raw(ORDER_BY[query.sort][query.dir]), query);
+    return { ...empty, ...page, noChannels: false };
+  }
+
+  /**
+   * Filas de la grilla para otra vista (embudo, tarea 028): mismas columnas y mismo scope, con la condición y
+   * el orden de quien llama (sobre el alias c de las conversaciones). Sin números visibles, vacía.
+   */
+  async leadRowsWhere(
+    tx: AppTx,
+    context: TenantContext,
+    where: SQL,
+    options: { orderBy: SQL; page: number; pageSize: number },
+  ): Promise<{ items: LeadRow[]; total: number }> {
+    const scope = await this.scopes.resolve(tx, context);
+    if (!scope.all && scope.channelIds.length === 0) return { items: [], total: 0 };
+    const base = leadBase(sql`${scopeCondition(scope, sql`c.channel_id`)} AND ${where}`, context.userId);
+    return this.leadRows(tx, base, sql`true`, options.orderBy, options);
+  }
+
+  private async leadRows(
+    tx: AppTx,
+    base: SQL,
+    filter: SQL,
+    orderBy: SQL,
+    page: { page: number; pageSize: number },
+  ): Promise<{ items: LeadRow[]; total: number }> {
     const count = await tx.execute<{ total: number }>(sql`
-      WITH base AS (${base}) SELECT count(*)::int AS total FROM base c WHERE ${attention}
+      WITH base AS (${base}) SELECT count(*)::int AS total FROM base c WHERE ${filter}
     `);
     const total = count.rows[0]?.total ?? 0;
 
@@ -164,11 +191,11 @@ export class InboxService {
         SELECT m.type, m.sender_type, m.body, m.sent_at FROM messages m
         WHERE m.conversation_id = c.id ORDER BY m.sent_at DESC, m.id DESC LIMIT 1
       ) lm ON true
-      WHERE ${attention}
-      ORDER BY ${sql.raw(ORDER_BY[query.sort][query.dir])}
-      LIMIT ${query.pageSize} OFFSET ${query.page * query.pageSize}
+      WHERE ${filter}
+      ORDER BY ${orderBy}
+      LIMIT ${page.pageSize} OFFSET ${page.page * page.pageSize}
     `);
-    return { ...empty, total, items: result.rows.map(toLeadRow), noChannels: false };
+    return { total, items: result.rows.map(toLeadRow) };
   }
 
   /** Marca la conversación como vista hasta ahora para el usuario del request ("sin ver" es por persona). */

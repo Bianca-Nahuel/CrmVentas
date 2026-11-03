@@ -10,6 +10,7 @@ import { catalogAdminRoutes } from '../src/catalog/catalog-admin.contracts.js';
 import type { ApiRoute } from '../src/http/api-route.js';
 import { channelRoutes } from '../src/inbox/channels.contracts.js';
 import { inboxRoutes } from '../src/inbox/inbox.contracts.js';
+import { funnelRoutes } from '../src/funnel/funnel.contracts.js';
 import { performanceRoutes } from '../src/performance/performance.contracts.js';
 import { eventsRoute } from '../src/realtime/events.contracts.js';
 
@@ -18,6 +19,7 @@ const ROUTES: ApiRoute[] = [
   ...inboxRoutes,
   ...channelRoutes,
   ...performanceRoutes,
+  ...funnelRoutes,
   ...catalogAdminRoutes,
   ...agentConfigRoutes,
 ];

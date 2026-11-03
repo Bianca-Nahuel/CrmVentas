@@ -20,6 +20,7 @@
     "dev:import-catalog": "tsx scripts/import-catalog.ts",
     "dev:test-extractor": "tsx scripts/test-extractor.ts",
     "dev:backfill-metrics": "tsx scripts/backfill-metrics.ts",
+    "dev:backfill-funnel": "tsx scripts/backfill-funnel.ts",
     "dev:review": "tsx scripts/review-conversation.ts",
     "evals": "tsx scripts/evals.ts",
     "evals:review": "tsx scripts/evals-review.ts",
